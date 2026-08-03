@@ -1,0 +1,2 @@
+"""Safebox Web application package."""
+

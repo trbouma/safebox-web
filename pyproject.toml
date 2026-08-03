@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "safebox-web"
+version = "0.1.0"
+description = "Minimal stateless web interface for Safebox Acorn"
+authors = ["trbouma <trbouma@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.14"
+fastapi = ">=0.115,<0.116"
+uvicorn = { version = ">=0.35,<1", extras = ["standard"] }
+cryptography = ">=49,<50"
+python-multipart = ">=0.0.20,<1"
+python-dotenv = ">=1,<2"
+safebox-acorn = { git = "https://github.com/trbouma/safebox-acorn.git", branch = "main" }
+
+[tool.poetry.group.dev.dependencies]
+httpx = ">=0.28,<1"
+pytest = ">=8.4,<10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
