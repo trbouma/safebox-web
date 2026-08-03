@@ -45,6 +45,57 @@ the need to trust the running web code or protect the cookie-encryption key.
 Anyone who obtains that key and a session cookie can decrypt the contained
 `nsec`.
 
+## Development and deployment modes
+
+Safebox Web does not use a `development=true` switch that broadly disables
+transport security. Development and deployment differ through narrowly defined
+installation and network boundaries:
+
+| Environment | Acorn source | Browser transport | Application listener |
+| --- | --- | --- | --- |
+| Local development | Editable local `safebox-acorn` checkout | Direct HTTP on IPv4 loopback only | `127.0.0.1:8000` |
+| Docker deployment | GitHub commit pinned by `poetry.lock` | Public HTTPS through the trusted proxy | Container HTTP behind the proxy |
+
+For local component development, install Acorn as an editable package inside
+the Safebox Web Poetry environment:
+
+```sh
+poetry install
+poetry run pip install -e /Users/trbouma/projects/safebox-acorn
+```
+
+Confirm that Python is loading the editable checkout:
+
+```sh
+poetry run python -c "import acorn; print(acorn.__file__)"
+```
+
+The printed path should be inside the local `safebox-acorn` repository. Source
+changes there are then visible to Safebox Web immediately. This editable
+installation affects only that local virtual environment.
+
+The Dockerfile does not copy the host virtual environment or local Acorn
+checkout. It creates a clean environment and installs the GitHub dependency
+declared by `pyproject.toml` at the exact commit resolved in `poetry.lock`.
+Before deploying new Acorn work, deliberately update and commit that lock:
+
+```sh
+poetry update safebox-acorn
+git diff poetry.lock
+```
+
+The deployed browser connection remains HTTPS even though the trusted reverse
+proxy forwards HTTP over the private network to Uvicorn:
+
+```text
+browser -> HTTPS -> trusted reverse proxy -> private HTTP -> Safebox Web
+```
+
+The proxy supplies `X-Forwarded-Proto: https`, and Uvicorn accepts that claim
+only from `FORWARDED_ALLOW_IPS`. A direct remote HTTP request remains rejected.
+Use different `SAFEBOX_COOKIE_KEY` values for development and deployment; do
+not copy a development cookie key into production.
+
 ## Local development
 
 Install dependencies:
@@ -174,6 +225,10 @@ The Compose service requires `SAFEBOX_COOKIE_KEY`, runs with a read-only root
 filesystem and a small temporary `/tmp`, binds the application port to host
 loopback by default, and inherits the Dockerfile health check. A TLS reverse
 proxy is still required for browser access through Docker.
+
+For a tested deployment where Nginx and Safebox Web run on separate Tailscale
+machines, including the negative and positive transport checks, see
+[Tailscale Reverse-Proxy Deployment](docs/TAILSCALE-REVERSE-PROXY-DEPLOYMENT.md).
 
 ## Production transport
 
