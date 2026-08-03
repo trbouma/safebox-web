@@ -30,6 +30,18 @@ class SessionCredentials:
     version: int = 1
 
 
+@dataclass(frozen=True)
+class DepositQuoteState:
+    """Client-held state for one Lightning deposit quote."""
+
+    quote: str
+    amount: int
+    mint: str
+    invoice: str
+    purpose: str = "safebox-web-deposit-quote"
+    version: int = 1
+
+
 class SessionCipher:
     """Encrypt and authenticate browser-held session credentials."""
 
@@ -53,6 +65,35 @@ class SessionCipher:
         if credentials.version != 1:
             raise ValueError("session cookie version is unsupported")
         return credentials
+
+
+class DepositQuoteCipher:
+    """Encrypt and authenticate short-lived deposit quote state."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._fernet = Fernet(settings.cookie_key.encode("ascii"))
+        self._ttl = min(settings.session_ttl_seconds, 60 * 60)
+
+    def encode(self, state: DepositQuoteState) -> str:
+        payload = json.dumps(
+            asdict(state), separators=(",", ":"), sort_keys=True
+        ).encode("utf-8")
+        return self._fernet.encrypt(payload).decode("ascii")
+
+    def decode(self, token: str) -> DepositQuoteState:
+        try:
+            raw = self._fernet.decrypt(str(token).encode("ascii"), ttl=self._ttl)
+            payload = json.loads(raw)
+            state = DepositQuoteState(**payload)
+        except (InvalidToken, UnicodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("deposit quote is invalid or expired") from exc
+        if state.version != 1 or state.purpose != "safebox-web-deposit-quote":
+            raise ValueError("deposit quote version or purpose is unsupported")
+        if state.amount <= 0 or not state.quote or not state.mint or not state.invoice:
+            raise ValueError("deposit quote is incomplete")
+        if len(state.quote) > 512 or len(state.mint) > 2048 or len(state.invoice) > 2048:
+            raise ValueError("deposit quote contains an oversized field")
+        return state
 
 
 class CsrfProtector:
@@ -104,6 +145,39 @@ def normalize_bootstrap_relay(value: str) -> str:
 
     normalized_path = parsed.path or ""
     return urlunsplit((parsed.scheme, parsed.netloc, normalized_path, parsed.query, ""))
+
+
+def normalize_home_mint(value: str) -> str:
+    """Normalize and validate an HTTPS mint URL.
+
+    Plain HTTP is accepted only for an IPv4 loopback mint used in local
+    development.
+    """
+
+    mint = str(value).strip().rstrip("/")
+    if not mint:
+        raise ValueError("home mint is required")
+    if not mint.startswith(("https://", "http://")):
+        mint = f"https://{mint}"
+
+    parsed = urlsplit(mint)
+    if parsed.scheme not in {"https", "http"} or not parsed.hostname:
+        raise ValueError("home mint must be an http:// or https:// URL")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError(
+            "home mint must not contain credentials, a query, or a fragment"
+        )
+    if parsed.scheme == "http":
+        try:
+            address = ipaddress.ip_address(parsed.hostname)
+        except ValueError as exc:
+            raise ValueError(
+                "unencrypted http:// mints are allowed only on loopback"
+            ) from exc
+        if not address.is_loopback:
+            raise ValueError("unencrypted http:// mints are allowed only on loopback")
+
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), "", ""))
 
 
 def canonical_nsec(value: str) -> str:

@@ -3,14 +3,16 @@
 Safebox Web is a minimal, stateless FastAPI interface for the installable
 [Safebox Acorn](https://github.com/trbouma/safebox-acorn) component.
 
-This first implementation intentionally provides only:
+This implementation intentionally provides:
 
+- creation of a new Acorn with a selected home relay and home mint;
 - login with an `nsec` or Acorn-compatible BIP39 offline mnemonic;
 - a bootstrap relay;
 - an encrypted, authenticated browser cookie;
 - request-scoped `Acorn` construction through FastAPI dependency injection;
 - relay-backed wallet loading and balance display;
 - private-record label listing and individual record retrieval;
+- user-confirmed Lightning deposits through the Acorn home mint;
 - confirmed Lightning-address payments through Acorn;
 - a connected-wallet identity page and redacted session API; and
 - logout.
@@ -20,6 +22,24 @@ or store server-side sessions. The wallet page loads encrypted wallet and proof
 events from the bootstrap relay into request-scoped memory to derive the
 displayed balance. An explicitly confirmed payment delegates all proof,
 locking, mint, journal, and relay mutations to Acorn.
+
+The deposit flow requests a Lightning invoice from the Acorn home mint and
+renders it as both a QR code and copyable text. It performs no browser polling.
+The user explicitly indicates that the invoice has been paid, after which
+Safebox asks Acorn to check the quote once, mint the proofs when payment is
+confirmed, and return to the wallet page for a freshly loaded balance. An
+unconfirmed invoice remains available for another user-initiated check.
+
+Deposit invoice creation, deposit confirmation, and outgoing payment forms
+display an operation-specific progress message after submission and disable
+their submit buttons while the request is running. This is progressive browser
+behavior: server validation and transaction safety do not depend on JavaScript.
+
+Deposit quote state is not kept in a database or server-side session. The quote
+identifier, amount, mint, and invoice are encrypted and authenticated in a
+short-lived hidden form token. This prevents a browser from altering the amount
+or mint between invoice creation and confirmation while preserving the
+stateless application boundary.
 
 ## Stateless session boundary
 
@@ -39,6 +59,14 @@ The offline mnemonic is used only to derive the operational `nsec` during the
 login request. It is not placed in the cookie. The application does not write
 either secret to disk, but the decrypted `nsec` necessarily exists in process
 memory while handling an authenticated request.
+
+When creating a new Acorn, Safebox generates the offline mnemonic and its
+derived `nsec` in memory, writes the initial encrypted wallet metadata through
+Acorn, and verifies relay readback before starting the session. The selected
+home mint is stored in that relay-backed wallet metadata. Safebox displays the
+recovery material on the creation result page; the session cookie still holds
+only the `nsec`, bootstrap relay, and session format version. The user must save
+the displayed recovery material securely before leaving the page.
 
 This architecture moves session custody to the browser; it does not eliminate
 the need to trust the running web code or protect the cookie-encryption key.
@@ -197,6 +225,7 @@ Review these deployment values in `.env` before starting:
 ```env
 SAFEBOX_COOKIE_KEY=<generated Fernet-compatible key>
 SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
+SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_BIND_ADDRESS=127.0.0.1
 SAFEBOX_PORT=8000
 FORWARDED_ALLOW_IPS=127.0.0.1
@@ -284,10 +313,10 @@ Run:
 poetry run pytest
 ```
 
-The initial tests cover HTTPS enforcement, the tightly scoped loopback
-exception, encrypted cookie contents and flags, dependency-injected identity,
-mnemonic derivation, invalid secrets, and tampered cookies. They do not contact
-a relay or mint.
+The tests cover HTTPS enforcement, the tightly scoped loopback exception,
+encrypted cookie contents and flags, dependency-injected identity, mnemonic
+derivation, Acorn creation, deposit invoice and confirmation flows, invalid
+secrets, and tampered cookies. They do not contact a relay or mint.
 
 ## Current limitations
 

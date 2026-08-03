@@ -19,6 +19,7 @@ class Settings:
     wallet_load_timeout_seconds: float = 20.0
     payment_timeout_seconds: float = 90.0
     default_bootstrap_relay: str = "wss://relay.getsafebox.app"
+    default_home_mint: str = "https://mint.getsafebox.app"
 
     def __post_init__(self) -> None:
         try:
@@ -68,5 +69,9 @@ class Settings:
             default_bootstrap_relay=os.getenv(
                 "SAFEBOX_DEFAULT_BOOTSTRAP_RELAY",
                 "wss://relay.getsafebox.app",
+            ).strip(),
+            default_home_mint=os.getenv(
+                "SAFEBOX_DEFAULT_HOME_MINT",
+                "https://mint.getsafebox.app",
             ).strip(),
         )

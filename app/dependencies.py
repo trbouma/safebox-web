@@ -88,3 +88,12 @@ def get_payment_acorn(acorn: LoadedAcornDependency) -> Acorn:
 
 
 PaymentAcornDependency = Annotated[Acorn, Depends(get_payment_acorn)]
+
+
+def get_deposit_acorn(acorn: LoadedAcornDependency) -> Acorn:
+    """Make the Lightning deposit mutation boundary explicit."""
+
+    return acorn
+
+
+DepositAcornDependency = Annotated[Acorn, Depends(get_deposit_acorn)]

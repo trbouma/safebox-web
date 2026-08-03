@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from html import unescape
 import os
+import re
+from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
 
@@ -11,10 +14,17 @@ os.environ.setdefault("SAFEBOX_COOKIE_KEY", Fernet.generate_key().decode("ascii"
 
 from fastapi.testclient import TestClient
 
+import app.main as main_module
 from app.config import Settings
-from app.dependencies import get_loaded_acorn, get_payment_acorn
+from app.dependencies import get_deposit_acorn, get_loaded_acorn, get_payment_acorn
 from app.main import create_app
-from app.security import CsrfProtector, SECURE_COOKIE_NAME, SessionCipher
+from app.security import (
+    CsrfProtector,
+    DepositQuoteCipher,
+    DepositQuoteState,
+    SECURE_COOKIE_NAME,
+    SessionCipher,
+)
 
 
 TEST_KEY = Fernet.generate_key().decode("ascii")
@@ -39,11 +49,16 @@ def valid_csrf_token() -> str:
 class FakeLoadedAcorn:
     pubkey_bech32 = "npub1testcomponent"
     home_relay = "wss://relay.example.com"
+    home_mint = "https://mint.example.com"
 
-    def __init__(self, balance: int = 321) -> None:
+    def __init__(self, balance: int = 321, deposit_paid: bool = True) -> None:
         self.balance = balance
+        self.deposit_paid = deposit_paid
         self.loaded = False
         self.payments: list[dict] = []
+        self.deposit_calls: list[int] = []
+        self.quote_checks: list[tuple[str, int]] = []
+        self.history_entries: list[dict] = []
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -70,6 +85,41 @@ class FakeLoadedAcorn:
         )
         self.balance -= amount + 1
         return f"Payment of {amount} sats successful!", 1
+
+    def deposit(self, amount: int):
+        self.deposit_calls.append(amount)
+        return SimpleNamespace(
+            invoice="lnbc21n1pytestinvoice",
+            quote="pytest-deposit-quote",
+        )
+
+    async def check_quote(self, quote: str, amount: int):
+        self.quote_checks.append((quote, amount))
+        if self.deposit_paid:
+            self.balance += amount
+            return True, "lnbc21n1pytestinvoice"
+        return False, None
+
+    async def add_tx_history(self, **entry) -> None:
+        self.history_entries.append(entry)
+
+
+class FakeCreatedAcorn:
+    instances: list["FakeCreatedAcorn"] = []
+
+    def __init__(self, **kwargs) -> None:
+        self.kwargs = kwargs
+        self.pubkey_bech32 = "npub1newcomponent"
+        self.created_seed_phrase: str | None = None
+        self.loaded = False
+        self.__class__.instances.append(self)
+
+    async def create_instance(self, seed_phrase: str) -> str:
+        self.created_seed_phrase = seed_phrase
+        return TEST_NSEC
+
+    async def load_data(self) -> None:
+        self.loaded = True
 
 
 def test_settings_load_cookie_key_from_working_directory_env_file(
@@ -111,6 +161,133 @@ def test_direct_127001_http_is_allowed() -> None:
     assert response.status_code == 200
 
 
+def test_page_displays_acorn_safebox_relationship_visual() -> None:
+    response = make_https_client().get("/")
+
+    assert response.status_code == 200
+    assert 'aria-label="Acorn connected with Safebox"' in response.text
+    assert "User-controlled component" in response.text
+    assert "User-controlled session" in response.text
+    assert "Web service surface" in response.text
+
+
+def test_progress_script_is_served_from_same_origin() -> None:
+    response = make_https_client().get("/static/forms.js")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/javascript")
+    assert 'form.setAttribute("aria-busy", "true")' in response.text
+    assert "button.disabled = true" in response.text
+
+
+def test_login_page_links_to_new_acorn_creation() -> None:
+    response = make_https_client().get("/login")
+
+    assert response.status_code == 200
+    assert 'href="/create"' in response.text
+    assert "Create a new Acorn" in response.text
+
+
+def test_create_form_displays_default_relay_and_mint() -> None:
+    response = make_https_client().get("/create")
+
+    assert response.status_code == 200
+    assert 'name="home_relay"' in response.text
+    assert TEST_SETTINGS.default_bootstrap_relay in response.text
+    assert 'name="home_mint"' in response.text
+    assert TEST_SETTINGS.default_home_mint in response.text
+    assert 'name="confirmed"' in response.text
+
+
+def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) -> None:
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda: (TEST_MNEMONIC, TEST_NSEC),
+    )
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com/",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 201
+    assert "New Acorn created" in response.text
+    assert TEST_MNEMONIC in response.text
+    assert TEST_NSEC in response.text
+    assert "wss://relay.example.com" in response.text
+    assert "https://mint.example.com" in response.text
+    created = FakeCreatedAcorn.instances[0]
+    assert created.kwargs == {
+        "nsec": TEST_NSEC,
+        "home_relay": "wss://relay.example.com",
+        "relays": ["wss://relay.example.com"],
+        "mints": ["https://mint.example.com"],
+    }
+    assert created.created_seed_phrase == TEST_MNEMONIC
+    assert created.loaded is True
+
+    token = client.cookies.get(SECURE_COOKIE_NAME)
+    assert token is not None
+    assert TEST_NSEC not in token
+    assert TEST_MNEMONIC not in token
+    credentials = SessionCipher(TEST_SETTINGS).decode(token)
+    assert credentials.nsec == TEST_NSEC
+    assert credentials.bootstrap_relay == "wss://relay.example.com"
+
+
+def test_create_acorn_requires_confirmation_before_generating(monkeypatch) -> None:
+    generated = False
+
+    def must_not_generate():
+        nonlocal generated
+        generated = True
+        return TEST_MNEMONIC, TEST_NSEC
+
+    monkeypatch.setattr(main_module, "generate_seed_phrase_and_nsec", must_not_generate)
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Explicit confirmation is required" in response.text
+    assert generated is False
+    assert SECURE_COOKIE_NAME not in response.headers.get("set-cookie", "")
+
+
+def test_create_acorn_rejects_insecure_remote_mint() -> None:
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "http://mint.example.com",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "allowed only on loopback" in response.text
+    assert SECURE_COOKIE_NAME not in response.headers.get("set-cookie", "")
+
+
 def test_loaded_acorn_dependency_loads_request_scoped_state() -> None:
     acorn = FakeLoadedAcorn()
 
@@ -146,6 +323,118 @@ def test_payment_form_displays_balance_and_confirmation() -> None:
     assert "500 sats" in response.text
     assert 'name="csrf_token"' in response.text
     assert 'name="confirmed"' in response.text
+    assert "Payment in progress. Please wait" in response.text
+    assert "Sending payment…" in response.text
+
+
+def test_deposit_form_displays_home_mint_and_amount_field() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_deposit_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/deposit")
+
+    assert response.status_code == 200
+    assert "500 sats" in response.text
+    assert "https://mint.example.com" in response.text
+    assert 'name="amount"' in response.text
+    assert "Creating a deposit invoice. Please wait." in response.text
+    assert "Creating invoice…" in response.text
+
+
+def test_deposit_creates_invoice_qr_without_polling() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_deposit_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/deposit",
+        data={"csrf_token": valid_csrf_token(), "amount": "21"},
+    )
+
+    assert response.status_code == 200
+    assert "Pay deposit invoice" in response.text
+    assert "21 sats" in response.text
+    assert "lnbc21n1pytestinvoice" in response.text
+    assert '<div class="invoice-qr"><svg' in response.text
+    assert 'action="/deposit/check"' in response.text
+    assert "Checking and finalizing the deposit. Please wait" in response.text
+    assert "Checking deposit…" in response.text
+    assert acorn.deposit_calls == [21]
+    assert acorn.quote_checks == []
+
+    token_match = re.search(
+        r'name="deposit_token" value="([^"]+)"', response.text
+    )
+    assert token_match is not None
+    deposit_token = unescape(token_match.group(1))
+    assert "pytest-deposit-quote" not in deposit_token
+    state = DepositQuoteCipher(TEST_SETTINGS).decode(deposit_token)
+    assert state == DepositQuoteState(
+        quote="pytest-deposit-quote",
+        amount=21,
+        mint="https://mint.example.com",
+        invoice="lnbc21n1pytestinvoice",
+    )
+
+
+def test_paid_deposit_is_finalized_and_redirects_to_updated_wallet() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500, deposit_paid=True)
+    app.dependency_overrides[get_deposit_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    state = DepositQuoteState(
+        quote="pytest-deposit-quote",
+        amount=21,
+        mint=acorn.home_mint,
+        invoice="lnbc21n1pytestinvoice",
+    )
+
+    response = client.post(
+        "/deposit/check",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "deposit_token": DepositQuoteCipher(TEST_SETTINGS).encode(state),
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/wallet"
+    assert acorn.quote_checks == [("pytest-deposit-quote", 21)]
+    assert acorn.balance == 521
+    assert acorn.history_entries == [
+        {"tx_type": "C", "amount": 21, "comment": "safebox web deposit"}
+    ]
+
+
+def test_unpaid_deposit_keeps_same_invoice_available_for_recheck() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500, deposit_paid=False)
+    app.dependency_overrides[get_deposit_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    state = DepositQuoteState(
+        quote="pytest-deposit-quote",
+        amount=21,
+        mint=acorn.home_mint,
+        invoice="lnbc21n1pytestinvoice",
+    )
+
+    response = client.post(
+        "/deposit/check",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "deposit_token": DepositQuoteCipher(TEST_SETTINGS).encode(state),
+        },
+    )
+
+    assert response.status_code == 409
+    assert "has not confirmed payment yet" in response.text
+    assert "lnbc21n1pytestinvoice" in response.text
+    assert 'action="/deposit/check"' in response.text
+    assert acorn.history_entries == []
 
 
 def test_confirmed_lightning_payment_delegates_to_acorn() -> None:
