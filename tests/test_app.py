@@ -389,6 +389,9 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
     response = client.get("/transactions")
 
     assert response.status_code == 200
+    assert response.text.index("← Back to wallet") < response.text.index(
+        'aria-label="Transaction history"'
+    )
     assert 'aria-label="Transaction history"' in response.text
     assert 'class="transaction-card credit"' in response.text
     assert 'class="transaction-card debit"' in response.text

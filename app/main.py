@@ -1069,7 +1069,8 @@ by the web application.</p>
         )
         return _page(
             "Transaction history",
-            _transaction_history_html(entries)
+            '<p><a href="/wallet">← Back to wallet</a></p>'
+            + _transaction_history_html(entries)
             + '<p><a href="/wallet">Return to wallet</a></p>',
         )
 
