@@ -51,9 +51,18 @@ class FakeLoadedAcorn:
     home_relay = "wss://relay.example.com"
     home_mint = "https://mint.example.com"
 
-    def __init__(self, balance: int = 321, deposit_paid: bool = True) -> None:
+    def __init__(
+        self,
+        balance: int = 321,
+        deposit_paid: bool = True,
+        verified_balance: int | None = None,
+        verification_status: str = "clean",
+    ) -> None:
         self.balance = balance
+        self.proofs = [object()] if balance else []
         self.deposit_paid = deposit_paid
+        self.verified_balance = balance if verified_balance is None else verified_balance
+        self.verification_status = verification_status
         self.loaded = False
         self.payments: list[dict] = []
         self.deposit_calls: list[int] = []
@@ -62,6 +71,16 @@ class FakeLoadedAcorn:
 
     async def load_data(self) -> None:
         self.loaded = True
+
+    async def check_proofs(self) -> dict:
+        return {
+            "status": self.verification_status,
+            "recommendation": "Review the proof state.",
+            "mint_confirmed_unspent": {
+                "amount": self.verified_balance,
+                "proof_count": len(self.proofs) if self.verified_balance else 0,
+            },
+        }
 
     def get_balance(self) -> int:
         return self.balance
@@ -307,8 +326,29 @@ def test_wallet_page_displays_loaded_balance() -> None:
 
     assert response.status_code == 200
     assert "12,345 sats" in response.text
+    assert "Relay-visible proof total" in response.text
+    assert "Mint-confirmed spendable balance" in response.text
     assert "wss://relay.example.com" in response.text
     assert "not stored" in response.text
+
+
+def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(
+        balance=33_926,
+        verified_balance=52,
+        verification_status="repair-recommended",
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "Relay-visible proof total: <strong>33,926 sats" in response.text
+    assert "Mint-confirmed spendable balance: <strong>52 sats" in response.text
+    assert "33,874 sats not confirmed as spendable" in response.text
+    assert "Do not make a payment" in response.text
 
 
 def test_payment_form_displays_balance_and_confirmation() -> None:
@@ -485,6 +525,32 @@ def test_payment_requires_explicit_confirmation_before_calling_acorn() -> None:
 
     assert response.status_code == 400
     assert "Explicit payment confirmation is required" in response.text
+    assert acorn.payments == []
+
+
+def test_payment_is_blocked_when_mint_verification_is_not_clean() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(
+        balance=33_926,
+        verified_balance=52,
+        verification_status="repair-recommended",
+    )
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "must not run",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "Payment is blocked" in response.text
     assert acorn.payments == []
 
 

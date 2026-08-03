@@ -179,13 +179,18 @@ on the home relay, and start a user-controlled session.</p>
     )
 
 
-def _payment_form(balance: int, csrf_token: str, error: str | None = None) -> str:
+def _payment_form(
+    balance: int,
+    csrf_token: str,
+    error: str | None = None,
+    balance_status: str | None = None,
+) -> str:
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     return _page(
         "Pay a Lightning address",
         f"""
 {error_html}
-<p>Available wallet balance: <strong>{int(balance):,} sats</strong></p>
+{balance_status or f'<p>Relay-visible proof total: <strong>{int(balance):,} sats</strong></p>'}
 <p>The payment amount and the mint's fee reserve must fit within one spendable
 keyset. The displayed total balance may therefore be greater than the amount
 available for one payment.</p>
@@ -211,18 +216,75 @@ available for one payment.</p>
     )
 
 
+async def _read_proof_verification(acorn, timeout: float) -> tuple[dict | None, str | None]:
+    """Return a read-only mint-state report for the currently loaded proofs."""
+
+    try:
+        report = await asyncio.wait_for(acorn.check_proofs(), timeout=timeout)
+        return report, None
+    except TimeoutError:
+        logger.warning("proof balance verification timed out")
+        return None, "Mint verification timed out."
+    except Exception as exc:
+        logger.warning(
+            "proof balance verification failed error_type=%s",
+            type(exc).__name__,
+        )
+        return None, "Mint verification was unavailable."
+
+
+def _balance_status_html(
+    relay_balance: int,
+    proof_count: int,
+    verification: dict | None,
+    verification_error: str | None,
+) -> str:
+    relay_html = (
+        f"<p>Relay-visible proof total: <strong>{int(relay_balance):,} sats</strong> "
+        f"in {int(proof_count):,} proofs</p>"
+    )
+    if verification is None:
+        return (
+            relay_html
+            + '<p class="error"><strong>Spendable balance not verified.</strong> '
+            + escape(verification_error or "Mint verification was unavailable.")
+            + " Do not rely on the relay-visible total for a payment.</p>"
+        )
+
+    confirmed = verification.get("mint_confirmed_unspent", {})
+    confirmed_amount = int(confirmed.get("amount", 0))
+    confirmed_count = int(confirmed.get("proof_count", 0))
+    status = str(verification.get("status", "inconclusive"))
+    confirmed_html = (
+        "<p>Mint-confirmed spendable balance: "
+        f"<strong>{confirmed_amount:,} sats</strong> in {confirmed_count:,} proofs</p>"
+    )
+    if status != "clean" or confirmed_amount != int(relay_balance):
+        difference = max(0, int(relay_balance) - confirmed_amount)
+        warning = (
+            '<p class="error"><strong>Proof state requires attention.</strong> '
+            f"Verification status: {escape(status)}. "
+        )
+        if difference:
+            warning += f"The relay total includes {difference:,} sats not confirmed as spendable. "
+        warning += "Do not make a payment until the proof state has been reviewed.</p>"
+        return relay_html + confirmed_html + warning
+    return relay_html + confirmed_html
+
+
 def _deposit_form(
     balance: int,
     home_mint: str,
     csrf_token: str,
     error: str | None = None,
+    balance_status: str | None = None,
 ) -> str:
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     return _page(
         "Deposit funds",
         f"""
 {error_html}
-<p>Current balance: <strong>{int(balance):,} sats</strong></p>
+{balance_status or f'<p>Relay-visible proof total: <strong>{int(balance):,} sats</strong></p>'}
 <p>Home mint: <code>{escape(home_mint)}</code></p>
 <form method="post" action="/deposit" autocomplete="off"
       data-progress-message="Creating a deposit invoice. Please wait."
@@ -520,13 +582,24 @@ different Acorn.</p>
 
     @app.get("/wallet", response_class=HTMLResponse)
     async def wallet(request: Request, acorn: LoadedAcornDependency) -> str:
-        csrf_token = CsrfProtector(request.app.state.settings).issue()
+        settings = request.app.state.settings
+        csrf_token = CsrfProtector(settings).issue()
+        verification, verification_error = await _read_proof_verification(
+            acorn,
+            settings.wallet_load_timeout_seconds,
+        )
+        balance_status = _balance_status_html(
+            acorn.get_balance(),
+            len(acorn.proofs),
+            verification,
+            verification_error,
+        )
         return _page(
             "Connected Acorn",
             f"""
 <p>Component identity: <code>{escape(acorn.pubkey_bech32)}</code></p>
 <p>Bootstrap relay: <code>{escape(acorn.home_relay)}</code></p>
-<p>Balance: <strong>{int(acorn.get_balance()):,} sats</strong></p>
+{balance_status}
 <p>Wallet state was loaded from the relay for this request. It was not stored
 by the web application.</p>
 <p><a href="/deposit">Deposit funds</a></p>
@@ -540,10 +613,21 @@ by the web application.</p>
 
     @app.get("/deposit", response_class=HTMLResponse)
     async def deposit_form(request: Request, acorn: DepositAcornDependency) -> str:
+        settings = request.app.state.settings
+        verification, verification_error = await _read_proof_verification(
+            acorn,
+            settings.wallet_load_timeout_seconds,
+        )
         return _deposit_form(
             acorn.get_balance(),
             acorn.home_mint,
-            CsrfProtector(request.app.state.settings).issue(),
+            CsrfProtector(settings).issue(),
+            balance_status=_balance_status_html(
+                acorn.get_balance(),
+                len(acorn.proofs),
+                verification,
+                verification_error,
+            ),
         )
 
     @app.post("/deposit", response_class=HTMLResponse)
@@ -723,9 +807,20 @@ by the web application.</p>
 
     @app.get("/pay", response_class=HTMLResponse)
     async def payment_form(request: Request, acorn: PaymentAcornDependency) -> str:
+        settings = request.app.state.settings
+        verification, verification_error = await _read_proof_verification(
+            acorn,
+            settings.wallet_load_timeout_seconds,
+        )
         return _payment_form(
             acorn.get_balance(),
-            CsrfProtector(request.app.state.settings).issue(),
+            CsrfProtector(settings).issue(),
+            balance_status=_balance_status_html(
+                acorn.get_balance(),
+                len(acorn.proofs),
+                verification,
+                verification_error,
+            ),
         )
 
     @app.post("/pay", response_class=HTMLResponse)
@@ -740,6 +835,16 @@ by the web application.</p>
     ):
         settings = request.app.state.settings
         form_token = CsrfProtector(settings)
+        verification, verification_error = await _read_proof_verification(
+            acorn,
+            settings.wallet_load_timeout_seconds,
+        )
+        balance_status = _balance_status_html(
+            acorn.get_balance(),
+            len(acorn.proofs),
+            verification,
+            verification_error,
+        )
 
         def payment_error(message: str, status_code: int = 400) -> HTMLResponse:
             return HTMLResponse(
@@ -747,6 +852,7 @@ by the web application.</p>
                     acorn.get_balance(),
                     form_token.issue(),
                     message,
+                    balance_status,
                 ),
                 status_code=status_code,
             )
@@ -758,6 +864,18 @@ by the web application.</p>
             )
         if confirmed != "yes":
             return payment_error("Explicit payment confirmation is required.")
+        if verification is None:
+            return payment_error(
+                "Payment is blocked because Safebox could not verify the proofs "
+                "with their mints.",
+                503,
+            )
+        if verification.get("status") != "clean":
+            return payment_error(
+                "Payment is blocked because the wallet proof state is not clean. "
+                "Review it with 'acorn balance --verify' before spending.",
+                409,
+            )
 
         recipient = str(lightning_address).strip()
         if (
@@ -774,8 +892,13 @@ by the web application.</p>
             return payment_error("Payment amount must be a whole number of sats.")
         if amount_sats <= 0:
             return payment_error("Payment amount must be greater than zero.")
-        if amount_sats > int(acorn.get_balance()):
-            return payment_error("Payment amount exceeds the displayed wallet balance.")
+        confirmed_balance = int(
+            verification.get("mint_confirmed_unspent", {}).get("amount", 0)
+        )
+        if amount_sats > confirmed_balance:
+            return payment_error(
+                "Payment amount exceeds the mint-confirmed spendable balance."
+            )
 
         payment_comment = str(comment).strip() or "Paid from Safebox Web"
         if len(payment_comment) > 200:

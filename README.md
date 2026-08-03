@@ -41,6 +41,26 @@ short-lived hidden form token. This prevents a browser from altering the amount
 or mint between invoice creation and confirmation while preserving the
 stateless application boundary.
 
+## Balance interpretation and payment safety
+
+Safebox Web distinguishes two values:
+
+- **Relay-visible proof total** is the sum of the current encrypted proof
+  events returned by the home relay.
+- **Mint-confirmed spendable balance** is the sum of proofs reported as
+  `UNSPENT` by their issuing mints during a read-only check.
+
+The wallet, deposit, and payment pages show both values. A difference can mean
+that the relay retained stale proof history, omitted deletion events, or
+returned an incomplete view. Safebox warns prominently rather than presenting
+the relay total as confirmed value.
+
+Outgoing Lightning payments are blocked when mint verification is unavailable
+or the proof report is not clean. Deposits remain possible because they add new
+proofs, but a deposit never authorizes automatic swapping or consolidation of
+the existing wallet. `RECEIVE_PROOF_MAINTENANCE_ENABLED=false` is passed
+explicitly by the Docker deployment as defense in depth.
+
 ## Stateless session boundary
 
 After login, the browser cookie contains only:
