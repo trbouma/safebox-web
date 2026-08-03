@@ -17,6 +17,7 @@ class Settings:
     cookie_key: str
     session_ttl_seconds: int = 8 * 60 * 60
     wallet_load_timeout_seconds: float = 20.0
+    payment_timeout_seconds: float = 90.0
     default_bootstrap_relay: str = "wss://relay.getsafebox.app"
 
     def __post_init__(self) -> None:
@@ -30,6 +31,8 @@ class Settings:
             raise ValueError("SAFEBOX_SESSION_TTL_SECONDS must be at least 60")
         if self.wallet_load_timeout_seconds <= 0:
             raise ValueError("SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS must be positive")
+        if self.payment_timeout_seconds <= 0:
+            raise ValueError("SAFEBOX_PAYMENT_TIMEOUT_SECONDS must be positive")
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -53,10 +56,15 @@ class Settings:
             raise RuntimeError(
                 "SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS must be a number"
             ) from exc
+        try:
+            payment_timeout = float(os.getenv("SAFEBOX_PAYMENT_TIMEOUT_SECONDS", "90"))
+        except ValueError as exc:
+            raise RuntimeError("SAFEBOX_PAYMENT_TIMEOUT_SECONDS must be a number") from exc
         return cls(
             cookie_key=cookie_key,
             session_ttl_seconds=ttl,
             wallet_load_timeout_seconds=load_timeout,
+            payment_timeout_seconds=payment_timeout,
             default_bootstrap_relay=os.getenv(
                 "SAFEBOX_DEFAULT_BOOTSTRAP_RELAY",
                 "wss://relay.getsafebox.app",

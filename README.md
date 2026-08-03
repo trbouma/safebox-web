@@ -11,13 +11,15 @@ This first implementation intentionally provides only:
 - request-scoped `Acorn` construction through FastAPI dependency injection;
 - relay-backed wallet loading and balance display;
 - private-record label listing and individual record retrieval;
+- confirmed Lightning-address payments through Acorn;
 - a connected-wallet identity page and redacted session API; and
 - logout.
 
-It does **not** publish events, maintain accounts, use a database, write Acorn
-configuration, or store server-side sessions. The wallet page loads encrypted
-wallet and proof events from the bootstrap relay into request-scoped memory to
-derive the displayed balance.
+It does **not** maintain accounts, use a database, write Acorn configuration,
+or store server-side sessions. The wallet page loads encrypted wallet and proof
+events from the bootstrap relay into request-scoped memory to derive the
+displayed balance. An explicitly confirmed payment delegates all proof,
+locking, mint, journal, and relay mutations to Acorn.
 
 ## Stateless session boundary
 

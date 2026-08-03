@@ -79,3 +79,12 @@ async def get_loaded_acorn(
 
 
 LoadedAcornDependency = Annotated[Acorn, Depends(get_loaded_acorn)]
+
+
+def get_payment_acorn(acorn: LoadedAcornDependency) -> Acorn:
+    """Make the mutation boundary explicit for payment routes."""
+
+    return acorn
+
+
+PaymentAcornDependency = Annotated[Acorn, Depends(get_payment_acorn)]

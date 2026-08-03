@@ -12,7 +12,7 @@ os.environ.setdefault("SAFEBOX_COOKIE_KEY", Fernet.generate_key().decode("ascii"
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.dependencies import get_loaded_acorn
+from app.dependencies import get_loaded_acorn, get_payment_acorn
 from app.main import create_app
 from app.security import CsrfProtector, SECURE_COOKIE_NAME, SessionCipher
 
@@ -43,6 +43,7 @@ class FakeLoadedAcorn:
     def __init__(self, balance: int = 321) -> None:
         self.balance = balance
         self.loaded = False
+        self.payments: list[dict] = []
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -62,6 +63,13 @@ class FakeLoadedAcorn:
             }
 
         return Record()
+
+    async def pay_multi(self, amount: int, lnaddress: str, comment: str):
+        self.payments.append(
+            {"amount": amount, "lnaddress": lnaddress, "comment": comment}
+        )
+        self.balance -= amount + 1
+        return f"Payment of {amount} sats successful!", 1
 
 
 def test_settings_load_cookie_key_from_working_directory_env_file(
@@ -124,6 +132,71 @@ def test_wallet_page_displays_loaded_balance() -> None:
     assert "12,345 sats" in response.text
     assert "wss://relay.example.com" in response.text
     assert "not stored" in response.text
+
+
+def test_payment_form_displays_balance_and_confirmation() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/pay")
+
+    assert response.status_code == 200
+    assert "500 sats" in response.text
+    assert 'name="csrf_token"' in response.text
+    assert 'name="confirmed"' in response.text
+
+
+def test_confirmed_lightning_payment_delegates_to_acorn() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "pytest web payment",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Payment successful" in response.text
+    assert "21 sats" in response.text
+    assert "Fee: <strong>1 sat" in response.text
+    assert acorn.payments == [
+        {
+            "amount": 21,
+            "lnaddress": "alice@example.com",
+            "comment": "pytest web payment",
+        }
+    ]
+
+
+def test_payment_requires_explicit_confirmation_before_calling_acorn() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "must not run",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Explicit payment confirmation is required" in response.text
+    assert acorn.payments == []
 
 
 def test_record_index_links_encoded_labels() -> None:

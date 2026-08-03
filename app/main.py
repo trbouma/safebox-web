@@ -16,6 +16,7 @@ from app.dependencies import (
     AcornDependency,
     CredentialsDependency,
     LoadedAcornDependency,
+    PaymentAcornDependency,
 )
 from app.security import (
     LOOPBACK_COOKIE_NAME,
@@ -79,6 +80,36 @@ into an authenticated browser cookie for this session.</p>
          value="{escape(default_relay, quote=True)}" required spellcheck="false">
   <button type="submit">Connect</button>
 </form>""",
+    )
+
+
+def _payment_form(balance: int, csrf_token: str, error: str | None = None) -> str:
+    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
+    return _page(
+        "Pay a Lightning address",
+        f"""
+{error_html}
+<p>Available wallet balance: <strong>{int(balance):,} sats</strong></p>
+<p>The payment amount and the mint's fee reserve must fit within one spendable
+keyset. The displayed total balance may therefore be greater than the amount
+available for one payment.</p>
+<form method="post" action="/pay" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
+  <label for="lightning_address">Lightning address</label>
+  <input id="lightning_address" name="lightning_address" type="text"
+         placeholder="alice@example.com" required spellcheck="false" autocapitalize="none">
+  <label for="amount">Amount in sats</label>
+  <input id="amount" name="amount" type="number" min="1" step="1" required>
+  <label for="comment">Comment</label>
+  <input id="comment" name="comment" type="text" maxlength="200"
+         value="Paid from Safebox Web">
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I confirm the recipient and amount and understand that this spends funds.
+  </label>
+  <button type="submit">Send payment</button>
+</form>
+<p><a href="/wallet">Cancel and return to wallet</a></p>""",
     )
 
 
@@ -212,11 +243,120 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 <p>Balance: <strong>{int(acorn.get_balance()):,} sats</strong></p>
 <p>Wallet state was loaded from the relay for this request. It was not stored
 by the web application.</p>
+<p><a href="/pay">Pay a Lightning address</a></p>
 <p><a href="/records">View private record labels</a></p>
 <form method="post" action="/logout">
   <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
   <button type="submit">Disconnect</button>
 </form>""",
+        )
+
+    @app.get("/pay", response_class=HTMLResponse)
+    async def payment_form(request: Request, acorn: PaymentAcornDependency) -> str:
+        return _payment_form(
+            acorn.get_balance(),
+            CsrfProtector(request.app.state.settings).issue(),
+        )
+
+    @app.post("/pay", response_class=HTMLResponse)
+    async def make_payment(
+        request: Request,
+        acorn: PaymentAcornDependency,
+        csrf_token: str = Form(...),
+        lightning_address: str = Form(...),
+        amount: str = Form(...),
+        comment: str = Form("Paid from Safebox Web"),
+        confirmed: str | None = Form(None),
+    ):
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+
+        def payment_error(message: str, status_code: int = 400) -> HTMLResponse:
+            return HTMLResponse(
+                _payment_form(
+                    acorn.get_balance(),
+                    form_token.issue(),
+                    message,
+                ),
+                status_code=status_code,
+            )
+
+        if not form_token.verify(csrf_token):
+            return payment_error(
+                "The form token is invalid or expired. Review the payment again.",
+                403,
+            )
+        if confirmed != "yes":
+            return payment_error("Explicit payment confirmation is required.")
+
+        recipient = str(lightning_address).strip()
+        if (
+            recipient.count("@") != 1
+            or any(character.isspace() for character in recipient)
+            or recipient.startswith("@")
+            or recipient.endswith("@")
+        ):
+            return payment_error("Enter a valid Lightning address such as alice@example.com.")
+
+        try:
+            amount_sats = int(str(amount).strip())
+        except ValueError:
+            return payment_error("Payment amount must be a whole number of sats.")
+        if amount_sats <= 0:
+            return payment_error("Payment amount must be greater than zero.")
+        if amount_sats > int(acorn.get_balance()):
+            return payment_error("Payment amount exceeds the displayed wallet balance.")
+
+        payment_comment = str(comment).strip() or "Paid from Safebox Web"
+        if len(payment_comment) > 200:
+            return payment_error("Payment comment must be 200 characters or fewer.")
+
+        try:
+            message, fees = await asyncio.wait_for(
+                acorn.pay_multi(
+                    amount=amount_sats,
+                    lnaddress=recipient,
+                    comment=payment_comment,
+                ),
+                timeout=settings.payment_timeout_seconds,
+            )
+        except TimeoutError:
+            logger.warning("lightning payment timed out outcome=unknown")
+            return HTMLResponse(
+                _page(
+                    "Payment status unresolved",
+                    "<p>The payment timed out before Safebox received a final result. "
+                    "Do not retry it. Use <code>acorn reconcile-payments</code> and "
+                    "review transaction history before attempting another payment.</p>"
+                    '<p><a href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "lightning payment did not return success error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Payment not confirmed",
+                    "<p>Safebox did not receive a confirmed successful result. "
+                    "Do not retry blindly. Review transaction history and run "
+                    "<code>acorn reconcile-payments</code> before deciding whether "
+                    "another payment is safe.</p>"
+                    '<p><a href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=502,
+            )
+
+        return _page(
+            "Payment successful",
+            f"""
+<p>Sent: <strong>{amount_sats:,} sats</strong></p>
+<p>Fee: <strong>{int(fees):,} sats</strong></p>
+<p>Recipient: <code>{escape(recipient)}</code></p>
+<p>{escape(str(message))}</p>
+<p>Do not refresh this result page. <a href="/wallet">Return to wallet</a>.</p>""",
         )
 
     @app.get("/records", response_class=HTMLResponse)
