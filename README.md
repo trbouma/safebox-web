@@ -80,6 +80,101 @@ poetry run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 Open <http://127.0.0.1:8000>. Do not replace the host with `0.0.0.0` while
 using plain HTTP; the application rejects insecure non-loopback requests.
 
+## Docker image
+
+The Docker build installs Safebox Acorn directly from its GitHub repository.
+`pyproject.toml` declares the Git dependency and `poetry.lock` pins the exact
+resolved Acorn commit, so a committed Safebox Web revision produces a
+repeatable dependency selection rather than silently following a moving
+`main` branch.
+
+Build the image:
+
+```sh
+docker build --tag safebox-web:local .
+```
+
+To update the Acorn commit used by the image, update and commit the lock file
+before rebuilding:
+
+```sh
+poetry update safebox-acorn
+docker build --tag safebox-web:local .
+```
+
+The build context excludes `.env`, virtual environments, tests, caches, and
+local output. The runtime image contains neither Poetry nor Git and runs as the
+unprivileged `safebox` user.
+
+Supply the cookie key and other configuration only at runtime. For example:
+
+```sh
+docker run --rm \
+  --name safebox-web \
+  --env-file .env \
+  --publish 127.0.0.1:8000:8000 \
+  safebox-web:local
+```
+
+The published HTTP port is not a production public endpoint. Safebox Web
+requires HTTPS for non-loopback clients, and a connection forwarded through
+Docker is not treated as direct loopback development. Put the container behind
+a TLS-terminating reverse proxy, block direct public access to port `8000`, and
+set `FORWARDED_ALLOW_IPS` to the exact proxy address or trusted container
+network. The proxy must send `X-Forwarded-Proto: https`. Do not use `*` on an
+internet-accessible deployment.
+
+The image health check calls `/health` internally over container loopback and
+therefore does not bypass the external HTTPS policy.
+
+### Docker Compose
+
+Create the local runtime configuration before the first start:
+
+```sh
+cp .env.example .env
+python3 -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+```
+
+Copy the generated value into `SAFEBOX_COOKIE_KEY` in `.env`. This key protects
+the encrypted browser session containing the connected Acorn's `nsec`. Do not
+commit, reuse publicly, or share the key. Changing it invalidates every current
+browser session.
+
+Review these deployment values in `.env` before starting:
+
+```env
+SAFEBOX_COOKIE_KEY=<generated Fernet-compatible key>
+SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
+SAFEBOX_BIND_ADDRESS=127.0.0.1
+SAFEBOX_PORT=8000
+FORWARDED_ALLOW_IPS=127.0.0.1
+```
+
+`FORWARDED_ALLOW_IPS` identifies the immediate reverse proxy, not the browser
+or public client. Replace the loopback default when the proxy connects from the
+host's Docker bridge or from another container. Use the narrowest exact address
+or container-network range supported by the deployment.
+
+Build and start:
+
+```sh
+docker compose up --detach --build
+docker compose ps
+docker compose logs --follow safebox-web
+```
+
+Stop the service without deleting the image:
+
+```sh
+docker compose down
+```
+
+The Compose service requires `SAFEBOX_COOKIE_KEY`, runs with a read-only root
+filesystem and a small temporary `/tmp`, binds the application port to host
+loopback by default, and inherits the Dockerfile health check. A TLS reverse
+proxy is still required for browser access through Docker.
+
 ## Production transport
 
 Production requests must arrive at the ASGI application with an `https`
