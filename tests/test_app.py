@@ -57,6 +57,7 @@ class FakeLoadedAcorn:
         deposit_paid: bool = True,
         verified_balance: int | None = None,
         verification_status: str = "clean",
+        transaction_history: list[dict] | None = None,
     ) -> None:
         self.balance = balance
         self.proofs = [object()] if balance else []
@@ -67,7 +68,7 @@ class FakeLoadedAcorn:
         self.payments: list[dict] = []
         self.deposit_calls: list[int] = []
         self.quote_checks: list[tuple[str, int]] = []
-        self.history_entries: list[dict] = []
+        self.history_entries: list[dict] = list(transaction_history or [])
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -121,6 +122,9 @@ class FakeLoadedAcorn:
 
     async def add_tx_history(self, **entry) -> None:
         self.history_entries.append(entry)
+
+    async def get_tx_history(self) -> list[dict]:
+        return self.history_entries
 
 
 class FakeCreatedAcorn:
@@ -349,6 +353,64 @@ def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance() -> None:
     assert "Mint-confirmed spendable balance: <strong>52 sats" in response.text
     assert "33,874 sats not confirmed as spendable" in response.text
     assert "Do not make a payment" in response.text
+
+
+def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(
+        transaction_history=[
+            {
+                "create_time": "2026-08-03 18:42:10",
+                "tx_type": "C",
+                "amount": 21,
+                "comment": "safebox web deposit <confirmed>",
+                "tendered_amount": 21.0,
+                "tendered_currency": "SAT",
+                "fees": 0,
+                "current_balance": 52,
+                "invoice": "invoice-is-not-rendered",
+                "preimage": "preimage-is-not-rendered",
+            },
+            {
+                "create_time": "2026-08-03 18:45:00",
+                "tx_type": "D",
+                "amount": 5,
+                "comment": "coffee",
+                "tendered_amount": 5.0,
+                "tendered_currency": "SAT",
+                "fees": 1,
+                "current_balance": 46,
+            },
+        ]
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/transactions")
+
+    assert response.status_code == 200
+    assert 'aria-label="Transaction history"' in response.text
+    assert 'class="transaction-card credit"' in response.text
+    assert 'class="transaction-card debit"' in response.text
+    assert "+21 sats" in response.text
+    assert "−5 sats" in response.text
+    assert response.text.index("−5 sats") < response.text.index("+21 sats")
+    assert "52 sats" in response.text
+    assert "safebox web deposit &lt;confirmed&gt;" in response.text
+    assert "invoice-is-not-rendered" not in response.text
+    assert "preimage-is-not-rendered" not in response.text
+    assert "@media (max-width: 36rem)" in response.text
+
+
+def test_transaction_history_has_an_empty_state() -> None:
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/transactions")
+
+    assert response.status_code == 200
+    assert "No transaction history was found" in response.text
 
 
 def test_payment_form_displays_balance_and_confirmation() -> None:

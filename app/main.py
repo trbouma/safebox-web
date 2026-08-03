@@ -105,11 +105,29 @@ def _page(title: str, body: str) -> str:
     .relationship-mark {{ width: 3.5rem; height: 3.5rem; flex: 0 0 auto; }}
     .relationship-connection {{ display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 7rem; }}
     .relationship-arrow {{ color: #56653f; font-size: 2rem; line-height: 1; }}
+    .transaction-list {{ display: grid; gap: 1rem; margin: 1.5rem 0; }}
+    .transaction-card {{ border: 1px solid #d8d5cc; border-left: .35rem solid #777; border-radius: .8rem; padding: 1rem; background: #faf9f5; min-width: 0; }}
+    .transaction-card.credit {{ border-left-color: #65774a; }}
+    .transaction-card.debit {{ border-left-color: #955522; }}
+    .transaction-card.advisory {{ border-left-color: #68769a; }}
+    .transaction-header {{ display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }}
+    .transaction-kind {{ font-weight: 750; }}
+    .transaction-date {{ color: #625f57; font-size: .92rem; }}
+    .transaction-amount {{ font-size: 1.45rem; font-weight: 750; margin: .45rem 0 .75rem; }}
+    .transaction-card.credit .transaction-amount {{ color: #465533; }}
+    .transaction-card.debit .transaction-amount {{ color: #7d431b; }}
+    .transaction-details {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem 1rem; margin: 0; }}
+    .transaction-details div {{ min-width: 0; }}
+    .transaction-details dt {{ color: #625f57; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }}
+    .transaction-details dd {{ margin: .1rem 0 0; overflow-wrap: anywhere; }}
+    .transaction-note {{ margin: .85rem 0 0; padding-top: .75rem; border-top: 1px solid #e2dfd6; overflow-wrap: anywhere; }}
     @media (max-width: 36rem) {{
       body {{ margin-top: 2rem; }}
       .relationship {{ grid-template-columns: 1fr; justify-items: stretch; }}
       .relationship-connection {{ justify-self: center; }}
       .relationship-arrow {{ transform: rotate(90deg); }}
+      .transaction-header {{ align-items: flex-start; flex-direction: column; gap: .2rem; }}
+      .transaction-details {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
     }}
 </style>
   <script src="/static/forms.js" defer></script>
@@ -270,6 +288,61 @@ def _balance_status_html(
         warning += "Do not make a payment until the proof state has been reviewed.</p>"
         return relay_html + confirmed_html + warning
     return relay_html + confirmed_html
+
+
+def _transaction_history_html(entries: list[dict]) -> str:
+    """Render Acorn journal entries as compact, mobile-friendly cards."""
+
+    cards: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+
+        tx_type = str(entry.get("tx_type") or "").upper()
+        direction, sign, style = {
+            "C": ("Credit", "+", "credit"),
+            "D": ("Debit", "−", "debit"),
+            "X": ("Advisory", "", "advisory"),
+        }.get(tx_type, (tx_type or "Transaction", "", "advisory"))
+        amount = escape(str(entry.get("amount", 0)))
+        created = escape(str(entry.get("create_time") or "Unknown time"))
+        fees = escape(str(entry.get("fees") or 0))
+        current_balance = entry.get("current_balance")
+        balance = "—" if current_balance is None else escape(str(current_balance))
+        tendered_amount = entry.get("tendered_amount")
+        tendered_currency = str(entry.get("tendered_currency") or "SAT")
+        tender = (
+            "—"
+            if tendered_amount is None
+            else f"{escape(str(tendered_amount))} {escape(tendered_currency)}"
+        )
+        comment = str(entry.get("comment") or "").strip()
+        note = (
+            f'<p class="transaction-note"><strong>Note:</strong> {escape(comment)}</p>'
+            if comment
+            else ""
+        )
+
+        cards.append(
+            f"""
+<article class="transaction-card {style}">
+  <header class="transaction-header">
+    <span class="transaction-kind">{escape(direction)}</span>
+    <time class="transaction-date">{created}</time>
+  </header>
+  <div class="transaction-amount">{sign}{amount} sats</div>
+  <dl class="transaction-details">
+    <div><dt>Tender</dt><dd>{tender}</dd></div>
+    <div><dt>Fees</dt><dd>{fees} sats</dd></div>
+    <div><dt>Balance</dt><dd>{balance} sats</dd></div>
+  </dl>
+  {note}
+</article>"""
+        )
+
+    if not cards:
+        return "<p>No transaction history was found.</p>"
+    return '<section class="transaction-list" aria-label="Transaction history">' + "".join(cards) + "</section>"
 
 
 def _deposit_form(
@@ -604,6 +677,7 @@ different Acorn.</p>
 by the web application.</p>
 <p><a href="/deposit">Deposit funds</a></p>
 <p><a href="/pay">Pay a Lightning address</a></p>
+<p><a href="/transactions">View transaction history</a></p>
 <p><a href="/records">View private record labels</a></p>
 <form method="post" action="/logout">
   <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
@@ -950,6 +1024,53 @@ by the web application.</p>
 <p>Recipient: <code>{escape(recipient)}</code></p>
 <p>{escape(str(message))}</p>
 <p>Do not refresh this result page. <a href="/wallet">Return to wallet</a>.</p>""",
+        )
+
+    @app.get("/transactions", response_class=HTMLResponse)
+    async def transactions(request: Request, acorn: LoadedAcornDependency):
+        settings = request.app.state.settings
+        try:
+            history = await asyncio.wait_for(
+                acorn.get_tx_history(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except TimeoutError:
+            return HTMLResponse(
+                _page(
+                    "Transaction history",
+                    '<p class="error">Timed out while loading transaction history.</p>'
+                    '<p><a href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "transaction history lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Transaction history",
+                    '<p class="error">Unable to load transaction history from the bootstrap relay.</p>'
+                    '<p><a href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=502,
+            )
+
+        entries = history if isinstance(history, list) else []
+        entries = sorted(
+            entries,
+            key=lambda entry: (
+                str(entry.get("create_time") or "")
+                if isinstance(entry, dict)
+                else ""
+            ),
+            reverse=True,
+        )
+        return _page(
+            "Transaction history",
+            _transaction_history_html(entries)
+            + '<p><a href="/wallet">Return to wallet</a></p>',
         )
 
     @app.get("/records", response_class=HTMLResponse)

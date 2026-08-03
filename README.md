@@ -11,6 +11,7 @@ This implementation intentionally provides:
 - an encrypted, authenticated browser cookie;
 - request-scoped `Acorn` construction through FastAPI dependency injection;
 - relay-backed wallet loading and balance display;
+- a responsive, read-only transaction-history view;
 - private-record label listing and individual record retrieval;
 - user-confirmed Lightning deposits through the Acorn home mint;
 - confirmed Lightning-address payments through Acorn;
