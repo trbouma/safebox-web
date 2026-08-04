@@ -57,6 +57,7 @@ SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS=20
 SAFEBOX_PAYMENT_TIMEOUT_SECONDS=90
 SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
 SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app
+SAFEBOX_DATABASE_URL=sqlite:///data/database.db
 RECEIVE_PROOF_MAINTENANCE_ENABLED=false
 
 SAFEBOX_BIND_ADDRESS=0.0.0.0
@@ -64,6 +65,12 @@ SAFEBOX_PORT=8100
 FORWARDED_ALLOW_IPS=100.64.0.10
 SAFEBOX_IMAGE=safebox-web:local
 ```
+
+Docker Compose persists the NIP-05 directory database in the named volume
+`safebox-web-data`, mounted at `/app/data`. The application runs Alembic
+migrations during startup and creates `/app/data/database.db` when the volume
+is new. Keep this volume when recreating containers and include it in service
+backups. Removing it permanently removes all claimed-handle mappings.
 
 The `100.64.0.10` and `100.64.0.20` addresses in this guide are examples.
 Replace them with the proxy and application hosts' actual Tailscale addresses.
@@ -219,10 +226,14 @@ indicates a healthy service.
 This deployment trusts different layers for different purposes:
 
 - the public reverse proxy for TLS termination and public routing;
+- the domain owner and DNS provider for directing NIP-05 discovery to the
+  intended HTTPS service;
 - Tailscale and its access policy for the private machine-to-machine path;
 - the exact proxy allowlist for forwarded transport metadata;
 - Docker and the host for process isolation and service availability;
 - the Safebox Web process and cookie key for temporary browser-session custody;
+- the Safebox Web operator and directory database for truthful NIP-05
+  name-to-key and relay mappings;
 - Acorn for wallet, relay, record, mint, and payment behavior; and
 - the user for protecting the recovery material entered at login.
 
@@ -230,3 +241,13 @@ The VPN does not make every peer a trusted reverse proxy. The bind address does
 not define proxy authority. The forwarded-header allowlist does not replace a
 firewall. Keeping these controls separate makes the deployment easier to test
 and the trust assumptions easier to explain.
+
+The allowlist also does not constrain what an authorized reverse proxy does
+before a request reaches Safebox. That proxy terminates browser TLS and chooses
+the upstream service. It can route the domain to another application, replace
+responses, or present a counterfeit login surface without the intended
+Safebox process receiving a request at all. The application can authenticate
+forwarded metadata from its immediate peer; it cannot prove that the proxy
+routed public traffic to the intended backend. Proxy administration,
+configuration review, and independent monitoring of the public domain are
+therefore part of the service trust model.

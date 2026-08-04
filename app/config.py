@@ -20,6 +20,7 @@ class Settings:
     payment_timeout_seconds: float = 90.0
     default_bootstrap_relay: str = "wss://relay.getsafebox.app"
     default_home_mint: str = "https://mint.getsafebox.app"
+    database_url: str = "sqlite:///data/database.db"
 
     def __post_init__(self) -> None:
         try:
@@ -73,5 +74,9 @@ class Settings:
             default_home_mint=os.getenv(
                 "SAFEBOX_DEFAULT_HOME_MINT",
                 "https://mint.getsafebox.app",
+            ).strip(),
+            database_url=os.getenv(
+                "SAFEBOX_DATABASE_URL",
+                "sqlite:///data/database.db",
             ).strip(),
         )

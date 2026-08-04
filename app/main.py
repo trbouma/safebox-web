@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from html import escape
 import json
 import logging
 from pathlib import Path
+import re
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Request
@@ -14,18 +16,23 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import qrcode
 import qrcode.image.svg
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 
 from acorn import Acorn
-from acorn.func_utils import generate_seed_phrase_and_nsec
+from acorn.func_utils import generate_seed_phrase_and_nsec, npub_to_hex
 
 from app.config import Settings
+from app.database import create_database_engine, run_migrations
 from app.dependencies import (
     AcornDependency,
     CredentialsDependency,
+    DatabaseSessionDependency,
     DepositAcornDependency,
     LoadedAcornDependency,
     PaymentAcornDependency,
 )
+from app.models import ClaimedHandle
 from app.security import (
     LOOPBACK_COOKIE_NAME,
     SECURE_COOKIE_NAME,
@@ -345,6 +352,88 @@ def _transaction_history_html(entries: list[dict]) -> str:
     return '<section class="transaction-list" aria-label="Transaction history">' + "".join(cards) + "</section>"
 
 
+HANDLE_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$")
+
+
+def _normalize_handle(value: str) -> str:
+    """Normalize a NIP-05 local name to a conservative URL-safe form."""
+
+    handle = str(value or "").strip().lower()
+    if (
+        not HANDLE_PATTERN.fullmatch(handle)
+        or ".." in handle
+        or handle == "_"
+    ):
+        raise ValueError(
+            "Use 1–64 lowercase letters, numbers, dots, underscores, or hyphens. "
+            "The handle must begin and end with a letter or number."
+        )
+    return handle
+
+
+def _handle_form(
+    csrf_token: str,
+    existing: ClaimedHandle | None = None,
+    hostname: str | None = None,
+    error: str | None = None,
+) -> str:
+    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
+    host = hostname or "this service"
+    if existing is not None:
+        address = f"{existing.claimed_handle}@{host}"
+        return _page(
+            "NIP-05 handle",
+            f"""
+<p><a href="/wallet">← Back to wallet</a></p>
+{error_html}
+<p>This Acorn controls <strong>{escape(address)}</strong>.</p>
+<p>Component identity: <code>{escape(existing.npub)}</code></p>
+<p>Resolution relay: <code>{escape(existing.home_relay)}</code></p>
+<p>Submit the current handle to refresh its home relay, or choose another
+unclaimed handle to change the address. Changing it immediately releases the
+current address, which another Acorn may then claim.</p>
+<form method="post" action="/handle" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
+  <label for="claimed_handle">Handle</label>
+  <input id="claimed_handle" name="claimed_handle" type="text" minlength="1"
+         maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]|[A-Za-z0-9]"
+         value="{escape(existing.claimed_handle, quote=True)}" required
+         spellcheck="false" autocapitalize="none">
+  <button type="submit">Update handle</button>
+</form>
+<p><a href="/.well-known/nostr.json?{urlencode({'name': existing.claimed_handle})}">View public NIP-05 response</a></p>
+<hr>
+<form method="post" action="/handle/remove">
+  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    Remove this public NIP-05 address. The released handle may subsequently be
+    claimed by another Acorn.
+  </label>
+  <button type="submit">Remove handle</button>
+</form>""",
+        )
+
+    return _page(
+        "Claim a NIP-05 handle",
+        f"""
+<p><a href="/wallet">← Back to wallet</a></p>
+{error_html}
+<p>Choose a public handle for this Acorn component. Safebox stores only the
+handle, component public key, and home relay. Your private key is never written
+to this directory.</p>
+<form method="post" action="/handle" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
+  <label for="claimed_handle">Handle</label>
+  <input id="claimed_handle" name="claimed_handle" type="text" minlength="1"
+         maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]|[A-Za-z0-9]"
+         placeholder="alice" required spellcheck="false" autocapitalize="none">
+  <p>Your address will be <strong>handle@{escape(host)}</strong>.</p>
+  <button type="submit">Claim handle</button>
+</form>""",
+    )
+
+
 def _deposit_form(
     balance: int,
     home_mint: str,
@@ -414,8 +503,21 @@ below to ask the mint to confirm payment and add the funds to this Acorn.</p>
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    app = FastAPI(title="Safebox Web", version="0.1.0")
-    app.state.settings = settings or Settings.from_env()
+    runtime_settings = settings or Settings.from_env()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        run_migrations(runtime_settings.database_url)
+        app.state.database_engine = create_database_engine(
+            runtime_settings.database_url
+        )
+        try:
+            yield
+        finally:
+            app.state.database_engine.dispose()
+
+    app = FastAPI(title="Safebox Web", version="0.1.0", lifespan=lifespan)
+    app.state.settings = runtime_settings
     app.mount(
         "/static",
         StaticFiles(directory=Path(__file__).resolve().parent / "static"),
@@ -654,9 +756,28 @@ different Acorn.</p>
         return response
 
     @app.get("/wallet", response_class=HTMLResponse)
-    async def wallet(request: Request, acorn: LoadedAcornDependency) -> str:
+    async def wallet(
+        request: Request,
+        acorn: LoadedAcornDependency,
+        session: DatabaseSessionDependency,
+    ) -> str:
         settings = request.app.state.settings
         csrf_token = CsrfProtector(settings).issue()
+        claimed_handle = session.exec(
+            select(ClaimedHandle).where(
+                ClaimedHandle.npub == acorn.pubkey_bech32
+            )
+        ).first()
+        nip05_html = ""
+        if claimed_handle is not None:
+            nip05_address = (
+                f"{claimed_handle.claimed_handle}@{request.url.hostname}"
+            )
+            nip05_html = (
+                '<p>NIP-05 address: <strong>'
+                f'<a href="/handle">{escape(nip05_address)}</a>'
+                "</strong></p>"
+            )
         verification, verification_error = await _read_proof_verification(
             acorn,
             settings.wallet_load_timeout_seconds,
@@ -672,6 +793,7 @@ different Acorn.</p>
             f"""
 <p>Component identity: <code>{escape(acorn.pubkey_bech32)}</code></p>
 <p>Bootstrap relay: <code>{escape(acorn.home_relay)}</code></p>
+{nip05_html}
 {balance_status}
 <p>Wallet state was loaded from the relay for this request. It was not stored
 by the web application.</p>
@@ -679,10 +801,182 @@ by the web application.</p>
 <p><a href="/pay">Pay a Lightning address</a></p>
 <p><a href="/transactions">View transaction history</a></p>
 <p><a href="/records">View private record labels</a></p>
+<p><a href="/handle">Claim or view a NIP-05 handle</a></p>
 <form method="post" action="/logout">
   <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
   <button type="submit">Disconnect</button>
 </form>""",
+        )
+
+    @app.get("/handle", response_class=HTMLResponse)
+    async def handle_form(
+        request: Request,
+        acorn: AcornDependency,
+        session: DatabaseSessionDependency,
+    ) -> str:
+        existing = session.exec(
+            select(ClaimedHandle).where(
+                ClaimedHandle.npub == acorn.pubkey_bech32
+            )
+        ).first()
+        return _handle_form(
+            CsrfProtector(request.app.state.settings).issue(),
+            existing=existing,
+            hostname=request.url.hostname,
+        )
+
+    @app.post("/handle", response_class=HTMLResponse)
+    async def claim_handle(
+        request: Request,
+        acorn: AcornDependency,
+        session: DatabaseSessionDependency,
+        csrf_token: str = Form(...),
+        claimed_handle: str = Form(...),
+    ):
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+        existing_for_npub = session.exec(
+            select(ClaimedHandle).where(
+                ClaimedHandle.npub == acorn.pubkey_bech32
+            )
+        ).first()
+
+        def claim_error(message: str, status_code: int) -> HTMLResponse:
+            return HTMLResponse(
+                _handle_form(
+                    form_token.issue(),
+                    existing=existing_for_npub,
+                    hostname=request.url.hostname,
+                    error=message,
+                ),
+                status_code=status_code,
+            )
+
+        if not form_token.verify(csrf_token):
+            return claim_error(
+                "The form token is invalid or expired. Review the handle again.",
+                403,
+            )
+        try:
+            normalized_handle = _normalize_handle(claimed_handle)
+        except ValueError as exc:
+            return claim_error(str(exc), 400)
+
+        existing_for_handle = session.exec(
+            select(ClaimedHandle).where(
+                ClaimedHandle.claimed_handle == normalized_handle
+            )
+        ).first()
+        if (
+            existing_for_handle is not None
+            and existing_for_handle.npub != acorn.pubkey_bech32
+        ):
+            return claim_error("That handle has already been claimed.", 409)
+        registration = existing_for_npub or existing_for_handle
+        if registration is None:
+            registration = ClaimedHandle(
+                claimed_handle=normalized_handle,
+                npub=acorn.pubkey_bech32,
+                home_relay=acorn.home_relay,
+            )
+        else:
+            # The authenticated component may rename its own mapping or submit
+            # the same name idempotently to refresh its relay.
+            registration.claimed_handle = normalized_handle
+            registration.home_relay = acorn.home_relay
+
+        try:
+            session.add(registration)
+            session.commit()
+        except IntegrityError:
+            # The unique constraints make simultaneous claims deterministic.
+            session.rollback()
+            return claim_error("That handle was claimed by another request.", 409)
+
+        return RedirectResponse("/handle", status_code=303)
+
+    @app.post("/handle/remove", response_class=HTMLResponse)
+    async def remove_handle(
+        request: Request,
+        acorn: AcornDependency,
+        session: DatabaseSessionDependency,
+        csrf_token: str = Form(...),
+        confirmed: str | None = Form(None),
+    ):
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+        registration = session.exec(
+            select(ClaimedHandle).where(
+                ClaimedHandle.npub == acorn.pubkey_bech32
+            )
+        ).first()
+
+        def removal_error(message: str, status_code: int) -> HTMLResponse:
+            return HTMLResponse(
+                _handle_form(
+                    form_token.issue(),
+                    existing=registration,
+                    hostname=request.url.hostname,
+                    error=message,
+                ),
+                status_code=status_code,
+            )
+
+        if not form_token.verify(csrf_token):
+            return removal_error(
+                "The form token is invalid or expired. Review the removal again.",
+                403,
+            )
+        if confirmed != "yes":
+            return removal_error("Explicit removal confirmation is required.", 400)
+        if registration is None:
+            return removal_error("This Acorn has no claimed handle.", 404)
+
+        session.delete(registration)
+        session.commit()
+        return RedirectResponse("/handle", status_code=303)
+
+    @app.get("/.well-known/nostr.json", response_class=JSONResponse)
+    async def resolve_nip05(
+        name: str,
+        session: DatabaseSessionDependency,
+    ):
+        try:
+            normalized_name = _normalize_handle(name)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+        registration = session.exec(
+            select(ClaimedHandle).where(
+                ClaimedHandle.claimed_handle == normalized_name
+            )
+        ).first()
+        if registration is None:
+            return JSONResponse(
+                status_code=404,
+                content={"detail": f"{normalized_name} not found"},
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        try:
+            pubkey_hex = npub_to_hex(registration.npub)
+        except ValueError:
+            logger.error(
+                "invalid npub in claimed handle directory handle=%s",
+                normalized_name,
+            )
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Stored handle identity is invalid"},
+                headers={"Access-Control-Allow-Origin": "*"},
+            )
+
+        return JSONResponse(
+            content={
+                "names": {normalized_name: pubkey_hex},
+                "relays": {pubkey_hex: [registration.home_relay]},
+            },
+            headers={"Access-Control-Allow-Origin": "*"},
         )
 
     @app.get("/deposit", response_class=HTMLResponse)

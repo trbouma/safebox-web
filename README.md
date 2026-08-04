@@ -12,17 +12,20 @@ This implementation intentionally provides:
 - request-scoped `Acorn` construction through FastAPI dependency injection;
 - relay-backed wallet loading and balance display;
 - a responsive, read-only transaction-history view;
+- authenticated NIP-05 handle claiming and public resolution;
 - private-record label listing and individual record retrieval;
 - user-confirmed Lightning deposits through the Acorn home mint;
 - confirmed Lightning-address payments through Acorn;
 - a connected-wallet identity page and redacted session API; and
 - logout.
 
-It does **not** maintain accounts, use a database, write Acorn configuration,
-or store server-side sessions. The wallet page loads encrypted wallet and proof
-events from the bootstrap relay into request-scoped memory to derive the
-displayed balance. An explicitly confirmed payment delegates all proof,
-locking, mint, journal, and relay mutations to Acorn.
+It does **not** maintain accounts, write Acorn configuration, or store
+server-side sessions. The wallet page loads encrypted wallet and proof events
+from the bootstrap relay into request-scoped memory to derive the displayed
+balance. An explicitly confirmed payment delegates all proof, locking, mint,
+journal, and relay mutations to Acorn. The one server-side database is a small
+public NIP-05 directory containing only claimed handle, component `npub`, and
+home relay mappings.
 
 The deposit flow requests a Lightning invoice from the Acorn home mint and
 renders it as both a QR code and copyable text. It performs no browser polling.
@@ -93,6 +96,44 @@ This architecture moves session custody to the browser; it does not eliminate
 the need to trust the running web code or protect the cookie-encryption key.
 Anyone who obtains that key and a session cookie can decrypt the contained
 `nsec`.
+
+## NIP-05 handle directory
+
+After connecting an Acorn, select **Claim or view a NIP-05 handle** on the
+wallet page. Possession of the session's Acorn private key establishes control
+of the component public key. Safebox normalizes the requested handle to
+lowercase and stores only:
+
+```text
+claimed_handle
+npub
+home_relay
+```
+
+Database uniqueness constraints enforce one owner per handle and one active
+handle per Acorn. The authenticated Acorn may refresh its relay, rename its
+mapping to another unclaimed handle, or explicitly remove it. Rename and
+removal release the previous name for future claims; neither operation assigns
+multiple handles to the same component.
+
+Public clients resolve a claimed name using the standard endpoint:
+
+```text
+GET /.well-known/nostr.json?name=alice
+```
+
+The response maps the name to the component's hexadecimal Nostr public key and
+maps that key to its registered home relay. See
+[NIP-05 Handle Directory](docs/NIP-05-HANDLE-DIRECTORY.md) for the data,
+migration, trust, and backup model.
+
+NIP-05 is a domain assertion, not an independent proof of human identity or
+permanent ownership. Clients necessarily trust the domain owner controlling
+DNS, the reverse-proxy operator controlling TLS termination and upstream
+routing, and the application operator controlling the directory code and
+database. Any of these layers can redirect a name while the original Acorn key
+itself remains uncompromised. A proxy allowlist protects forwarded metadata; it
+cannot force an authorized proxy to route to the intended application.
 
 ## Development and deployment modes
 

@@ -6,10 +6,12 @@ import asyncio
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlmodel import Session
 
 from acorn import Acorn
 
 from app.config import Settings
+from app.database import get_database_session
 from app.security import SessionCipher, SessionCredentials, cookie_name_for_request
 
 
@@ -18,6 +20,7 @@ def get_settings(request: Request) -> Settings:
 
 
 SettingsDependency = Annotated[Settings, Depends(get_settings)]
+DatabaseSessionDependency = Annotated[Session, Depends(get_database_session)]
 
 
 def get_session_credentials(

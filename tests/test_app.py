@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from html import unescape
 import os
 import re
+import sqlite3
 from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
@@ -16,7 +18,12 @@ from fastapi.testclient import TestClient
 
 import app.main as main_module
 from app.config import Settings
-from app.dependencies import get_deposit_acorn, get_loaded_acorn, get_payment_acorn
+from app.dependencies import (
+    get_acorn,
+    get_deposit_acorn,
+    get_loaded_acorn,
+    get_payment_acorn,
+)
 from app.main import create_app
 from app.security import (
     CsrfProtector,
@@ -44,6 +51,13 @@ def make_https_client() -> TestClient:
 
 def valid_csrf_token() -> str:
     return CsrfProtector(TEST_SETTINGS).issue()
+
+
+def database_settings(tmp_path) -> Settings:
+    return replace(
+        TEST_SETTINGS,
+        database_url=f"sqlite:///{tmp_path / 'database.db'}",
+    )
 
 
 class FakeLoadedAcorn:
@@ -320,13 +334,13 @@ def test_loaded_acorn_dependency_loads_request_scoped_state() -> None:
     assert acorn.loaded is True
 
 
-def test_wallet_page_displays_loaded_balance() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_wallet_page_displays_loaded_balance(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=12_345)
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.get("/wallet")
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
 
     assert response.status_code == 200
     assert "12,345 sats" in response.text
@@ -334,25 +348,222 @@ def test_wallet_page_displays_loaded_balance() -> None:
     assert "Mint-confirmed spendable balance" in response.text
     assert "wss://relay.example.com" in response.text
     assert "not stored" in response.text
+    assert "NIP-05 address" not in response.text
 
 
-def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
     acorn = FakeLoadedAcorn(
         balance=33_926,
         verified_balance=52,
         verification_status="repair-recommended",
     )
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.get("/wallet")
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
 
     assert response.status_code == 200
     assert "Relay-visible proof total: <strong>33,926 sats" in response.text
     assert "Mint-confirmed spendable balance: <strong>52 sats" in response.text
     assert "33,874 sats not confirmed as spendable" in response.text
     assert "Do not make a payment" in response.text
+
+
+def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    database_path = tmp_path / "database.db"
+
+    with TestClient(
+        create_app(settings), base_url="https://safebox.example"
+    ) as client:
+        assert client.get("/health").status_code == 200
+        assert client.get("/handle").status_code == 401
+
+    assert database_path.is_file()
+    with sqlite3.connect(database_path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        revision = connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchone()
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(claimed_handle)")
+        }
+    assert {"alembic_version", "claimed_handle"}.issubset(tables)
+    assert revision == ("20260804_0001",)
+    assert columns == {"id", "claimed_handle", "npub", "home_relay"}
+
+
+def test_connected_acorn_can_claim_and_resolve_a_nip05_handle(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    acorn = main_module.Acorn(
+        nsec=TEST_NSEC,
+        home_relay="wss://relay.one.example",
+        relays=["wss://relay.one.example"],
+    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        form = client.get("/handle")
+        assert form.status_code == 200
+        assert "Claim a NIP-05 handle" in form.text
+        assert "alice@safebox.example" not in form.text
+
+        claim = client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "Alice",
+            },
+            follow_redirects=False,
+        )
+        assert claim.status_code == 303
+        assert claim.headers["location"] == "/handle"
+
+        claimed = client.get("/handle")
+        assert claimed.status_code == 200
+        assert "alice@safebox.example" in claimed.text
+        assert acorn.pubkey_bech32 in claimed.text
+
+        wallet_page = client.get("/wallet")
+        assert wallet_page.status_code == 200
+        assert "NIP-05 address" in wallet_page.text
+        assert "alice@safebox.example" in wallet_page.text
+        assert '<a href="/handle">alice@safebox.example</a>' in wallet_page.text
+
+        resolution = client.get(
+            "/.well-known/nostr.json", params={"name": "alice"}
+        )
+        assert resolution.status_code == 200
+        assert resolution.headers["access-control-allow-origin"] == "*"
+        assert resolution.json() == {
+            "names": {"alice": acorn.pubkey_hex},
+            "relays": {acorn.pubkey_hex: ["wss://relay.one.example"]},
+        }
+
+        # The same component can idempotently refresh its current relay.
+        acorn.home_relay = "wss://relay.two.example"
+        refreshed = client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "alice",
+            },
+            follow_redirects=False,
+        )
+        assert refreshed.status_code == 303
+        assert client.get(
+            "/.well-known/nostr.json", params={"name": "alice"}
+        ).json()["relays"] == {
+            acorn.pubkey_hex: ["wss://relay.two.example"]
+        }
+
+        unconfirmed_remove = client.post(
+            "/handle/remove",
+            data={"csrf_token": CsrfProtector(settings).issue()},
+        )
+        assert unconfirmed_remove.status_code == 400
+        assert "Explicit removal confirmation is required" in unconfirmed_remove.text
+
+        removed = client.post(
+            "/handle/remove",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "confirmed": "yes",
+            },
+            follow_redirects=False,
+        )
+        assert removed.status_code == 303
+        assert removed.headers["location"] == "/handle"
+        assert client.get(
+            "/.well-known/nostr.json", params={"name": "alice"}
+        ).status_code == 404
+        assert "Claim a NIP-05 handle" in client.get("/handle").text
+        assert "NIP-05 address" not in client.get("/wallet").text
+
+
+def test_handle_and_component_uniqueness_are_enforced(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    first = main_module.Acorn(
+        nsec=TEST_NSEC,
+        home_relay="wss://relay.one.example",
+        relays=["wss://relay.one.example"],
+    )
+    _second_mnemonic, second_nsec = main_module.generate_seed_phrase_and_nsec()
+    second = main_module.Acorn(
+        nsec=second_nsec,
+        home_relay="wss://relay.two.example",
+        relays=["wss://relay.two.example"],
+    )
+    active = {"acorn": first}
+    app.dependency_overrides[get_acorn] = lambda: active["acorn"]
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        first_claim = client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "taken",
+            },
+            follow_redirects=False,
+        )
+        assert first_claim.status_code == 303
+
+        active["acorn"] = second
+        competing_claim = client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "taken",
+            },
+        )
+        assert competing_claim.status_code == 409
+        assert "already been claimed" in competing_claim.text
+
+        active["acorn"] = first
+        changed_handle = client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "another",
+            },
+            follow_redirects=False,
+        )
+        assert changed_handle.status_code == 303
+        assert client.get(
+            "/.well-known/nostr.json", params={"name": "taken"}
+        ).status_code == 404
+        changed_resolution = client.get(
+            "/.well-known/nostr.json", params={"name": "another"}
+        )
+        assert changed_resolution.status_code == 200
+        assert changed_resolution.json()["names"] == {
+            "another": first.pubkey_hex
+        }
+
+        # Renaming releases the old handle for another authenticated Acorn.
+        active["acorn"] = second
+        released_claim = client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "taken",
+            },
+            follow_redirects=False,
+        )
+        assert released_claim.status_code == 303
+
+        assert client.get(
+            "/.well-known/nostr.json", params={"name": "missing"}
+        ).status_code == 404
 
 
 def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:

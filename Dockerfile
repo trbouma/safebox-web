@@ -45,12 +45,15 @@ RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 safebox \
-    && useradd --uid 10001 --gid safebox --create-home --shell /usr/sbin/nologin safebox
+    && useradd --uid 10001 --gid safebox --create-home --shell /usr/sbin/nologin safebox \
+    && install -d -o safebox -g safebox /app/data
 
 WORKDIR /app
 
 COPY --from=builder --chown=safebox:safebox /app/.venv /app/.venv
 COPY --chown=safebox:safebox app /app/app
+COPY --chown=safebox:safebox alembic /app/alembic
+COPY --chown=safebox:safebox alembic.ini /app/alembic.ini
 
 USER safebox
 
