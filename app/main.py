@@ -179,8 +179,11 @@ def _create_form(
     default_mint: str,
     csrf_token: str,
     error: str | None = None,
+    mnemonic_words: str = "12",
 ) -> str:
     error_html = f'<p class="error">{escape(error)}</p>' if error else ""
+    words_12_selected = " selected" if mnemonic_words == "12" else ""
+    words_24_selected = " selected" if mnemonic_words == "24" else ""
     return _page(
         "Create a new Acorn",
         f"""
@@ -195,6 +198,13 @@ on the home relay, and start a user-controlled session.</p>
   <label for="home_mint">Home mint</label>
   <input id="home_mint" name="home_mint" type="text"
          value="{escape(default_mint, quote=True)}" required spellcheck="false">
+  <label for="mnemonic_words">Offline mnemonic length</label>
+  <select id="mnemonic_words" name="mnemonic_words" required>
+    <option value="12"{words_12_selected}>12 words (default)</option>
+    <option value="24"{words_24_selected}>24 words</option>
+  </select>
+  <p class="muted">Both options can recover the Acorn. The 24-word option uses
+  256 bits of generated entropy instead of 128 bits.</p>
   <label>
     <input name="confirmed" type="checkbox" value="yes" required>
     I understand that Safebox will display sensitive recovery material once the
@@ -635,6 +645,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         csrf_token: str = Form(...),
         home_relay: str = Form(...),
         home_mint: str = Form(...),
+        mnemonic_words: str = Form("12"),
         confirmed: str | None = Form(None),
     ):
         settings = request.app.state.settings
@@ -647,6 +658,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     settings.default_home_mint,
                     form_token.issue(),
                     message,
+                    mnemonic_words=mnemonic_words,
                 ),
                 status_code=status_code,
             )
@@ -658,6 +670,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         if confirmed != "yes":
             return creation_error("Explicit confirmation is required.")
+        if mnemonic_words not in {"12", "24"}:
+            return creation_error("Choose a 12- or 24-word offline mnemonic.")
 
         try:
             normalized_relay = normalize_bootstrap_relay(home_relay)
@@ -665,7 +679,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             return creation_error(str(exc))
 
-        seed_phrase, generated_nsec = generate_seed_phrase_and_nsec()
+        mnemonic_strength = 128 if mnemonic_words == "12" else 256
+        seed_phrase, generated_nsec = generate_seed_phrase_and_nsec(
+            strength=mnemonic_strength
+        )
         acorn = Acorn(
             nsec=generated_nsec,
             home_relay=normalized_relay,

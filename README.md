@@ -18,8 +18,8 @@ This implementation intentionally provides:
 - confirmed Lightning-address payments through Acorn;
 - an initial LNURL-pay path for receiving Lightning at claimed handles and
   delivering the settled value as ecash;
-- an optional standalone service Acorn worker for future provider payment
-  delivery;
+- an optional standalone service Acorn worker for Lightning settlement and
+  ecash delivery;
 - a connected-wallet key-information page and redacted session API; and
 - logout.
 
@@ -27,9 +27,9 @@ It does **not** maintain user accounts, write attached-Acorn configuration, or
 store server-side user sessions. The wallet page loads encrypted wallet and proof events
 from the bootstrap relay into request-scoped memory to derive the displayed
 balance. An explicitly confirmed payment delegates all proof, locking, mint,
-journal, and relay mutations to Acorn. The one server-side database is a small
-public NIP-05 directory containing only claimed handle, component `npub`, and
-home relay mappings.
+journal, and relay mutations to Acorn. The server-side database contains the
+public NIP-05 directory and operational provider-payment jobs. It does not
+contain attached-user wallet state.
 
 When explicitly enabled, a standalone worker maintains one provider-owned
 service Acorn. This operational wallet is not held in FastAPI application state
@@ -45,6 +45,8 @@ retirement command. See
 [Standalone Service Acorn Worker](docs/SERVICE-ACORN-LIFECYCLE.md).
 The initial provider flow is documented in
 [Lightning Payments to Acorn Handles](docs/LIGHTNING-HANDLE-PAYMENTS.md).
+Concurrency boundaries and the PostgreSQL hardening path are documented in
+[Concurrency and Provider-Job Coordination](docs/CONCURRENCY-AND-JOB-COORDINATION.md).
 
 The deposit flow requests a Lightning invoice from the Acorn home mint and
 renders it as both a QR code and copyable text. It performs no browser polling.
@@ -118,6 +120,11 @@ home mint is stored in that relay-backed wallet metadata. Safebox displays the
 recovery material on the creation result page; the session cookie still holds
 only the `nsec`, bootstrap relay, and session format version. The user must save
 the displayed recovery material securely before leaving the page.
+
+The creation form offers either a 12-word or 24-word BIP39 offline mnemonic.
+The 12-word option is the default and uses 128 bits of generated entropy; the
+24-word option uses 256 bits. Both use Acorn's same downstream key derivation
+and can later be entered through the existing offline-mnemonic login flow.
 
 This architecture moves session custody to the browser; it does not eliminate
 the need to trust the running web code or protect the cookie-encryption key.
@@ -266,6 +273,16 @@ Run the development server bound specifically to IPv4 loopback:
 poetry run uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
+When testing Lightning payments to claimed handles, open a second terminal in
+the same repository and run the singleton provider process:
+
+```sh
+poetry run python -m app.service_acorn_worker run
+```
+
+Both processes read `.env` and share `SAFEBOX_DATABASE_URL`. Stop them
+independently with `Ctrl-C`; routine worker shutdown retains its recovery file.
+
 Open <http://127.0.0.1:8000>. Do not replace the host with `0.0.0.0` while
 using plain HTTP; the application rejects insecure non-loopback requests.
 
@@ -349,29 +366,39 @@ or public client. Replace the loopback default when the proxy connects from the
 host's Docker bridge or from another container. Use the narrowest exact address
 or container-network range supported by the deployment.
 
-Build and start:
+Build the shared image with both Compose roles enabled:
 
 ```sh
-docker compose up --detach --build
-docker compose ps
-docker compose logs --follow safebox-web
+docker compose --profile service-acorn build
 ```
 
-To enable and start the standalone provider wallet as well, set
-`SAFEBOX_SERVICE_ACORN_ENABLED=true` and use the opt-in profile:
+Then create and start both containers:
+
+```sh
+docker compose --profile service-acorn up --detach
+docker compose --profile service-acorn ps
+docker compose logs --follow safebox-web service-acorn-worker
+```
+
+Or build and start both in one command:
 
 ```sh
 docker compose --profile service-acorn up --detach --build
-docker compose logs --follow service-acorn-worker
 ```
 
-The web tier may use `SAFEBOX_WEB_WORKERS` greater than one. The service-acorn
-profile still starts exactly one wallet-owning process.
+Both containers use `safebox-web:local`; Compose overrides the command to run
+Uvicorn in one and the service Acorn worker in the other. Without
+`--profile service-acorn`, `docker compose up` starts only `safebox-web`.
+
+The web tier may use `SAFEBOX_WEB_WORKERS` greater than one. The profile still
+starts exactly one wallet-owning container. See the
+[Deployment Runbook](docs/DEPLOYMENT.md) for the complete one-image/two-process
+procedure, verification, routine operations, backup boundary, and retirement.
 
 Stop the service without deleting the image:
 
 ```sh
-docker compose down
+docker compose --profile service-acorn down
 ```
 
 The Compose service requires `SAFEBOX_COOKIE_KEY`, runs with a read-only root
@@ -452,7 +479,9 @@ poetry run pytest
 The tests cover HTTPS enforcement, the tightly scoped loopback exception,
 encrypted cookie contents and flags, dependency-injected key authority, mnemonic
 derivation, Acorn creation, deposit invoice and confirmation flows, invalid
-secrets, and tampered cookies. They do not contact a relay or mint.
+secrets, tampered cookies, LNURL discovery and callbacks, durable provider
+state transitions, settlement, ecash delivery, and ambiguous-delivery stopping.
+They do not contact a relay or mint.
 
 ## Current limitations
 
@@ -466,9 +495,12 @@ secrets, and tampered cookies. They do not contact a relay or mint.
   released independently.
 - There is no production account, multi-device, session-revocation, or HSM
   integration in this minimal shell.
-- The standalone service Acorn worker does not yet implement a durable Lightning quote,
-  settlement, ecash-delivery, acknowledgement, or refund state machine. It is
-  development plumbing and must not accept meaningful third-party funds.
+- The standalone worker durably tracks quote creation, settlement, and ecash
+  delivery, but still lacks invoice expiry, complete crash reconciliation,
+  idempotent acknowledgement/retry, refunds, and operator review tooling. It
+  must not yet accept meaningful third-party funds.
 - Exactly one service Acorn worker may own the provider wallet. The stateless
-  web tier may run multiple processes, but SQLite is still a development-only
-  choice for the future concurrent provider-job queue.
+  web tier may run multiple processes, but SQLite remains a development choice
+  for concurrent provider jobs.
+- The current shared SQLite volume is process separation, not strict filesystem
+  isolation: both containers can technically read provider recovery material.

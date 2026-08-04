@@ -5,6 +5,10 @@ Lightning wallet request an invoice for a claimed Safebox handle. The
 standalone service Acorn accepts the mint deposit and then delivers the value
 to the registered Acorn as a gift-wrapped ecash transfer.
 
+This complete path has been deployed and verified with a real Lightning
+payment. That validates the process boundary and interoperability path; it does
+not remove the production release gates documented below.
+
 ```text
 Lightning wallet
       |
@@ -85,6 +89,13 @@ Both processes must use the same `SAFEBOX_DATABASE_URL`. With the default
 configuration they share `data/database.db`. Docker Compose shares the same
 persistent `/app/data` volume.
 
+For the exact one-image/two-container build and operating commands, see the
+[Deployment Runbook](DEPLOYMENT.md).
+
+The behavior of concurrent callbacks, multiple web workers, SQLite, and the
+singleton provider wallet is documented in
+[Concurrency and Provider-Job Coordination](CONCURRENCY-AND-JOB-COORDINATION.md).
+
 Resolve a registered development handle:
 
 ```sh
@@ -108,7 +119,8 @@ provider. Before accepting meaningful third-party funds, add:
 - an idempotent delivery acknowledgement and retry protocol;
 - operator review and refund tooling;
 - PostgreSQL-backed atomic job claiming for production concurrency;
-- monitoring and alerting for stalled states; and
+- monitoring and alerting for stalled states;
+- worker-only storage for provider recovery material; and
 - Nostr zap validation and receipts if zap support is advertised later.
 
 The current callback rejects zaps and sub-satoshi amounts explicitly. Use small

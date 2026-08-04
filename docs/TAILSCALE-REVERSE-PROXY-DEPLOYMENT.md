@@ -60,17 +60,29 @@ SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_DATABASE_URL=sqlite:///data/database.db
 RECEIVE_PROOF_MAINTENANCE_ENABLED=false
 
+SAFEBOX_SERVICE_ACORN_ENABLED=true
+SAFEBOX_SERVICE_ACORN_HOME_RELAY=wss://relay.getsafebox.app
+SAFEBOX_SERVICE_ACORN_HOME_MINT=https://mint.getsafebox.app
+SAFEBOX_SERVICE_ACORN_STATE_FILE=data/service-acorn.json
+SAFEBOX_SERVICE_ACORN_POLL_SECONDS=0.5
+SAFEBOX_PROVIDER_INVOICE_WAIT_SECONDS=10
+SAFEBOX_LNURL_MIN_SENDABLE_MSAT=1000
+SAFEBOX_LNURL_MAX_SENDABLE_MSAT=100000000
+SAFEBOX_LNURL_COMMENT_ALLOWED=256
+
 SAFEBOX_BIND_ADDRESS=0.0.0.0
 SAFEBOX_PORT=8100
 FORWARDED_ALLOW_IPS=100.64.0.10
 SAFEBOX_IMAGE=safebox-web:local
 ```
 
-Docker Compose persists the NIP-05 directory database in the named volume
-`safebox-web-data`, mounted at `/app/data`. The application runs Alembic
-migrations during startup and creates `/app/data/database.db` when the volume
-is new. Keep this volume when recreating containers and include it in service
-backups. Removing it permanently removes all claimed-handle mappings.
+Docker Compose runs the same image as two containers: `safebox-web` runs
+Uvicorn, while `service-acorn-worker` exclusively owns the provider wallet.
+Both mount the named volume `safebox-web-data` at `/app/data`. The volume holds
+the NIP-05 directory, provider-payment jobs, and service Acorn recovery file.
+Keep it when recreating containers and protect its backups as wallet secrets.
+Removing it can destroy claimed-handle mappings, job history, and provider
+wallet recovery authority.
 
 The `100.64.0.10` and `100.64.0.20` addresses in this guide are examples.
 Replace them with the proxy and application hosts' actual Tailscale addresses.
@@ -90,18 +102,23 @@ captured session cookie can recover the `nsec` contained in that session.
 Start the application:
 
 ```sh
-docker compose config --quiet
-docker compose up --detach --build
-docker compose ps
-docker compose logs --follow safebox-web
+docker compose --profile service-acorn config --quiet
+docker compose --profile service-acorn build
+docker compose --profile service-acorn up --detach
+docker compose --profile service-acorn ps
+docker compose logs --follow safebox-web service-acorn-worker
 ```
 
-The container should become healthy after its startup period. Repeated log
+The web container becomes healthy first; Compose then starts the provider
+worker. Repeated web log
 entries such as the following are its internal loopback health check:
 
 ```text
 127.0.0.1:<port> - "GET /health HTTP/1.1" 200 OK
 ```
+
+The complete build, restart, stop, volume, and explicit wallet-retirement
+commands are in the [Deployment Runbook](DEPLOYMENT.md).
 
 ## Nginx configuration
 

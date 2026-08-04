@@ -20,8 +20,8 @@ service Acorn  -> persistent provider wallet owned by exactly one process
 The standalone process exposes its Acorn internally as the module-level
 `app.service_acorn_worker.service_acorn`. Its lock-bearing runtime is available
 as `service_acorn_runtime`. Those objects are global only inside the singleton
-worker process; web workers cannot access them directly. Future web routes must
-submit durable jobs rather than import the worker's globals.
+worker process; web workers cannot access them directly. The LNURL routes submit
+durable `provider_payment` jobs rather than importing the worker's globals.
 
 ## Starting the worker
 
@@ -47,6 +47,10 @@ docker compose --profile service-acorn up -d
 docker compose logs -f service-acorn-worker
 ```
 
+Both Compose services use the same image with different commands. See the
+[Deployment Runbook](DEPLOYMENT.md) for the complete build, startup, logging,
+restart, volume, and retirement procedure.
+
 On its first start the worker:
 
 1. generates a fresh seed phrase and `nsec` in memory;
@@ -60,6 +64,11 @@ Docker volume. It contains the service `nsec` in plaintext with filesystem mode
 `0600`. Treat it as a production secret: never commit, log, expose, or casually
 copy it. It is written before relay initialization so an interrupted first
 start does not abandon the key.
+
+The current SQLite Compose deployment mounts the same `/app/data` volume into
+both containers. The web process does not load the recovery file, but this is
+not strict filesystem isolation. Moving the file to a worker-only volume is a
+production hardening item and requires a deliberate stopped-worker migration.
 
 ## Routine shutdown and restart
 
@@ -108,11 +117,12 @@ The worker now consumes the first durable LNURL provider-payment jobs: invoice
 creation, settlement checking, and gift-wrapped ecash delivery. This is still
 not a production Lightning gateway. Remaining work includes:
 
-- issued Lightning quotes and settlement state;
-- recipient public key, relay set, amount, and mint policy;
-- ecash issuance and gift-wrap publication;
-- acknowledgement, retry, refund, and manual-review states; and
-- restart reconciliation at every transition.
+- invoice expiry and request throttling;
+- complete crash and settlement reconciliation;
+- idempotent delivery acknowledgement and retry;
+- refund and operator review tooling;
+- production monitoring and alerting; and
+- worker-only filesystem isolation for provider recovery material.
 
 Do not accept meaningful third-party payments until that state machine and its
 outbox are implemented and tested. Use only small test amounts during worker

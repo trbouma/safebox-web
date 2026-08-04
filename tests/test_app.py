@@ -245,16 +245,23 @@ def test_create_form_displays_default_relay_and_mint() -> None:
     assert TEST_SETTINGS.default_bootstrap_relay in response.text
     assert 'name="home_mint"' in response.text
     assert TEST_SETTINGS.default_home_mint in response.text
+    assert 'name="mnemonic_words"' in response.text
+    assert '<option value="12" selected>' in response.text
+    assert '<option value="24">' in response.text
     assert 'name="confirmed"' in response.text
 
 
 def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) -> None:
     FakeCreatedAcorn.instances.clear()
+    generated_strengths = []
     monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
     monkeypatch.setattr(
         main_module,
         "generate_seed_phrase_and_nsec",
-        lambda: (TEST_MNEMONIC, TEST_NSEC),
+        lambda strength=128: (
+            generated_strengths.append(strength) or TEST_MNEMONIC,
+            TEST_NSEC,
+        ),
     )
     client = make_https_client()
 
@@ -264,6 +271,7 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
             "csrf_token": valid_csrf_token(),
             "home_relay": "relay.example.com",
             "home_mint": "mint.example.com/",
+            "mnemonic_words": "24",
             "confirmed": "yes",
         },
     )
@@ -283,6 +291,7 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
     }
     assert created.created_seed_phrase == TEST_MNEMONIC
     assert created.loaded is True
+    assert generated_strengths == [256]
 
     token = client.cookies.get(SECURE_COOKIE_NAME)
     assert token is not None
@@ -317,6 +326,59 @@ def test_create_acorn_requires_confirmation_before_generating(monkeypatch) -> No
     assert "Explicit confirmation is required" in response.text
     assert generated is False
     assert SECURE_COOKIE_NAME not in response.headers.get("set-cookie", "")
+
+
+def test_create_acorn_uses_12_words_by_default(monkeypatch) -> None:
+    FakeCreatedAcorn.instances.clear()
+    generated_strengths = []
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+
+    def generate(strength=128):
+        generated_strengths.append(strength)
+        return TEST_MNEMONIC, TEST_NSEC
+
+    monkeypatch.setattr(main_module, "generate_seed_phrase_and_nsec", generate)
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 201
+    assert generated_strengths == [128]
+
+
+def test_create_acorn_rejects_invalid_mnemonic_length(monkeypatch) -> None:
+    generated = False
+
+    def must_not_generate(strength=128):
+        nonlocal generated
+        generated = True
+        return TEST_MNEMONIC, TEST_NSEC
+
+    monkeypatch.setattr(main_module, "generate_seed_phrase_and_nsec", must_not_generate)
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+            "mnemonic_words": "18",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Choose a 12- or 24-word offline mnemonic" in response.text
+    assert generated is False
 
 
 def test_create_acorn_rejects_insecure_remote_mint() -> None:
