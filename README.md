@@ -1,6 +1,6 @@
 # Safebox Web
 
-Safebox Web is a minimal, stateless FastAPI interface for the installable
+Safebox Web is a minimal FastAPI interface for the installable
 [Safebox Acorn](https://github.com/trbouma/safebox-acorn) component.
 
 This implementation intentionally provides:
@@ -16,16 +16,35 @@ This implementation intentionally provides:
 - private-record label listing and individual record retrieval;
 - user-confirmed Lightning deposits through the Acorn home mint;
 - confirmed Lightning-address payments through Acorn;
+- an initial LNURL-pay path for receiving Lightning at claimed handles and
+  delivering the settled value as ecash;
+- an optional standalone service Acorn worker for future provider payment
+  delivery;
 - a connected-wallet key-information page and redacted session API; and
 - logout.
 
-It does **not** maintain accounts, write Acorn configuration, or store
-server-side sessions. The wallet page loads encrypted wallet and proof events
+It does **not** maintain user accounts, write attached-Acorn configuration, or
+store server-side user sessions. The wallet page loads encrypted wallet and proof events
 from the bootstrap relay into request-scoped memory to derive the displayed
 balance. An explicitly confirmed payment delegates all proof, locking, mint,
 journal, and relay mutations to Acorn. The one server-side database is a small
 public NIP-05 directory containing only claimed handle, component `npub`, and
 home relay mappings.
+
+When explicitly enabled, a standalone worker maintains one provider-owned
+service Acorn. This operational wallet is not held in FastAPI application state
+and is not a server-side copy of an attached user's wallet. It is intended to
+become the value bridge for accepting Lightning on behalf of another Acorn and
+delivering that value as ecash.
+
+The service Acorn receives a fresh key on its first start. Its minimum recovery
+state is stored in an owner-only file in the persistent `data/` volume before
+relay initialization. Routine stops retain that file so the next singleton
+worker restores the same wallet. Sweeping and burning require an explicit
+retirement command. See
+[Standalone Service Acorn Worker](docs/SERVICE-ACORN-LIFECYCLE.md).
+The initial provider flow is documented in
+[Lightning Payments to Acorn Handles](docs/LIGHTNING-HANDLE-PAYMENTS.md).
 
 The deposit flow requests a Lightning invoice from the Acorn home mint and
 renders it as both a QR code and copyable text. It performs no browser polling.
@@ -317,6 +336,9 @@ Review these deployment values in `.env` before starting:
 SAFEBOX_COOKIE_KEY=<generated Fernet-compatible key>
 SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
 SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app
+SAFEBOX_WEB_WORKERS=1
+SAFEBOX_SERVICE_ACORN_ENABLED=false
+SAFEBOX_SERVICE_ACORN_SHUTDOWN_RECIPIENT=<provider recovery npub or NIP-05>
 SAFEBOX_BIND_ADDRESS=127.0.0.1
 SAFEBOX_PORT=8000
 FORWARDED_ALLOW_IPS=127.0.0.1
@@ -334,6 +356,17 @@ docker compose up --detach --build
 docker compose ps
 docker compose logs --follow safebox-web
 ```
+
+To enable and start the standalone provider wallet as well, set
+`SAFEBOX_SERVICE_ACORN_ENABLED=true` and use the opt-in profile:
+
+```sh
+docker compose --profile service-acorn up --detach --build
+docker compose logs --follow service-acorn-worker
+```
+
+The web tier may use `SAFEBOX_WEB_WORKERS` greater than one. The service-acorn
+profile still starts exactly one wallet-owning process.
 
 Stop the service without deleting the image:
 
@@ -392,6 +425,18 @@ For each request, the dependency:
    `LoadedAcornDependency`; and
 5. passes that request-scoped component to the route.
 
+The optional provider wallet uses a separate process boundary:
+
+```text
+web workers -> durable provider jobs -> one standalone service Acorn worker
+```
+
+FastAPI does not load or own the provider wallet. The standalone worker creates
+or recovers it and retains it across routine process restarts. Burning is an
+explicit retirement operation, not normal shutdown behavior. See
+[Standalone Service Acorn Worker](docs/SERVICE-ACORN-LIFECYCLE.md) for startup,
+recovery, retirement, the singleton restriction, and remaining gateway gates.
+
 The wallet route calls `Acorn.load_data()` through the loaded dependency with a
 bounded timeout. This reads and decrypts relay events and derives balance from
 proofs in memory. It does not refresh proofs at a mint or publish wallet state.
@@ -421,3 +466,9 @@ secrets, and tampered cookies. They do not contact a relay or mint.
   released independently.
 - There is no production account, multi-device, session-revocation, or HSM
   integration in this minimal shell.
+- The standalone service Acorn worker does not yet implement a durable Lightning quote,
+  settlement, ecash-delivery, acknowledgement, or refund state machine. It is
+  development plumbing and must not accept meaningful third-party funds.
+- Exactly one service Acorn worker may own the provider wallet. The stateless
+  web tier may run multiple processes, but SQLite is still a development-only
+  choice for the future concurrent provider-job queue.

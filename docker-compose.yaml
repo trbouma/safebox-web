@@ -7,6 +7,16 @@ services:
     container_name: safebox-web
     restart: unless-stopped
     init: true
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --workers
+      - "${SAFEBOX_WEB_WORKERS:-1}"
     environment:
       SAFEBOX_COOKIE_KEY: "${SAFEBOX_COOKIE_KEY:?Generate SAFEBOX_COOKIE_KEY before starting}"
       SAFEBOX_SESSION_TTL_SECONDS: "${SAFEBOX_SESSION_TTL_SECONDS:-28800}"
@@ -15,10 +25,47 @@ services:
       SAFEBOX_DEFAULT_BOOTSTRAP_RELAY: "${SAFEBOX_DEFAULT_BOOTSTRAP_RELAY:-wss://relay.getsafebox.app}"
       SAFEBOX_DEFAULT_HOME_MINT: "${SAFEBOX_DEFAULT_HOME_MINT:-https://mint.getsafebox.app}"
       SAFEBOX_DATABASE_URL: "${SAFEBOX_DATABASE_URL:-sqlite:///data/database.db}"
+      SAFEBOX_PROVIDER_INVOICE_WAIT_SECONDS: "${SAFEBOX_PROVIDER_INVOICE_WAIT_SECONDS:-10}"
+      SAFEBOX_LNURL_MIN_SENDABLE_MSAT: "${SAFEBOX_LNURL_MIN_SENDABLE_MSAT:-1000}"
+      SAFEBOX_LNURL_MAX_SENDABLE_MSAT: "${SAFEBOX_LNURL_MAX_SENDABLE_MSAT:-100000000}"
+      SAFEBOX_LNURL_COMMENT_ALLOWED: "${SAFEBOX_LNURL_COMMENT_ALLOWED:-256}"
+      SAFEBOX_SERVICE_ACORN_HOME_MINT: "${SAFEBOX_SERVICE_ACORN_HOME_MINT:-https://mint.getsafebox.app}"
+      SAFEBOX_SERVICE_ACORN_ENABLED: "${SAFEBOX_SERVICE_ACORN_ENABLED:-false}"
       RECEIVE_PROOF_MAINTENANCE_ENABLED: "${RECEIVE_PROOF_MAINTENANCE_ENABLED:-false}"
       FORWARDED_ALLOW_IPS: "${FORWARDED_ALLOW_IPS:-127.0.0.1}"
     ports:
       - "${SAFEBOX_BIND_ADDRESS:-127.0.0.1}:${SAFEBOX_PORT:-8000}:8000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    volumes:
+      - safebox-web-data:/app/data
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 120s
+
+  service-acorn-worker:
+    image: ${SAFEBOX_IMAGE:-safebox-web:local}
+    command: ["python", "-m", "app.service_acorn_worker", "run"]
+    restart: unless-stopped
+    init: true
+    profiles: ["service-acorn"]
+    depends_on:
+      safebox-web:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    environment:
+      SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS: "${SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS:-20}"
+      SAFEBOX_PAYMENT_TIMEOUT_SECONDS: "${SAFEBOX_PAYMENT_TIMEOUT_SECONDS:-90}"
+      SAFEBOX_DATABASE_URL: "${SAFEBOX_DATABASE_URL:-sqlite:///data/database.db}"
+      SAFEBOX_SERVICE_ACORN_POLL_SECONDS: "${SAFEBOX_SERVICE_ACORN_POLL_SECONDS:-0.5}"
+      SAFEBOX_SERVICE_ACORN_ENABLED: "${SAFEBOX_SERVICE_ACORN_ENABLED:-false}"
+      SAFEBOX_SERVICE_ACORN_HOME_RELAY: "${SAFEBOX_SERVICE_ACORN_HOME_RELAY:-wss://relay.getsafebox.app}"
+      SAFEBOX_SERVICE_ACORN_HOME_MINT: "${SAFEBOX_SERVICE_ACORN_HOME_MINT:-https://mint.getsafebox.app}"
+      SAFEBOX_SERVICE_ACORN_STATE_FILE: "${SAFEBOX_SERVICE_ACORN_STATE_FILE:-data/service-acorn.json}"
+      SAFEBOX_SERVICE_ACORN_SHUTDOWN_RECIPIENT: "${SAFEBOX_SERVICE_ACORN_SHUTDOWN_RECIPIENT:-}"
+      SAFEBOX_SERVICE_ACORN_SHUTDOWN_RELAY: "${SAFEBOX_SERVICE_ACORN_SHUTDOWN_RELAY:-}"
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m

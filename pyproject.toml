@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "safebox-web"
 version = "0.1.0"
-description = "Minimal stateless web interface for Safebox Acorn"
+description = "Minimal web interface and provider service boundary for Safebox Acorn"
 authors = ["trbouma <trbouma@gmail.com>"]
 license = "MIT"
 readme = "README.md"

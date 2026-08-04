@@ -403,12 +403,52 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         revision = connection.execute(
             "SELECT version_num FROM alembic_version"
         ).fetchone()
-        columns = {
+        handle_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(claimed_handle)")
         }
-    assert {"alembic_version", "claimed_handle"}.issubset(tables)
-    assert revision == ("20260804_0001",)
-    assert columns == {"id", "claimed_handle", "npub", "home_relay"}
+        payment_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(provider_payment)")
+        }
+    assert {"alembic_version", "claimed_handle", "provider_payment"}.issubset(tables)
+    assert revision == ("20260804_0002",)
+    assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
+    assert {
+        "id",
+        "payment_id",
+        "claimed_handle",
+        "recipient_npub",
+        "recipient_relay",
+        "amount_msat",
+        "amount_sat",
+        "comment",
+        "lnurl_metadata",
+        "status",
+        "mint",
+        "mint_quote",
+        "invoice",
+        "delivery_event_id",
+        "error",
+        "attempts",
+        "created_at",
+        "updated_at",
+        "next_check_at",
+    } == payment_columns
+
+
+def test_web_lifespan_does_not_own_the_service_acorn(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        service_acorn_enabled=True,
+        service_acorn_state_file=str(tmp_path / "service-acorn.json"),
+    )
+    app = create_app(settings)
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        assert client.get("/health").status_code == 200
+        assert not hasattr(app.state, "service_acorn_runtime")
+        assert not hasattr(app.state, "service_acorn")
+
+    assert not (tmp_path / "service-acorn.json").exists()
 
 
 def test_connected_acorn_can_claim_and_resolve_a_nip05_handle(tmp_path) -> None:

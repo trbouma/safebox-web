@@ -8,6 +8,7 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 from fastapi import Request
+from sqlalchemy import event
 from sqlalchemy.engine import Engine, make_url
 from sqlmodel import Session, create_engine
 
@@ -47,8 +48,22 @@ def create_database_engine(database_url: str) -> Engine:
     url = make_url(database_url)
     engine_kwargs: dict = {"pool_pre_ping": True}
     if url.get_backend_name().startswith("sqlite"):
-        engine_kwargs["connect_args"] = {"check_same_thread": False}
-    return create_engine(database_url, **engine_kwargs)
+        engine_kwargs["connect_args"] = {
+            "check_same_thread": False,
+            "timeout": 30,
+        }
+    engine = create_engine(database_url, **engine_kwargs)
+    if url.get_backend_name().startswith("sqlite"):
+        @event.listens_for(engine, "connect")
+        def configure_sqlite(dbapi_connection, connection_record) -> None:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=30000")
+                cursor.execute("PRAGMA foreign_keys=ON")
+            finally:
+                cursor.close()
+    return engine
 
 
 def get_database_session(request: Request) -> Generator[Session, None, None]:

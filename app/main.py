@@ -34,6 +34,7 @@ from app.dependencies import (
     ReceiveAcornDependency,
 )
 from app.models import ClaimedHandle
+from app.lnurl_pay import router as lnurl_pay_router
 from app.security import (
     LOOPBACK_COOKIE_NAME,
     SECURE_COOKIE_NAME,
@@ -551,6 +552,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Safebox Web", version="0.1.0", lifespan=lifespan)
     app.state.settings = runtime_settings
+    app.include_router(lnurl_pay_router)
     app.mount(
         "/static",
         StaticFiles(directory=Path(__file__).resolve().parent / "static"),
@@ -811,6 +813,12 @@ different Acorn.</p>
                 f'<a href="/handle">{escape(nip05_address)}</a>'
                 "</strong></p>"
             )
+            if settings.service_acorn_enabled:
+                nip05_html += (
+                    '<p>Lightning address: <strong>'
+                    f"{escape(nip05_address)}"
+                    "</strong></p>"
+                )
         verification, verification_error = await _read_proof_verification(
             acorn,
             settings.wallet_load_timeout_seconds,
