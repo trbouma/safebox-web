@@ -184,7 +184,7 @@ def _create_form(
         "Create a new Acorn",
         f"""
 {error_html}
-<p>Safebox will generate a new component identity, initialize its wallet state
+<p>Safebox will generate a new component keypair, initialize its wallet state
 on the home relay, and start a user-controlled session.</p>
 <form method="post" action="/create" autocomplete="off">
   <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
@@ -420,7 +420,7 @@ def _handle_form(
 <p><a href="/wallet">← Back to wallet</a></p>
 {error_html}
 <p>This Acorn controls <strong>{escape(address)}</strong>.</p>
-<p>Component identity: <code>{escape(existing.npub)}</code></p>
+<p>Component public key: <code>{escape(existing.npub)}</code></p>
 <p>Resolution relay: <code>{escape(existing.home_relay)}</code></p>
 <p>Submit the current handle to refresh its home relay, or choose another
 unclaimed handle to change the address. Changing it immediately releases the
@@ -713,7 +713,7 @@ obtains it can control this Acorn and its funds and records.</p>
 <pre>{escape(seed_phrase)}</pre>
 <p>nsec private key:</p>
 <pre>{escape(generated_nsec)}</pre>
-<p>Component identity: <code>{escape(acorn.pubkey_bech32)}</code></p>
+<p>Component public key: <code>{escape(acorn.pubkey_bech32)}</code></p>
 <p>Home relay: <code>{escape(normalized_relay)}</code></p>
 <p>Home mint: <code>{escape(normalized_mint)}</code></p>
 <p>This page is not server-side recovery storage. Save the material offline
@@ -824,7 +824,7 @@ different Acorn.</p>
         return _page(
             "Connected Acorn",
             f"""
-<p>Component identity: <code>{escape(acorn.pubkey_bech32)}</code></p>
+<p>Component public key: <code>{escape(acorn.pubkey_bech32)}</code></p>
 <p>Bootstrap relay: <code>{escape(acorn.home_relay)}</code></p>
 {nip05_html}
 {balance_status}
@@ -1000,7 +1000,7 @@ by the web application.</p>
             )
             return JSONResponse(
                 status_code=500,
-                content={"detail": "Stored handle identity is invalid"},
+                content={"detail": "Stored handle public key is invalid"},
                 headers={"Access-Control-Allow-Origin": "*"},
             )
 

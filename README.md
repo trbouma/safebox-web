@@ -16,7 +16,7 @@ This implementation intentionally provides:
 - private-record label listing and individual record retrieval;
 - user-confirmed Lightning deposits through the Acorn home mint;
 - confirmed Lightning-address payments through Acorn;
-- a connected-wallet identity page and redacted session API; and
+- a connected-wallet key-information page and redacted session API; and
 - logout.
 
 It does **not** maintain accounts, write Acorn configuration, or store
@@ -405,7 +405,7 @@ poetry run pytest
 ```
 
 The tests cover HTTPS enforcement, the tightly scoped loopback exception,
-encrypted cookie contents and flags, dependency-injected identity, mnemonic
+encrypted cookie contents and flags, dependency-injected key authority, mnemonic
 derivation, Acorn creation, deposit invoice and confirmation flows, invalid
 secrets, and tampered cookies. They do not contact a relay or mint.
 
