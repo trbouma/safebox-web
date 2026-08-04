@@ -164,6 +164,19 @@ The printed path should be inside the local `safebox-acorn` repository. Source
 changes there are then visible to Safebox Web immediately. This editable
 installation affects only that local virtual environment.
 
+Running `poetry install`, `poetry update`, or `poetry update safebox-acorn` may
+replace the editable installation with the Git version resolved in
+`poetry.lock`. After running one of those commands, check `acorn.__file__`
+again. If it points inside Safebox Web's `.venv/site-packages` instead of the
+local `safebox-acorn` checkout, restore editable development mode with:
+
+```sh
+poetry run pip install -e /Users/trbouma/projects/safebox-acorn
+```
+
+This replacement is expected: Poetry manages the declared Git dependency,
+while the editable installation is a deliberate local override.
+
 The Dockerfile does not copy the host virtual environment or local Acorn
 checkout. It creates a clean environment and installs the GitHub dependency
 declared by `pyproject.toml` at the exact commit resolved in `poetry.lock`.
@@ -199,6 +212,14 @@ installation inside this Poetry environment with an editable install:
 
 ```sh
 poetry run pip install -e /Users/trbouma/projects/safebox-acorn
+```
+
+Run this editable-install command again after `poetry install` or
+`poetry update` if Poetry restores the Git version from `poetry.lock`. You can
+confirm the active source with:
+
+```sh
+poetry run python -c "import acorn; print(acorn.__file__)"
 ```
 
 Generate an application cookie key:
