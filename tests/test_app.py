@@ -23,6 +23,7 @@ from app.dependencies import (
     get_deposit_acorn,
     get_loaded_acorn,
     get_payment_acorn,
+    get_receive_acorn,
 )
 from app.main import create_app
 from app.security import (
@@ -72,6 +73,7 @@ class FakeLoadedAcorn:
         verified_balance: int | None = None,
         verification_status: str = "clean",
         transaction_history: list[dict] | None = None,
+        receive_result: dict | None = None,
     ) -> None:
         self.balance = balance
         self.proofs = [object()] if balance else []
@@ -83,6 +85,12 @@ class FakeLoadedAcorn:
         self.deposit_calls: list[int] = []
         self.quote_checks: list[tuple[str, int]] = []
         self.history_entries: list[dict] = list(transaction_history or [])
+        self.receive_result = receive_result or {
+            "queried": 0,
+            "accepted_count": 0,
+            "accepted_amount": 0,
+        }
+        self.receive_calls = 0
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -139,6 +147,10 @@ class FakeLoadedAcorn:
 
     async def get_tx_history(self) -> list[dict]:
         return self.history_entries
+
+    async def sweep_ecash_transfers(self) -> dict:
+        self.receive_calls += 1
+        return self.receive_result
 
 
 class FakeCreatedAcorn:
@@ -614,6 +626,10 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
     assert "invoice-is-not-rendered" not in response.text
     assert "preimage-is-not-rendered" not in response.text
     assert "@media (max-width: 36rem)" in response.text
+    assert 'action="/transactions/receive"' in response.text
+    assert 'name="csrf_token"' in response.text
+    assert "Check and receive ecash" in response.text
+    assert "Receiving ecash…" in response.text
 
 
 def test_transaction_history_has_an_empty_state() -> None:
@@ -625,6 +641,54 @@ def test_transaction_history_has_an_empty_state() -> None:
 
     assert response.status_code == 200
     assert "No transaction history was found" in response.text
+
+
+def test_transaction_history_can_receive_incoming_ecash() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(
+        receive_result={
+            "queried": 1,
+            "accepted_count": 1,
+            "accepted_amount": 3,
+        },
+        transaction_history=[
+            {
+                "create_time": "2026-08-04 12:00:00",
+                "tx_type": "C",
+                "amount": 3,
+                "comment": "ecash transfer received",
+                "current_balance": 324,
+            }
+        ],
+    )
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/transactions/receive",
+        data={"csrf_token": valid_csrf_token()},
+    )
+
+    assert response.status_code == 200
+    assert acorn.receive_calls == 1
+    assert "Received 3 sats from 1 incoming ecash transfer(s)." in response.text
+    assert "+3 sats" in response.text
+    assert "ecash transfer received" in response.text
+
+
+def test_receive_incoming_ecash_rejects_invalid_csrf() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/transactions/receive",
+        data={"csrf_token": "invalid"},
+    )
+
+    assert response.status_code == 403
+    assert acorn.receive_calls == 0
 
 
 def test_payment_form_displays_balance_and_confirmation() -> None:

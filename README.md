@@ -11,7 +11,7 @@ This implementation intentionally provides:
 - an encrypted, authenticated browser cookie;
 - request-scoped `Acorn` construction through FastAPI dependency injection;
 - relay-backed wallet loading and balance display;
-- a responsive, read-only transaction-history view;
+- a responsive transaction-history view with explicit incoming-ecash receipt;
 - authenticated NIP-05 handle claiming and public resolution;
 - private-record label listing and individual record retrieval;
 - user-confirmed Lightning deposits through the Acorn home mint;
@@ -38,6 +38,14 @@ Deposit invoice creation, deposit confirmation, and outgoing payment forms
 display an operation-specific progress message after submission and disable
 their submit buttons while the request is running. This is progressive browser
 behavior: server validation and transaction safety do not depend on JavaScript.
+
+The transaction-history page provides an explicit **Check and receive ecash**
+action. It asks the attached Acorn to query its home relay, unwrap incoming
+transfers, validate and refresh their Cashu proofs through the issuing mint,
+persist the accepted proofs as normal wallet state, and record the resulting
+credits in transaction history. Merely viewing the wallet or transaction
+history remains read-only; receiving ecash is a separate CSRF-protected
+mutation initiated by the user.
 
 Deposit quote state is not kept in a database or server-side session. The quote
 identifier, amount, mint, and invoice are encrypted and authenticated in a

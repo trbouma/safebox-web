@@ -100,3 +100,12 @@ def get_deposit_acorn(acorn: LoadedAcornDependency) -> Acorn:
 
 
 DepositAcornDependency = Annotated[Acorn, Depends(get_deposit_acorn)]
+
+
+def get_receive_acorn(acorn: LoadedAcornDependency) -> Acorn:
+    """Make the incoming-ecash mutation boundary explicit."""
+
+    return acorn
+
+
+ReceiveAcornDependency = Annotated[Acorn, Depends(get_receive_acorn)]

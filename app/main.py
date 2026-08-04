@@ -31,6 +31,7 @@ from app.dependencies import (
     DepositAcornDependency,
     LoadedAcornDependency,
     PaymentAcornDependency,
+    ReceiveAcornDependency,
 )
 from app.models import ClaimedHandle
 from app.security import (
@@ -350,6 +351,38 @@ def _transaction_history_html(entries: list[dict]) -> str:
     if not cards:
         return "<p>No transaction history was found.</p>"
     return '<section class="transaction-list" aria-label="Transaction history">' + "".join(cards) + "</section>"
+
+
+def _transactions_page(
+    entries: list[dict],
+    csrf_token: str,
+    notice: str | None = None,
+) -> str:
+    """Render transaction history together with explicit incoming-ecash receipt."""
+
+    notice_html = (
+        f'<p role="status"><strong>{escape(notice)}</strong></p>' if notice else ""
+    )
+    return _page(
+        "Transaction history",
+        f"""
+<p><a href="/wallet">← Back to wallet</a></p>
+{notice_html}
+<section aria-labelledby="receive-ecash-heading">
+  <h2 id="receive-ecash-heading">Incoming ecash</h2>
+  <p>Check this Acorn's home relay for incoming ecash transfers and accept any
+  valid proofs into the wallet balance.</p>
+  <form method="post" action="/transactions/receive"
+        data-progress-message="Checking for incoming ecash and refreshing accepted proofs. Please wait."
+        data-progress-button="Receiving ecash…">
+    <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
+    <button type="submit">Check and receive ecash</button>
+  </form>
+</section>
+<hr>
+{_transaction_history_html(entries)}
+<p><a href="/wallet">Return to wallet</a></p>""",
+    )
 
 
 HANDLE_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$")
@@ -1361,11 +1394,105 @@ by the web application.</p>
             ),
             reverse=True,
         )
-        return _page(
-            "Transaction history",
-            '<p><a href="/wallet">← Back to wallet</a></p>'
-            + _transaction_history_html(entries)
-            + '<p><a href="/wallet">Return to wallet</a></p>',
+        return _transactions_page(
+            entries,
+            CsrfProtector(settings).issue(),
+        )
+
+    @app.post("/transactions/receive", response_class=HTMLResponse)
+    async def receive_ecash_from_transactions(
+        request: Request,
+        acorn: ReceiveAcornDependency,
+        csrf_token: str = Form(...),
+    ):
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            return HTMLResponse(
+                _page(
+                    "Receive ecash",
+                    '<p class="error">The form expired or could not be verified.</p>'
+                    '<p><a href="/transactions">Return to transaction history</a></p>',
+                ),
+                status_code=403,
+            )
+
+        try:
+            result = await asyncio.wait_for(
+                acorn.sweep_ecash_transfers(),
+                timeout=settings.payment_timeout_seconds,
+            )
+        except TimeoutError:
+            return HTMLResponse(
+                _page(
+                    "Receive ecash outcome uncertain",
+                    '<p class="error">The receive operation timed out. It may have '
+                    "accepted proofs before the timeout. Review the wallet balance and "
+                    "transaction history before trying again.</p>"
+                    '<p><a href="/transactions">Reload transaction history</a></p>',
+                ),
+                status_code=504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "incoming ecash receive failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Unable to receive ecash",
+                    '<p class="error">Safebox could not complete the incoming ecash '
+                    "check. No unverified balance has been displayed.</p>"
+                    '<p><a href="/transactions">Return to transaction history</a></p>',
+                ),
+                status_code=502,
+            )
+
+        accepted_count = int(result.get("accepted_count", 0))
+        accepted_amount = int(result.get("accepted_amount", 0))
+        queried = int(result.get("queried", 0))
+        if accepted_count:
+            notice = (
+                f"Received {accepted_amount:,} sats from "
+                f"{accepted_count:,} incoming ecash transfer(s)."
+            )
+        else:
+            notice = f"No incoming ecash was accepted ({queried:,} transfer event(s) checked)."
+
+        try:
+            history = await asyncio.wait_for(
+                acorn.get_tx_history(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "post-receive transaction history lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Ecash receive completed",
+                    f"<p><strong>{escape(notice)}</strong></p>"
+                    "<p>The updated transaction history could not be loaded. "
+                    "Reload it to verify the resulting credit.</p>"
+                    '<p><a href="/transactions">Reload transaction history</a></p>',
+                ),
+                status_code=200,
+            )
+
+        entries = history if isinstance(history, list) else []
+        entries = sorted(
+            entries,
+            key=lambda entry: (
+                str(entry.get("create_time") or "")
+                if isinstance(entry, dict)
+                else ""
+            ),
+            reverse=True,
+        )
+        return _transactions_page(
+            entries,
+            CsrfProtector(settings).issue(),
+            notice=notice,
         )
 
     @app.get("/records", response_class=HTMLResponse)
