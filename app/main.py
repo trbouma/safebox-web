@@ -136,68 +136,131 @@ def _ecash_retention_notice(settings: Settings) -> str:
 
 def _page(title: str, body: str) -> str:
     return f"""<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{escape(title)} · Safebox</title>
   <style>
-    body {{ font-family: system-ui, sans-serif; max-width: 42rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }}
+    :root {{
+      color-scheme: dark;
+      --page: #171914;
+      --text: #eef0e8;
+      --muted: #b7baae;
+      --surface: #22251e;
+      --surface-soft: #262b20;
+      --control: #20231d;
+      --border: #4a4f42;
+      --link: #bfd78c;
+      --error: #ffaaa6;
+      --progress: #c5d99d;
+      --pre: #20231d;
+      --credit: #b7d485;
+      --debit: #e9a270;
+      --advisory: #aebce5;
+      --note-border: #45493e;
+    }}
+    html[data-theme="light"] {{
+      color-scheme: light;
+      --page: #ffffff;
+      --text: #20211d;
+      --muted: #625f57;
+      --surface: #faf9f5;
+      --surface-soft: #f4f7ed;
+      --control: #ffffff;
+      --border: #d8d5cc;
+      --link: #40582b;
+      --error: #9b1c1c;
+      --progress: #465533;
+      --pre: #f4f3ef;
+      --credit: #465533;
+      --debit: #7d431b;
+      --advisory: #68769a;
+      --note-border: #e2dfd6;
+    }}
+    html {{ min-height: 100%; -webkit-text-size-adjust: 100%; background: var(--page); }}
+    body {{ font-family: system-ui, sans-serif; max-width: 42rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; overflow-wrap: break-word; background: var(--page); color: var(--text); }}
+    h1, h2 {{ line-height: 1.2; }}
+    img, svg {{ max-width: 100%; }}
+    a {{ color: var(--link); }}
     label {{ display: block; margin-top: 1rem; }}
-    input, select, textarea, button {{ box-sizing: border-box; font: inherit; padding: .6rem; width: 100%; }}
-    input[type="checkbox"] {{ width: auto; margin-right: .45rem; }}
+    input, select, textarea, button {{ box-sizing: border-box; font: inherit; min-height: 2.75rem; padding: .6rem; width: 100%; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); }}
+    input[type="checkbox"] {{ min-height: auto; width: auto; margin-right: .45rem; }}
     textarea {{ min-height: 7rem; }}
     button {{ cursor: pointer; margin-top: 1.25rem; }}
     button:disabled {{ cursor: wait; opacity: .65; }}
-    .error {{ color: #9b1c1c; }}
-    .progress {{ margin-top: 1rem; color: #465533; font-weight: 650; }}
-    code {{ overflow-wrap: anywhere; }}
-    pre {{ background: #f4f3ef; overflow-x: auto; padding: 1rem; white-space: pre-wrap; word-break: break-word; }}
+    .error {{ color: var(--error); }}
+    .progress {{ margin-top: 1rem; color: var(--progress); font-weight: 650; }}
+    a, code {{ overflow-wrap: anywhere; }}
+    pre {{ background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-wrap; word-break: break-word; }}
+    .page-tools {{ display: flex; justify-content: flex-end; margin-bottom: 1rem; }}
+    .theme-toggle {{ width: auto; min-height: 2.5rem; margin: 0; padding: .4rem .7rem; background: transparent; }}
     .invoice-qr {{ display: flex; justify-content: center; margin: 1.5rem 0; }}
     .invoice-qr svg {{ width: min(100%, 22rem); height: auto; }}
-    .lightning-address-card {{ margin: 1.5rem 0; padding: 1rem; border: 1px solid #d8d5cc; border-radius: 1rem; background: #faf9f5; text-align: center; }}
+    .lightning-address-card {{ margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); text-align: center; }}
     .lightning-address-qr {{ display: flex; justify-content: center; margin: 1rem 0; }}
     .lightning-address-qr svg {{ width: min(100%, 20rem); height: auto; }}
     .lightning-address-card details {{ text-align: left; }}
-    .retention-notice {{ margin: 1.5rem 0; padding: 1rem; border: 1px solid #c9d1b8; border-radius: 1rem; background: #f4f7ed; }}
+    .retention-notice {{ margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface-soft); }}
     .retention-notice h2 {{ margin: 0 0 .4rem; font-size: 1.05rem; }}
     .retention-notice p {{ margin: 0; }}
     .relationship {{ display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .8rem; align-items: center; margin: 0 0 2.5rem; }}
-    .relationship-card {{ display: flex; align-items: center; gap: .75rem; min-width: 0; padding: .8rem; border: 1px solid #d8d5cc; border-radius: 1rem; background: #faf9f5; }}
+    .relationship-card {{ display: flex; align-items: center; gap: .75rem; min-width: 0; padding: .8rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }}
     .relationship-card span {{ display: flex; min-width: 0; flex-direction: column; }}
     .relationship-card strong {{ font-size: 1.05rem; }}
-    .relationship-card small, .relationship-connection small {{ color: #625f57; line-height: 1.25; }}
+    .relationship-card small, .relationship-connection small {{ color: var(--muted); line-height: 1.25; }}
     .relationship-mark {{ width: 3.5rem; height: 3.5rem; flex: 0 0 auto; }}
     .relationship-connection {{ display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 7rem; }}
-    .relationship-arrow {{ color: #56653f; font-size: 2rem; line-height: 1; }}
+    .relationship-arrow {{ color: var(--link); font-size: 2rem; line-height: 1; }}
     .transaction-list {{ display: grid; gap: 1rem; margin: 1.5rem 0; }}
-    .transaction-card {{ border: 1px solid #d8d5cc; border-left: .35rem solid #777; border-radius: .8rem; padding: 1rem; background: #faf9f5; min-width: 0; }}
-    .transaction-card.credit {{ border-left-color: #65774a; }}
-    .transaction-card.debit {{ border-left-color: #955522; }}
-    .transaction-card.advisory {{ border-left-color: #68769a; }}
+    .transaction-card {{ border: 1px solid var(--border); border-left: .35rem solid #777; border-radius: .8rem; padding: 1rem; background: var(--surface); min-width: 0; }}
+    .transaction-card.credit {{ border-left-color: var(--credit); }}
+    .transaction-card.debit {{ border-left-color: var(--debit); }}
+    .transaction-card.advisory {{ border-left-color: var(--advisory); }}
     .transaction-header {{ display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }}
     .transaction-kind {{ font-weight: 750; }}
-    .transaction-date {{ color: #625f57; font-size: .92rem; }}
+    .transaction-date {{ color: var(--muted); font-size: .92rem; }}
     .transaction-amount {{ font-size: 1.45rem; font-weight: 750; margin: .45rem 0 .75rem; }}
-    .transaction-card.credit .transaction-amount {{ color: #465533; }}
-    .transaction-card.debit .transaction-amount {{ color: #7d431b; }}
+    .transaction-card.credit .transaction-amount {{ color: var(--credit); }}
+    .transaction-card.debit .transaction-amount {{ color: var(--debit); }}
     .transaction-details {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem 1rem; margin: 0; }}
     .transaction-details div {{ min-width: 0; }}
-    .transaction-details dt {{ color: #625f57; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }}
+    .transaction-details dt {{ color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }}
     .transaction-details dd {{ margin: .1rem 0 0; overflow-wrap: anywhere; }}
-    .transaction-note {{ margin: .85rem 0 0; padding-top: .75rem; border-top: 1px solid #e2dfd6; overflow-wrap: anywhere; }}
+    .transaction-note {{ margin: .85rem 0 0; padding-top: .75rem; border-top: 1px solid var(--note-border); overflow-wrap: anywhere; }}
     @media (max-width: 36rem) {{
-      body {{ margin-top: 2rem; }}
-      .relationship {{ grid-template-columns: 1fr; justify-items: stretch; }}
-      .relationship-connection {{ justify-self: center; }}
-      .relationship-arrow {{ transform: rotate(90deg); }}
+      body {{ margin: 1.25rem auto 2rem; padding: 0 .875rem; }}
+      h1 {{ font-size: 1.75rem; }}
+      h2 {{ font-size: 1.25rem; }}
+      input, select, textarea, button {{ font-size: 1rem; }}
+      button {{ min-height: 3rem; }}
+      p > a:only-child {{ display: inline-flex; min-height: 2.75rem; align-items: center; }}
+      ul, ol {{ padding-left: 1.35rem; }}
+      pre {{ margin-left: -.25rem; margin-right: -.25rem; padding: .75rem; }}
+      .relationship {{ grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .35rem; margin-bottom: 1.5rem; }}
+      .relationship-card {{ flex-direction: column; gap: .25rem; padding: .55rem .35rem; text-align: center; }}
+      .relationship-card strong {{ font-size: .95rem; }}
+      .relationship-card small, .relationship-connection small {{ font-size: .72rem; }}
+      .relationship-mark {{ width: 2.5rem; height: 2.5rem; }}
+      .relationship-connection {{ max-width: 4.5rem; }}
+      .relationship-arrow {{ font-size: 1.5rem; }}
+      .invoice-qr svg, .lightning-address-qr svg {{ width: min(100%, 17rem); }}
+      .lightning-address-card, .retention-notice, .transaction-card {{ border-radius: .7rem; padding: .85rem; }}
       .transaction-header {{ align-items: flex-start; flex-direction: column; gap: .2rem; }}
       .transaction-details {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
     }}
+    @media (max-width: 24rem) {{
+      .transaction-details {{ grid-template-columns: 1fr; }}
+      .relationship-connection small {{ display: none; }}
+    }}
 </style>
+  <script src="/static/theme.js" defer></script>
   <script src="/static/forms.js" defer></script>
 </head>
-<body>{_relationship_visual()}<h1>{escape(title)}</h1>{body}</body>
+<body>
+<div class="page-tools"><button class="theme-toggle" type="button"
+  data-theme-toggle aria-label="Switch colour theme">Use light mode</button></div>
+{_relationship_visual()}<h1>{escape(title)}</h1>{body}</body>
 </html>"""
 
 

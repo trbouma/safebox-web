@@ -262,6 +262,32 @@ def test_progress_script_is_served_from_same_origin() -> None:
     assert "button.disabled = true" in response.text
 
 
+def test_theme_defaults_to_dark_and_script_is_served() -> None:
+    page = make_https_client().get("/")
+    script = make_https_client().get("/static/theme.js")
+
+    assert page.status_code == 200
+    assert '<html lang="en" data-theme="dark">' in page.text
+    assert 'data-theme-toggle aria-label="Switch colour theme"' in page.text
+    assert 'src="/static/theme.js"' in page.text
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith("text/javascript")
+    assert 'theme === "dark" ? "light" : "dark"' in script.text
+    assert "safebox_theme=" in script.text
+
+
+def test_pages_include_mobile_layout_safeguards() -> None:
+    response = make_https_client().get("/")
+
+    assert response.status_code == 200
+    assert '<meta name="viewport" content="width=device-width, initial-scale=1">' in response.text
+    assert "-webkit-text-size-adjust: 100%" in response.text
+    assert "min-height: 2.75rem" in response.text
+    assert "@media (max-width: 36rem)" in response.text
+    assert "@media (max-width: 24rem)" in response.text
+    assert ".transaction-details { grid-template-columns: 1fr; }" in response.text
+
+
 def test_login_page_links_to_new_acorn_creation() -> None:
     response = make_https_client().get("/login")
 

@@ -5,6 +5,17 @@ links, submits HTML forms, receives complete HTML representations, and follows
 HTTP redirects. It is not a JavaScript application that duplicates Acorn or
 wallet workflow logic in the browser.
 
+The same representations are responsive rather than split into separate
+desktop and mobile applications. Narrow-screen styles improve spacing, touch
+targets, QR sizing, long-value wrapping, and transaction-card layout while the
+links, forms, routes, and server-side behavior remain identical.
+
+Dark mode is the default presentation. A light-mode toggle stores only the
+presentation choice in a non-sensitive browser cookie. The theme script does
+not read or manage Acorn credentials, wallet state, records, payments, or
+workflow decisions; without JavaScript, the complete application continues to
+work in its default dark theme.
+
 ## Upstream component boundary
 
 This document is the Safebox Web implementation of the authoritative
