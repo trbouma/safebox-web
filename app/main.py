@@ -34,7 +34,7 @@ from app.dependencies import (
     ReceiveAcornDependency,
 )
 from app.models import ClaimedHandle
-from app.lnurl_pay import router as lnurl_pay_router
+from app.lnurl_pay import encode_lnurl, router as lnurl_pay_router
 from app.security import (
     LOOPBACK_COOKIE_NAME,
     SECURE_COOKIE_NAME,
@@ -106,6 +106,10 @@ def _page(title: str, body: str) -> str:
     pre {{ background: #f4f3ef; overflow-x: auto; padding: 1rem; white-space: pre-wrap; word-break: break-word; }}
     .invoice-qr {{ display: flex; justify-content: center; margin: 1.5rem 0; }}
     .invoice-qr svg {{ width: min(100%, 22rem); height: auto; }}
+    .lightning-address-card {{ margin: 1.5rem 0; padding: 1rem; border: 1px solid #d8d5cc; border-radius: 1rem; background: #faf9f5; text-align: center; }}
+    .lightning-address-qr {{ display: flex; justify-content: center; margin: 1rem 0; }}
+    .lightning-address-qr svg {{ width: min(100%, 20rem); height: auto; }}
+    .lightning-address-card details {{ text-align: left; }}
     .relationship {{ display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .8rem; align-items: center; margin: 0 0 2.5rem; }}
     .relationship-card {{ display: flex; align-items: center; gap: .75rem; min-width: 0; padding: .8rem; border: 1px solid #d8d5cc; border-radius: 1rem; background: #faf9f5; }}
     .relationship-card span {{ display: flex; min-width: 0; flex-direction: column; }}
@@ -504,17 +508,21 @@ def _deposit_form(
     )
 
 
-def _invoice_svg(invoice: str) -> str:
+def _qr_svg(payload: str) -> str:
     qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
         box_size=8,
         border=2,
     )
-    qr.add_data(invoice)
+    qr.add_data(payload)
     qr.make(fit=True)
     image = qr.make_image(image_factory=qrcode.image.svg.SvgPathImage)
     return image.to_string(encoding="unicode")
+
+
+def _invoice_svg(invoice: str) -> str:
+    return _qr_svg(invoice)
 
 
 def _deposit_invoice_page(
@@ -821,6 +829,7 @@ different Acorn.</p>
             )
         ).first()
         nip05_html = ""
+        lightning_address_html = ""
         if claimed_handle is not None:
             nip05_address = (
                 f"{claimed_handle.claimed_handle}@{request.url.hostname}"
@@ -831,10 +840,28 @@ different Acorn.</p>
                 "</strong></p>"
             )
             if settings.service_acorn_enabled:
-                nip05_html += (
+                pay_endpoint = str(
+                    request.url_for(
+                        "lnurl_pay_resolve",
+                        handle=claimed_handle.claimed_handle,
+                    )
+                )
+                lightning_lnurl = encode_lnurl(pay_endpoint)
+                lightning_address_html = (
+                    '<section class="lightning-address-card" '
+                    'aria-labelledby="lightning-address-heading">'
+                    '<h2 id="lightning-address-heading">Receive Lightning</h2>'
                     '<p>Lightning address: <strong>'
                     f"{escape(nip05_address)}"
                     "</strong></p>"
+                    '<div class="lightning-address-qr" '
+                    'aria-label="Lightning address QR code">'
+                    f"{_qr_svg(lightning_lnurl)}"
+                    "</div>"
+                    f"<p>Scan to pay <strong>{escape(nip05_address)}</strong>.</p>"
+                    "<details><summary>Show encoded LNURL</summary>"
+                    f"<code>{escape(lightning_lnurl)}</code></details>"
+                    "</section>"
                 )
         verification, verification_error = await _read_proof_verification(
             acorn,
@@ -852,6 +879,7 @@ different Acorn.</p>
 <p>Component public key: <code>{escape(acorn.pubkey_bech32)}</code></p>
 <p>Bootstrap relay: <code>{escape(acorn.home_relay)}</code></p>
 {nip05_html}
+{lightning_address_html}
 {balance_status}
 <p>Wallet state was loaded from the relay for this request. It was not stored
 by the web application.</p>

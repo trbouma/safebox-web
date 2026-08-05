@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+from urllib.parse import urlsplit
 
+from bech32 import bech32_encode, convertbits
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
@@ -20,6 +22,22 @@ from app.provider_payments import (
 
 logger = logging.getLogger("safebox_web.lnurl_pay")
 router = APIRouter()
+
+
+def encode_lnurl(url: str) -> str:
+    """Encode an HTTP(S) LNURL-pay endpoint as an uppercase Bech32 LNURL."""
+
+    normalized = str(url or "").strip()
+    parsed = urlsplit(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("LNURL must encode an absolute HTTP(S) URL")
+    data = convertbits(list(normalized.encode("utf-8")), 8, 5, True)
+    if data is None:
+        raise ValueError("Unable to convert the LNURL endpoint to Bech32 data")
+    encoded = bech32_encode("lnurl", data)
+    if not encoded:
+        raise ValueError("Unable to encode the LNURL endpoint")
+    return encoded.upper()
 
 
 def _cors_headers() -> dict[str, str]:

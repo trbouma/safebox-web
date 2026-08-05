@@ -603,6 +603,69 @@ def test_connected_acorn_can_claim_and_resolve_a_nip05_handle(tmp_path) -> None:
         assert "NIP-05 address" not in client.get("/wallet").text
 
 
+def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
+    tmp_path,
+) -> None:
+    settings = replace(database_settings(tmp_path), service_acorn_enabled=True)
+    app = create_app(settings)
+    acorn = main_module.Acorn(
+        nsec=TEST_NSEC,
+        home_relay="wss://relay.one.example",
+        relays=["wss://relay.one.example"],
+    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        claim = client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "alice",
+            },
+            follow_redirects=False,
+        )
+        assert claim.status_code == 303
+
+        wallet_page = client.get("/wallet")
+
+    expected_endpoint = "https://safebox.example/.well-known/lnurlp/alice"
+    expected_lnurl = main_module.encode_lnurl(expected_endpoint)
+    assert wallet_page.status_code == 200
+    assert "Receive Lightning" in wallet_page.text
+    assert "alice@safebox.example" in wallet_page.text
+    assert 'class="lightning-address-qr"' in wallet_page.text
+    assert "Lightning address QR code" in wallet_page.text
+    assert expected_lnurl in wallet_page.text
+    assert "<svg" in wallet_page.text
+
+
+def test_wallet_hides_lightning_qr_when_provider_is_disabled(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    acorn = main_module.Acorn(
+        nsec=TEST_NSEC,
+        home_relay="wss://relay.one.example",
+        relays=["wss://relay.one.example"],
+    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "alice",
+            },
+        )
+        wallet_page = client.get("/wallet")
+
+    assert "NIP-05 address" in wallet_page.text
+    assert "Receive Lightning" not in wallet_page.text
+    assert '<div class="lightning-address-qr"' not in wallet_page.text
+
+
 def test_handle_and_component_uniqueness_are_enforced(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
+from bech32 import bech32_decode, convertbits
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
@@ -18,6 +19,28 @@ from app.provider_payments import (
     process_provider_payments_once,
     update_provider_payment,
 )
+
+
+def test_encode_lnurl_round_trips_to_payment_endpoint() -> None:
+    endpoint = "https://safebox.example/.well-known/lnurlp/alice"
+
+    encoded = lnurl_module.encode_lnurl(endpoint)
+    hrp, words = bech32_decode(encoded)
+    decoded = convertbits(words, 5, 8, False)
+
+    assert encoded.startswith("LNURL1")
+    assert encoded == encoded.upper()
+    assert hrp == "lnurl"
+    assert bytes(decoded).decode("utf-8") == endpoint
+
+
+def test_encode_lnurl_rejects_non_url_payload() -> None:
+    try:
+        lnurl_module.encode_lnurl("alice@safebox.example")
+    except ValueError as exc:
+        assert "absolute HTTP(S) URL" in str(exc)
+    else:
+        raise AssertionError("invalid LNURL input was accepted")
 
 
 def payment_settings(tmp_path) -> Settings:

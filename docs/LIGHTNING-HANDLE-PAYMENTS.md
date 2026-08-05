@@ -9,6 +9,8 @@ This complete path has been deployed and verified with a real Lightning
 payment. That validates the process boundary and interoperability path; it does
 not remove the production release gates documented below.
 
+![Illustrated flow from an external Lightning wallet through Safebox Web, a durable payment job, the singleton service Acorn and mint, a gift-wrapped relay delivery, and finally into the recipient Acorn balance.](assets/lightning-to-acorn-payment-flow.png)
+
 ```text
 Lightning wallet
       |
@@ -31,6 +33,27 @@ The implementation follows the basic two-request
 returns `callback`, `minSendable`, `maxSendable`, serialized `metadata`, and
 `tag=payRequest`; the callback accepts `amount` in millisatoshis and returns a
 BOLT11 invoice as `pr`. Comments are supported up to the advertised limit.
+
+## Connected-wallet QR code
+
+When this provider path is enabled, the connected-wallet page presents a QR
+code for an Acorn that has claimed a handle. Safebox constructs the public
+HTTPS discovery endpoint:
+
+```text
+https://example.com/.well-known/lnurlp/alice
+```
+
+It converts the UTF-8 URL bytes from 8-bit groups to 5-bit groups and encodes
+them with Bech32 using the `lnurl` human-readable prefix. The uppercase
+`LNURL1...` result is the QR payload. This follows the established Safebox 2
+behavior and lets an ordinary Lightning wallet scan the address without
+knowing anything about Acorn or the provider's internal ecash delivery.
+
+The QR is displayed only when the connected Acorn has a claimed handle and
+`SAFEBOX_SERVICE_ACORN_ENABLED=true`. Its URL is derived from the externally
+visible request host and scheme, so production depends on the trusted reverse
+proxy supplying the correct HTTPS forwarded headers.
 
 ## Recipient registration
 

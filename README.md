@@ -48,6 +48,8 @@ The initial provider flow is documented in
 Concurrency boundaries and the PostgreSQL hardening path are documented in
 [Concurrency and Provider-Job Coordination](docs/CONCURRENCY-AND-JOB-COORDINATION.md).
 
+![From an external Lightning payment to the registered recipient Acorn balance.](docs/assets/lightning-to-acorn-payment-flow.png)
+
 The deposit flow requests a Lightning invoice from the Acorn home mint and
 renders it as both a QR code and copyable text. It performs no browser polling.
 The user explicitly indicates that the invoice has been paid, after which
@@ -67,6 +69,13 @@ persist the accepted proofs as normal wallet state, and record the resulting
 credits in transaction history. Merely viewing the wallet or transaction
 history remains read-only; receiving ecash is a separate CSRF-protected
 mutation initiated by the user.
+
+When the standalone Lightning provider is enabled and the connected Acorn has
+claimed a handle, the wallet page also presents its Lightning address as a QR
+code. The QR payload is the uppercase Bech32 `LNURL1...` encoding of the
+address's HTTPS `/.well-known/lnurlp/{handle}` endpoint, matching the
+interoperable format used by Safebox 2. The QR is omitted when no handle is
+claimed or the provider feature is disabled.
 
 Deposit quote state is not kept in a database or server-side session. The quote
 identifier, amount, mint, and invoice are encrypted and authenticated in a

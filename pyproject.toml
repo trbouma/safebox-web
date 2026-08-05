@@ -17,6 +17,7 @@ python-dotenv = ">=1,<2"
 qrcode = ">=7.4,<9"
 sqlmodel = ">=0.0.22,<0.1"
 alembic = ">=1.14,<2"
+bech32 = ">=1.2,<2"
 safebox-acorn = { git = "https://github.com/trbouma/safebox-acorn.git", branch = "main" }
 
 [tool.poetry.group.dev.dependencies]
