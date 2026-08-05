@@ -1,5 +1,8 @@
 "use strict";
 
+// Progressive enhancement only: never intercept submission or own workflow
+// state. Every form must remain fully functional through normal HTTP behavior.
+
 document.addEventListener("submit", (event) => {
   const form = event.target;
   if (

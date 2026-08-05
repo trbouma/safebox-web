@@ -109,3 +109,12 @@ def get_receive_acorn(acorn: LoadedAcornDependency) -> Acorn:
 
 
 ReceiveAcornDependency = Annotated[Acorn, Depends(get_receive_acorn)]
+
+
+def get_record_acorn(acorn: LoadedAcornDependency) -> Acorn:
+    """Make the private-record mutation boundary explicit."""
+
+    return acorn
+
+
+RecordAcornDependency = Annotated[Acorn, Depends(get_record_acorn)]

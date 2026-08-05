@@ -32,6 +32,7 @@ from app.dependencies import (
     LoadedAcornDependency,
     PaymentAcornDependency,
     ReceiveAcornDependency,
+    RecordAcornDependency,
 )
 from app.models import ClaimedHandle
 from app.lnurl_pay import encode_lnurl, router as lnurl_pay_router
@@ -144,6 +145,7 @@ def _page(title: str, body: str) -> str:
     body {{ font-family: system-ui, sans-serif; max-width: 42rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }}
     label {{ display: block; margin-top: 1rem; }}
     input, select, textarea, button {{ box-sizing: border-box; font: inherit; padding: .6rem; width: 100%; }}
+    input[type="checkbox"] {{ width: auto; margin-right: .45rem; }}
     textarea {{ min-height: 7rem; }}
     button {{ cursor: pointer; margin-top: 1.25rem; }}
     button:disabled {{ cursor: wait; opacity: .65; }}
@@ -449,6 +451,53 @@ def _transactions_page(
 <hr>
 {_transaction_history_html(entries)}
 <p><a href="/wallet">Return to wallet</a></p>""",
+    )
+
+
+def _record_form(
+    csrf_token: str,
+    *,
+    label: str = "",
+    payload: str = "",
+    payload_format: str = "text",
+    updating: bool = False,
+    error: str | None = None,
+) -> str:
+    """Render the add/update form without retaining record data server-side."""
+
+    title = "Update private record" if updating else "Add private record"
+    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
+    readonly = " readonly" if updating else ""
+    text_selected = " selected" if payload_format == "text" else ""
+    json_selected = " selected" if payload_format == "json" else ""
+    return _page(
+        title,
+        f"""
+<p><a href="/records">← Back to records</a></p>
+{error_html}
+<p>The label and payload are encrypted by Acorn and written to the bootstrap
+relay. Safebox does not store a server-side copy.</p>
+<form method="post" action="/record/save" autocomplete="off"
+      data-progress-message="Encrypting, publishing, and verifying the private record. Please wait."
+      data-progress-button="Saving record…">
+  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
+  <label for="label">Record label</label>
+  <input id="label" name="label" type="text" maxlength="200" required
+         value="{escape(label, quote=True)}"{readonly}>
+  <label for="payload_format">Content format</label>
+  <select id="payload_format" name="payload_format">
+    <option value="text"{text_selected}>Text</option>
+    <option value="json"{json_selected}>JSON</option>
+  </select>
+  <label for="payload">Private record contents</label>
+  <textarea id="payload" name="payload" maxlength="262144" required>{escape(payload)}</textarea>
+  <label>
+    <input type="checkbox" name="confirmed" value="yes" required>
+    Save this encrypted record. If the label already exists, replace its
+    current value.
+  </label>
+  <button type="submit">{escape(title)}</button>
+</form>""",
     )
 
 
@@ -823,9 +872,13 @@ different Acorn.</p>
     ):
         settings = request.app.state.settings
         if not CsrfProtector(settings).verify(csrf_token):
-            return JSONResponse(
+            return HTMLResponse(
+                _login_form(
+                    settings.default_bootstrap_relay,
+                    CsrfProtector(settings).issue(),
+                    "The form token is invalid or expired. Reload and try again.",
+                ),
                 status_code=403,
-                content={"detail": "Form token is invalid or expired; reload the login page"},
             )
         try:
             credentials = credentials_from_login(
@@ -858,9 +911,13 @@ different Acorn.</p>
     @app.post("/logout")
     async def logout(request: Request, csrf_token: str = Form(...)):
         if not CsrfProtector(request.app.state.settings).verify(csrf_token):
-            return JSONResponse(
+            return HTMLResponse(
+                _page(
+                    "Unable to disconnect",
+                    '<p class="error">The form token is invalid or expired.</p>'
+                    '<p><a href="/wallet">Return to wallet</a></p>',
+                ),
                 status_code=403,
-                content={"detail": "Form token is invalid or expired; reload the page"},
             )
         response = RedirectResponse("/", status_code=303)
         response.delete_cookie(SECURE_COOKIE_NAME, path="/", secure=True, httponly=True)
@@ -1646,11 +1703,181 @@ by the web application.</p>
             content = "<p>No private user records were found.</p>"
         return _page(
             "Private records",
-            content + '<p><a href="/wallet">Return to wallet</a></p>',
+            '<p><a href="/record/edit">Add a private record</a></p>'
+            + content
+            + '<p><a href="/wallet">Return to wallet</a></p>',
+        )
+
+    @app.get("/record/edit", response_class=HTMLResponse)
+    async def edit_record_form(
+        request: Request,
+        acorn: LoadedAcornDependency,
+        label: str | None = None,
+    ) -> str:
+        settings = request.app.state.settings
+        record_label = str(label or "").strip()
+        if not record_label:
+            return _record_form(CsrfProtector(settings).issue())
+
+        try:
+            record_value = await asyncio.wait_for(
+                acorn.get_record_safebox(record_name=record_label),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except TimeoutError:
+            return HTMLResponse(
+                _record_form(
+                    CsrfProtector(settings).issue(),
+                    label=record_label,
+                    updating=True,
+                    error="Timed out while loading the record for editing.",
+                ),
+                status_code=504,
+            )
+        except ValueError:
+            return HTMLResponse(
+                _record_form(
+                    CsrfProtector(settings).issue(),
+                    label=record_label,
+                    error="The requested record was not found.",
+                ),
+                status_code=404,
+            )
+        except Exception as exc:
+            logger.warning(
+                "record edit lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _record_form(
+                    CsrfProtector(settings).issue(),
+                    label=record_label,
+                    updating=True,
+                    error="Unable to load the record from the bootstrap relay.",
+                ),
+                status_code=502,
+            )
+
+        value = record_value.payload
+        if isinstance(value, str):
+            rendered_payload = value
+            payload_format = "text"
+        else:
+            rendered_payload = json.dumps(
+                value,
+                indent=2,
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            )
+            payload_format = "json"
+        return _record_form(
+            CsrfProtector(settings).issue(),
+            label=record_label,
+            payload=rendered_payload,
+            payload_format=payload_format,
+            updating=True,
+        )
+
+    @app.post("/record/save", response_class=HTMLResponse)
+    async def save_record(
+        request: Request,
+        acorn: RecordAcornDependency,
+        csrf_token: str = Form(...),
+        label: str = Form(...),
+        payload: str = Form(...),
+        payload_format: str = Form("text"),
+        confirmed: str | None = Form(None),
+    ):
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+        record_label = str(label).strip()
+        record_payload = str(payload)
+        selected_format = str(payload_format).strip().lower()
+
+        def save_error(message: str, status_code: int = 400) -> HTMLResponse:
+            return HTMLResponse(
+                _record_form(
+                    form_token.issue(),
+                    label=record_label,
+                    payload=record_payload,
+                    payload_format=selected_format,
+                    error=message,
+                ),
+                status_code=status_code,
+            )
+
+        if not form_token.verify(csrf_token):
+            return save_error(
+                "The form token is invalid or expired. Review the record again.",
+                403,
+            )
+        if confirmed != "yes":
+            return save_error("Explicit confirmation is required.")
+        if not record_label:
+            return save_error("Record label is required.")
+        if len(record_label) > 200 or any(
+            character in record_label for character in ("\x00", "\r", "\n")
+        ):
+            return save_error(
+                "Record label must be 200 characters or fewer and remain on one line."
+            )
+        if not record_payload.strip():
+            return save_error("Record contents are required.")
+        if len(record_payload) > 262_144:
+            return save_error("Record contents must be 262144 characters or fewer.")
+        if selected_format not in {"text", "json"}:
+            return save_error("Choose text or JSON as the record content format.")
+        if selected_format == "json":
+            try:
+                stored_payload = json.loads(record_payload)
+            except json.JSONDecodeError:
+                return save_error("JSON record contents must contain valid JSON.")
+        else:
+            stored_payload = record_payload
+
+        try:
+            await asyncio.wait_for(
+                acorn.put_record(
+                    record_name=record_label,
+                    record_value=stored_payload,
+                    record_type="generic",
+                    record_kind=37375,
+                    return_result=True,
+                ),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except TimeoutError:
+            return save_error(
+                "The save timed out and its outcome is uncertain. Reload the record "
+                "before trying again.",
+                504,
+            )
+        except ValueError as exc:
+            return save_error(str(exc))
+        except Exception as exc:
+            logger.warning(
+                "private record save failed error_type=%s",
+                type(exc).__name__,
+            )
+            return save_error(
+                "Safebox could not publish and verify the private record. Reload "
+                "the record before trying again.",
+                502,
+            )
+
+        return RedirectResponse(
+            f'/record?{urlencode({"label": record_label, "saved": "1"})}',
+            status_code=303,
         )
 
     @app.get("/record", response_class=HTMLResponse)
-    async def record(request: Request, label: str, acorn: LoadedAcornDependency):
+    async def record(
+        request: Request,
+        label: str,
+        acorn: LoadedAcornDependency,
+        saved: bool = False,
+    ):
         settings = request.app.state.settings
         try:
             record_value = await asyncio.wait_for(
@@ -1703,8 +1930,10 @@ by the web application.</p>
         return _page(
             label,
             f"""
+{'<p role="status"><strong>Private record saved and verified.</strong></p>' if saved else ''}
 <p>Type: <code>{escape(str(record_value.type))}</code></p>
 <pre>{escape(rendered_payload)}</pre>
+<p><a href="/record/edit?{urlencode({"label": label})}">Edit this record</a></p>
 <p><a href="/records">Return to records</a></p>""",
         )
 

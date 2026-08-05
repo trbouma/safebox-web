@@ -107,6 +107,7 @@ class FakeLoadedAcorn:
         self.payments: list[dict] = []
         self.deposit_calls: list[int] = []
         self.quote_checks: list[tuple[str, int]] = []
+        self.record_put_calls: list[dict] = []
         self.history_entries: list[dict] = list(transaction_history or [])
         self.receive_result = receive_result or {
             "queried": 0,
@@ -143,6 +144,15 @@ class FakeLoadedAcorn:
             }
 
         return Record()
+
+    async def put_record(self, **kwargs):
+        self.record_put_calls.append(kwargs)
+        return {
+            "status": "OK",
+            "label": kwargs["record_name"],
+            "event_id": "record-event-1",
+            "verified": True,
+        }
 
     async def pay_multi(self, amount: int, lnaddress: str, comment: str):
         self.payments.append(
@@ -1097,6 +1107,7 @@ def test_record_index_links_encoded_labels() -> None:
     assert "/record?label=Field+Notes" in response.text
     assert "/record?label=Travel%2F2026" in response.text
     assert "/record?label=A+%26+B" in response.text
+    assert 'href="/record/edit"' in response.text
 
 
 def test_record_detail_renders_escaped_payload() -> None:
@@ -1110,6 +1121,97 @@ def test_record_detail_renders_escaped_payload() -> None:
     assert "Field Notes" in response.text
     assert "&lt;script&gt;" in response.text
     assert "<script>" not in response.text
+    assert "/record/edit?label=Field+Notes" in response.text
+
+
+def test_record_edit_form_loads_and_escapes_existing_payload() -> None:
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/record/edit", params={"label": "Field Notes"})
+
+    assert response.status_code == 200
+    assert "Update private record" in response.text
+    assert 'value="Field Notes"' in response.text
+    assert 'value="Field Notes" readonly' in response.text
+    assert '<option value="json" selected>JSON</option>' in response.text
+    assert "&lt;script&gt;alert" in response.text
+    assert "<script>alert" not in response.text
+
+
+def test_record_save_encrypts_publishes_and_verifies() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/save",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Field Notes",
+            "payload": "A private update",
+            "confirmed": "yes",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/record?label=Field+Notes&saved=1"
+    assert acorn.record_put_calls == [
+        {
+            "record_name": "Field Notes",
+            "record_value": "A private update",
+            "record_type": "generic",
+            "record_kind": 37375,
+            "return_result": True,
+        }
+    ]
+
+
+def test_record_save_requires_confirmation_without_mutating() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/save",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Field Notes",
+            "payload": "Do not store",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Explicit confirmation is required" in response.text
+    assert acorn.record_put_calls == []
+
+
+def test_record_save_preserves_structured_json_payload() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/save",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Preferences",
+            "payload": '{"theme":"green","alerts":true}',
+            "payload_format": "json",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert acorn.record_put_calls[0]["record_value"] == {
+        "theme": "green",
+        "alerts": True,
+    }
 
 
 def test_loopback_login_accepts_matching_browser_origin() -> None:
@@ -1175,7 +1277,8 @@ def test_null_origin_without_valid_form_token_is_rejected() -> None:
     )
 
     assert response.status_code == 403
-    assert "Form token" in response.json()["detail"]
+    assert response.headers["content-type"].startswith("text/html")
+    assert "form token is invalid" in response.text.lower()
 
 
 def test_login_rejects_cross_origin_submission() -> None:

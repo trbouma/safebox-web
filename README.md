@@ -3,6 +3,11 @@
 Safebox Web is a minimal FastAPI interface for the installable
 [Safebox Acorn](https://github.com/trbouma/safebox-acorn) component.
 
+The browser interface follows a documented
+[server-rendered hypermedia architecture](docs/HYPERMEDIA-ARCHITECTURE.md).
+Application and wallet logic remains in FastAPI and Acorn; browser JavaScript
+is limited to optional form-progress feedback.
+
 This implementation intentionally provides:
 
 - creation of a new Acorn with a selected home relay and home mint;
@@ -13,7 +18,7 @@ This implementation intentionally provides:
 - relay-backed wallet loading and balance display;
 - a responsive transaction-history view with explicit incoming-ecash receipt;
 - authenticated NIP-05 handle claiming and public resolution;
-- private-record label listing and individual record retrieval;
+- private-record label listing, retrieval, creation, and user-confirmed update;
 - user-confirmed Lightning deposits through the Acorn home mint;
 - confirmed Lightning-address payments through Acorn;
 - an initial LNURL-pay path for receiving Lightning at claimed handles and
