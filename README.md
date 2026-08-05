@@ -364,11 +364,17 @@ SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
 SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_WEB_WORKERS=1
 SAFEBOX_SERVICE_ACORN_ENABLED=true
+SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800
 SAFEBOX_SERVICE_ACORN_SHUTDOWN_RECIPIENT=<provider recovery npub or NIP-05>
 SAFEBOX_BIND_ADDRESS=127.0.0.1
 SAFEBOX_PORT=8000
 FORWARDED_ALLOW_IPS=127.0.0.1
 ```
+
+The service gift-wrap retention variable defaults to seven days when absent.
+Set it explicitly to `0` to omit NIP-40 expiration tags; values from `3600` to
+`2592000` select a retention period from one hour to 30 days. Relay expiry is
+advisory and does not guarantee physical erasure.
 
 `FORWARDED_ALLOW_IPS` identifies the immediate reverse proxy, not the browser
 or public client. Replace the loopback default when the proxy connects from the

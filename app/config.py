@@ -22,6 +22,37 @@ def _env_bool(name: str, default: bool = False) -> bool:
     raise RuntimeError(f"{name} must be true or false")
 
 
+DEFAULT_GIFT_WRAP_RETENTION_SECONDS = 7 * 24 * 60 * 60
+MIN_GIFT_WRAP_RETENTION_SECONDS = 60 * 60
+MAX_GIFT_WRAP_RETENTION_SECONDS = 30 * 24 * 60 * 60
+
+
+def _gift_wrap_retention_from_env() -> int | None:
+    raw_value = os.getenv(
+        "SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS",
+        str(DEFAULT_GIFT_WRAP_RETENTION_SECONDS),
+    ).strip().lower()
+    try:
+        return None if raw_value in {"", "0", "none", "off"} else int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(
+            "SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS must be an "
+            "integer number of seconds, or 0 to disable"
+        ) from exc
+
+
+def _validate_gift_wrap_retention(value: int | None) -> None:
+    if value is not None and not (
+        MIN_GIFT_WRAP_RETENTION_SECONDS
+        <= value
+        <= MAX_GIFT_WRAP_RETENTION_SECONDS
+    ):
+        raise ValueError(
+            "SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS must be "
+            "between 3600 and 2592000, or 0 to disable"
+        )
+
+
 @dataclass(frozen=True)
 class ServiceAcornSettings:
     """Configuration for the standalone provider-wallet worker."""
@@ -34,6 +65,9 @@ class ServiceAcornSettings:
     service_acorn_home_relay: str = "wss://relay.getsafebox.app"
     service_acorn_home_mint: str = "https://mint.getsafebox.app"
     service_acorn_state_file: str = "data/service-acorn.json"
+    service_acorn_gift_wrap_retention_seconds: int | None = (
+        DEFAULT_GIFT_WRAP_RETENTION_SECONDS
+    )
     service_acorn_shutdown_recipient: str | None = None
     service_acorn_shutdown_relay: str | None = None
 
@@ -44,6 +78,9 @@ class ServiceAcornSettings:
             raise ValueError("SAFEBOX_PAYMENT_TIMEOUT_SECONDS must be positive")
         if self.service_acorn_poll_seconds <= 0:
             raise ValueError("SAFEBOX_SERVICE_ACORN_POLL_SECONDS must be positive")
+        _validate_gift_wrap_retention(
+            self.service_acorn_gift_wrap_retention_seconds
+        )
         if self.service_acorn_enabled:
             if not self.service_acorn_home_relay.strip():
                 raise ValueError("SAFEBOX_SERVICE_ACORN_HOME_RELAY is required")
@@ -65,6 +102,7 @@ class ServiceAcornSettings:
             poll_seconds = float(os.getenv("SAFEBOX_SERVICE_ACORN_POLL_SECONDS", "0.5"))
         except ValueError as exc:
             raise RuntimeError("Safebox Acorn timeout settings must be numbers") from exc
+        retention_seconds = _gift_wrap_retention_from_env()
         shutdown_recipient = os.getenv(
             "SAFEBOX_SERVICE_ACORN_SHUTDOWN_RECIPIENT", ""
         ).strip()
@@ -91,6 +129,7 @@ class ServiceAcornSettings:
                 "SAFEBOX_SERVICE_ACORN_STATE_FILE",
                 "data/service-acorn.json",
             ).strip(),
+            service_acorn_gift_wrap_retention_seconds=retention_seconds,
             service_acorn_shutdown_recipient=shutdown_recipient or None,
             service_acorn_shutdown_relay=shutdown_relay or None,
         )
@@ -115,6 +154,9 @@ class Settings:
     service_acorn_home_relay: str = "wss://relay.getsafebox.app"
     service_acorn_home_mint: str = "https://mint.getsafebox.app"
     service_acorn_state_file: str = "data/service-acorn.json"
+    service_acorn_gift_wrap_retention_seconds: int | None = (
+        DEFAULT_GIFT_WRAP_RETENTION_SECONDS
+    )
     service_acorn_shutdown_recipient: str | None = None
     service_acorn_shutdown_relay: str | None = None
 
@@ -141,6 +183,9 @@ class Settings:
             )
         if not 0 <= self.lnurl_comment_allowed <= 1000:
             raise ValueError("SAFEBOX_LNURL_COMMENT_ALLOWED must be between 0 and 1000")
+        _validate_gift_wrap_retention(
+            self.service_acorn_gift_wrap_retention_seconds
+        )
         if self.service_acorn_enabled:
             if not self.service_acorn_home_relay.strip():
                 raise ValueError("SAFEBOX_SERVICE_ACORN_HOME_RELAY is required")
@@ -229,6 +274,9 @@ class Settings:
                 "SAFEBOX_SERVICE_ACORN_STATE_FILE",
                 "data/service-acorn.json",
             ).strip(),
+            service_acorn_gift_wrap_retention_seconds=(
+                _gift_wrap_retention_from_env()
+            ),
             service_acorn_shutdown_recipient=shutdown_recipient or None,
             service_acorn_shutdown_relay=shutdown_relay or None,
         )

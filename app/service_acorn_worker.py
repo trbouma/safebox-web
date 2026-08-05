@@ -76,7 +76,13 @@ async def run_worker(
         try:
             while not worker_stop.is_set():
                 try:
-                    changed = await process_provider_payments_once(engine, runtime.acorn)
+                    changed = await process_provider_payments_once(
+                        engine,
+                        runtime.acorn,
+                        gift_wrap_retention_seconds=(
+                            settings.service_acorn_gift_wrap_retention_seconds
+                        ),
+                    )
                 except Exception:
                     logger.exception("service Acorn provider-payment cycle failed")
                     changed = False

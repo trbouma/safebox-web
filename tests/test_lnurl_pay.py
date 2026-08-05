@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from time import time
 from types import SimpleNamespace
 
 from bech32 import bech32_decode, convertbits
@@ -183,7 +184,14 @@ def test_worker_creates_invoice_settles_and_delivers_ecash(tmp_path) -> None:
     engine, payment_id = queued_payment(tmp_path)
     acorn = FakeProviderAcorn()
 
-    assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
+    before = int(time())
+    assert asyncio.run(
+        process_provider_payments_once(
+            engine,
+            acorn,
+            gift_wrap_retention_seconds=3600,
+        )
+    ) is True
 
     payment = get_provider_payment(engine, payment_id)
     assert payment.status == "DELIVERED"
@@ -194,6 +202,7 @@ def test_worker_creates_invoice_settles_and_delivers_ecash(tmp_path) -> None:
     assert acorn.check_calls[0]["mint"] == "mint.example.com"
     assert acorn.delivery_calls[0]["recipient"] == "npub1alice"
     assert acorn.delivery_calls[0]["relay"] == "wss://relay.example.com"
+    assert before + 3600 <= acorn.delivery_calls[0]["expiration"] <= int(time()) + 3600
     engine.dispose()
 
 

@@ -32,6 +32,7 @@ SAFEBOX_SERVICE_ACORN_ENABLED=true
 SAFEBOX_SERVICE_ACORN_HOME_RELAY=wss://relay.getsafebox.app
 SAFEBOX_SERVICE_ACORN_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_SERVICE_ACORN_STATE_FILE=data/service-acorn.json
+SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800
 ```
 
 Run it directly during development:
@@ -65,6 +66,24 @@ Docker volume. It contains the service `nsec` in plaintext with filesystem mode
 copy it. It is written before relay initialization so an interrupted first
 start does not abandon the key.
 
+The worker adds a NIP-40 `expiration` tag to each gift-wrapped ecash delivery.
+Configuration behavior is explicit:
+
+| Environment value | Behavior |
+| --- | --- |
+| Variable absent | Use the seven-day default (`604800` seconds). |
+| `3600` through `2592000` | Expire from one hour through 30 days after publication. |
+| `0`, blank, `none`, or `off` | Do not add an expiration tag. |
+
+The expiration is signed into the transient kind `1059` outer event. A
+supporting relay should stop serving the event after expiry and should delete
+it, but enforcement and physical erasure remain relay policy.
+NIP-40 expiration is therefore retention guidance, not a security guarantee.
+The retention clock starts when the transfer is published, not when the
+recipient accepts it. An expired, unclaimed gift wrap may make the ecash
+delivery unavailable, so operators must choose a period appropriate to the
+recipient workflow and retain the durable provider-payment record for review.
+
 The current SQLite Compose deployment mounts the same `/app/data` volume into
 both containers. The web process does not load the recovery file, but this is
 not strict filesystem isolation. Moving the file to a worker-only volume is a
@@ -80,9 +99,21 @@ This persistence is necessary because a Lightning invoice may settle during or
 after a restart. Burning on every process stop could destroy the wallet while a
 provider obligation is still outstanding.
 
+The persisted service `nsec` is independent of gift-wrap expiration. Each
+NIP-59 outer event still uses a one-use transient signing key for privacy. The
+service key preserves the provider wallet and its operational continuity; the
+NIP-40 tag gives the relay a signed expiry instruction without requiring the
+worker to retain every transient private key.
+
 Never run two service Acorn worker processes against the same recovery file.
 The Acorn proof state has one process owner. Multiple web workers are allowed
 because they do not load or mutate this provider wallet.
+
+The service key rotates only through an explicit retirement. Stop the worker,
+run the retirement command below, verify that any remaining balance has been
+swept and the recovery file removed, and then start the worker again. The next
+start generates and persists a new `nsec`. Ordinary restarts and deployments
+must never be treated as key rotation.
 
 ## Explicit retirement
 

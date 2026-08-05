@@ -104,3 +104,23 @@ def test_worker_settings_do_not_require_web_cookie_key(tmp_path, monkeypatch) ->
     settings = ServiceAcornSettings.from_env()
 
     assert settings.service_acorn_enabled is True
+    assert settings.service_acorn_gift_wrap_retention_seconds == 7 * 24 * 60 * 60
+
+
+def test_worker_gift_wrap_retention_can_be_disabled(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SAFEBOX_SERVICE_ACORN_ENABLED", "true")
+    monkeypatch.setenv("SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS", "0")
+
+    settings = ServiceAcornSettings.from_env()
+
+    assert settings.service_acorn_gift_wrap_retention_seconds is None
+
+
+@pytest.mark.parametrize("seconds", [3599, 2_592_001])
+def test_worker_rejects_out_of_range_gift_wrap_retention(tmp_path, seconds) -> None:
+    with pytest.raises(ValueError, match="between 3600 and 2592000"):
+        worker_settings(
+            tmp_path,
+            service_acorn_gift_wrap_retention_seconds=seconds,
+        )

@@ -86,6 +86,53 @@ def _relationship_visual() -> str:
 </section>"""
 
 
+def _humanize_retention(seconds: int) -> str:
+    """Present a configured retention period in an intuitive exact unit."""
+
+    units = (
+        (30 * 24 * 60 * 60, "month"),
+        (7 * 24 * 60 * 60, "week"),
+        (24 * 60 * 60, "day"),
+        (60 * 60, "hour"),
+    )
+    for unit_seconds, unit_name in units:
+        if seconds >= unit_seconds and seconds % unit_seconds == 0:
+            quantity = seconds // unit_seconds
+            suffix = "" if quantity == 1 else "s"
+            return f"{quantity} {unit_name}{suffix}"
+
+    hours = seconds / (60 * 60)
+    quantity = f"{hours:.2f}".rstrip("0").rstrip(".")
+    return f"{quantity} hours"
+
+
+def _ecash_retention_notice(settings: Settings) -> str:
+    """Explain the provider gift-wrap retention policy to wallet users."""
+
+    if not settings.service_acorn_enabled:
+        return ""
+    retention = settings.service_acorn_gift_wrap_retention_seconds
+    if retention is None:
+        message = (
+            "Safebox does not request automatic expiration for encrypted ecash "
+            "delivery messages. Relays may retain them according to their own policy."
+        )
+    else:
+        duration = _humanize_retention(retention)
+        message = (
+            "Safebox asks compatible relays to retain encrypted ecash delivery "
+            f"messages for {duration} after publication, then expire and delete "
+            "them. Receive incoming ecash before this period ends. Relay "
+            "enforcement and physical deletion can vary."
+        )
+    return (
+        '<aside class="retention-notice" aria-labelledby="retention-heading">'
+        '<h2 id="retention-heading">Ecash message retention</h2>'
+        f"<p>{escape(message)}</p>"
+        "</aside>"
+    )
+
+
 def _page(title: str, body: str) -> str:
     return f"""<!doctype html>
 <html lang="en">
@@ -110,6 +157,9 @@ def _page(title: str, body: str) -> str:
     .lightning-address-qr {{ display: flex; justify-content: center; margin: 1rem 0; }}
     .lightning-address-qr svg {{ width: min(100%, 20rem); height: auto; }}
     .lightning-address-card details {{ text-align: left; }}
+    .retention-notice {{ margin: 1.5rem 0; padding: 1rem; border: 1px solid #c9d1b8; border-radius: 1rem; background: #f4f7ed; }}
+    .retention-notice h2 {{ margin: 0 0 .4rem; font-size: 1.05rem; }}
+    .retention-notice p {{ margin: 0; }}
     .relationship {{ display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .8rem; align-items: center; margin: 0 0 2.5rem; }}
     .relationship-card {{ display: flex; align-items: center; gap: .75rem; min-width: 0; padding: .8rem; border: 1px solid #d8d5cc; border-radius: 1rem; background: #faf9f5; }}
     .relationship-card span {{ display: flex; min-width: 0; flex-direction: column; }}
@@ -372,6 +422,7 @@ def _transactions_page(
     entries: list[dict],
     csrf_token: str,
     notice: str | None = None,
+    retention_notice: str = "",
 ) -> str:
     """Render transaction history together with explicit incoming-ecash receipt."""
 
@@ -387,6 +438,7 @@ def _transactions_page(
   <h2 id="receive-ecash-heading">Incoming ecash</h2>
   <p>Check this Acorn's home relay for incoming ecash transfers and accept any
   valid proofs into the wallet balance.</p>
+  {retention_notice}
   <form method="post" action="/transactions/receive"
         data-progress-message="Checking for incoming ecash and refreshing accepted proofs. Please wait."
         data-progress-button="Receiving ecash…">
@@ -880,6 +932,7 @@ different Acorn.</p>
 <p>Bootstrap relay: <code>{escape(acorn.home_relay)}</code></p>
 {nip05_html}
 {lightning_address_html}
+{_ecash_retention_notice(settings)}
 {balance_status}
 <p>Wallet state was loaded from the relay for this request. It was not stored
 by the web application.</p>
@@ -1450,6 +1503,7 @@ by the web application.</p>
         return _transactions_page(
             entries,
             CsrfProtector(settings).issue(),
+            retention_notice=_ecash_retention_notice(settings),
         )
 
     @app.post("/transactions/receive", response_class=HTMLResponse)
@@ -1546,6 +1600,7 @@ by the web application.</p>
             entries,
             CsrfProtector(settings).issue(),
             notice=notice,
+            retention_notice=_ecash_retention_notice(settings),
         )
 
     @app.get("/records", response_class=HTMLResponse)

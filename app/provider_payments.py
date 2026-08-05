@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 import logging
+from time import time
 import uuid
 
 from sqlalchemy.engine import Engine
@@ -100,7 +101,12 @@ def update_provider_payment(engine: Engine, payment_id: str, **changes) -> None:
         session.commit()
 
 
-async def process_provider_payments_once(engine: Engine, acorn) -> bool:
+async def process_provider_payments_once(
+    engine: Engine,
+    acorn,
+    *,
+    gift_wrap_retention_seconds: int | None = None,
+) -> bool:
     """Process at most one item from each safe payment transition."""
 
     changed = False
@@ -179,6 +185,11 @@ async def process_provider_payments_once(engine: Engine, acorn) -> bool:
         # the recipient payment.
         update_provider_payment(engine, settled.payment_id, status="DELIVERING")
         try:
+            expiration = (
+                int(time()) + gift_wrap_retention_seconds
+                if gift_wrap_retention_seconds is not None
+                else None
+            )
             delivery = await acorn.send_ecash_transfer(
                 amount=settled.amount_sat,
                 recipient=settled.recipient_npub,
@@ -187,6 +198,7 @@ async def process_provider_payments_once(engine: Engine, acorn) -> bool:
                     settled.comment
                     or f"Lightning payment to {settled.claimed_handle}"
                 ),
+                expiration=expiration,
             )
             update_provider_payment(
                 engine,
@@ -199,10 +211,11 @@ async def process_provider_payments_once(engine: Engine, acorn) -> bool:
                 error=None,
             )
             logger.info(
-                "provider ecash delivered payment_id=%s event_id=%s relay=%s",
+                "provider ecash delivered payment_id=%s event_id=%s relay=%s expiration=%s",
                 settled.payment_id,
                 delivery.get("event_id") or delivery.get("event"),
                 settled.recipient_relay,
+                expiration,
             )
         except Exception as exc:
             logger.exception(

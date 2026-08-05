@@ -82,7 +82,13 @@ SAFEBOX_SERVICE_ACORN_HOME_RELAY=wss://relay.getsafebox.app
 SAFEBOX_SERVICE_ACORN_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_SERVICE_ACORN_STATE_FILE=data/service-acorn.json
 SAFEBOX_SERVICE_ACORN_POLL_SECONDS=0.5
+SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800
 ```
+
+If `SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS` is absent, both the
+application settings and Compose configuration default it to seven days. Set
+it explicitly to `0` to omit the NIP-40 expiration tag. Non-zero values must be
+between `3600` seconds (one hour) and `2592000` seconds (30 days).
 
 Use the actual proxy address for `FORWARDED_ALLOW_IPS` when TLS terminates on
 another machine. Never commit `.env`.

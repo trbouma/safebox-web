@@ -54,6 +54,29 @@ def valid_csrf_token() -> str:
     return CsrfProtector(TEST_SETTINGS).issue()
 
 
+def test_ecash_retention_duration_uses_readable_units() -> None:
+    assert main_module._humanize_retention(3_600) == "1 hour"
+    assert main_module._humanize_retention(7_200) == "2 hours"
+    assert main_module._humanize_retention(86_400) == "1 day"
+    assert main_module._humanize_retention(604_800) == "1 week"
+    assert main_module._humanize_retention(1_209_600) == "2 weeks"
+    assert main_module._humanize_retention(2_592_000) == "1 month"
+
+
+def test_ecash_retention_notice_explains_disabled_expiration() -> None:
+    settings = replace(
+        TEST_SETTINGS,
+        service_acorn_enabled=True,
+        service_acorn_gift_wrap_retention_seconds=None,
+    )
+
+    notice = main_module._ecash_retention_notice(settings)
+
+    assert "Ecash message retention" in notice
+    assert "does not request automatic expiration" in notice
+    assert "own policy" in notice
+
+
 def database_settings(tmp_path) -> Settings:
     return replace(
         TEST_SETTINGS,
@@ -638,6 +661,9 @@ def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
     assert "Lightning address QR code" in wallet_page.text
     assert expected_lnurl in wallet_page.text
     assert "<svg" in wallet_page.text
+    assert "Ecash message retention" in wallet_page.text
+    assert "for 1 week after publication" in wallet_page.text
+    assert "Relay enforcement and physical deletion can vary" in wallet_page.text
 
 
 def test_wallet_hides_lightning_qr_when_provider_is_disabled(tmp_path) -> None:
