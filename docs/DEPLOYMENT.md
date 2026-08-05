@@ -89,31 +89,29 @@ another machine. Never commit `.env`.
 
 ## 3. Validate and build the image
 
-Include the profile when validating and building so both process roles are
-visible in the resolved configuration:
+Validate the complete two-service configuration and build the shared image:
 
 ```sh
-docker compose --profile service-acorn config --quiet
-docker compose --profile service-acorn build
+docker compose config --quiet
+docker compose build
 ```
 
 Because both services use the same image, Docker performs one application
-build. The profile does not create a second image; it activates the second
-container definition.
+build and uses it with two different process commands.
 
 ## 4. Create and run both containers
 
 Build and start both roles in one command:
 
 ```sh
-docker compose --profile service-acorn up --detach --build
+docker compose up --detach --build
 ```
 
 The web container starts first, runs database migrations, and must become
 healthy before Compose starts the service Acorn worker. Verify both:
 
 ```sh
-docker compose --profile service-acorn ps
+docker compose ps
 docker compose logs --follow safebox-web service-acorn-worker
 ```
 
@@ -124,14 +122,16 @@ safebox-web             uvicorn app.main:app ...
 service-acorn-worker    python -m app.service_acorn_worker run
 ```
 
-Without the profile, this command starts only the web container:
+Both services are part of the normal Compose project. For an intentional
+web-only development run, target the web service explicitly:
 
 ```sh
-docker compose up --detach
+docker compose stop service-acorn-worker
+docker compose up --detach safebox-web
 ```
 
-That is intentional. Lightning payments to handles require the
-`service-acorn` profile and `SAFEBOX_SERVICE_ACORN_ENABLED=true`.
+Lightning payments to handles require both services and
+`SAFEBOX_SERVICE_ACORN_ENABLED=true`.
 
 ## 5. Verify the deployed path
 
@@ -161,13 +161,13 @@ Use small test amounts until the remaining release gates in
 Restart both roles without rebuilding:
 
 ```sh
-docker compose --profile service-acorn restart
+docker compose restart
 ```
 
 Rebuild and recreate both roles after a code or lock-file change:
 
 ```sh
-docker compose --profile service-acorn up --detach --build
+docker compose up --detach --build
 ```
 
 Follow only the provider worker:
@@ -179,13 +179,13 @@ docker compose logs --follow service-acorn-worker
 Stop both roles:
 
 ```sh
-docker compose --profile service-acorn stop
+docker compose stop
 ```
 
 Remove the containers and network while retaining the named data volume:
 
 ```sh
-docker compose --profile service-acorn down
+docker compose down
 ```
 
 Do **not** add `--volumes` or run `docker compose down -v` unless permanent
@@ -208,8 +208,8 @@ SAFEBOX_SERVICE_ACORN_SHUTDOWN_RELAY=wss://relay.getsafebox.app
 Then run:
 
 ```sh
-docker compose --profile service-acorn stop service-acorn-worker
-docker compose --profile service-acorn run --rm service-acorn-worker \
+docker compose stop service-acorn-worker
+docker compose run --rm service-acorn-worker \
   python -m app.service_acorn_worker retire
 ```
 

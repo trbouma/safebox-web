@@ -40,10 +40,10 @@ Run it directly during development:
 poetry run python -m app.service_acorn_worker run
 ```
 
-Or start the opt-in Compose profile:
+Or start the normal two-service Compose deployment:
 
 ```sh
-docker compose --profile service-acorn up -d
+docker compose up -d
 docker compose logs -f service-acorn-worker
 ```
 
@@ -101,7 +101,7 @@ poetry run python -m app.service_acorn_worker retire
 For Docker Compose:
 
 ```sh
-docker compose --profile service-acorn run --rm service-acorn-worker \
+docker compose run --rm service-acorn-worker \
   python -m app.service_acorn_worker retire
 ```
 

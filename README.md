@@ -18,7 +18,7 @@ This implementation intentionally provides:
 - confirmed Lightning-address payments through Acorn;
 - an initial LNURL-pay path for receiving Lightning at claimed handles and
   delivering the settled value as ecash;
-- an optional standalone service Acorn worker for Lightning settlement and
+- a companion standalone service Acorn worker for Lightning settlement and
   ecash delivery;
 - a connected-wallet key-information page and redacted session API; and
 - logout.
@@ -363,7 +363,7 @@ SAFEBOX_COOKIE_KEY=<generated Fernet-compatible key>
 SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
 SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_WEB_WORKERS=1
-SAFEBOX_SERVICE_ACORN_ENABLED=false
+SAFEBOX_SERVICE_ACORN_ENABLED=true
 SAFEBOX_SERVICE_ACORN_SHUTDOWN_RECIPIENT=<provider recovery npub or NIP-05>
 SAFEBOX_BIND_ADDRESS=127.0.0.1
 SAFEBOX_PORT=8000
@@ -375,39 +375,47 @@ or public client. Replace the loopback default when the proxy connects from the
 host's Docker bridge or from another container. Use the narrowest exact address
 or container-network range supported by the deployment.
 
-Build the shared image with both Compose roles enabled:
+Build the shared image used by both Compose roles:
 
 ```sh
-docker compose --profile service-acorn build
+docker compose build
 ```
 
 Then create and start both containers:
 
 ```sh
-docker compose --profile service-acorn up --detach
-docker compose --profile service-acorn ps
+docker compose up --detach
+docker compose ps
 docker compose logs --follow safebox-web service-acorn-worker
 ```
 
 Or build and start both in one command:
 
 ```sh
-docker compose --profile service-acorn up --detach --build
+docker compose up --detach --build
 ```
 
 Both containers use `safebox-web:local`; Compose overrides the command to run
-Uvicorn in one and the service Acorn worker in the other. Without
-`--profile service-acorn`, `docker compose up` starts only `safebox-web`.
+Uvicorn in one and the service Acorn worker in the other. Both are part of the
+normal Compose project, so ordinary `up`, `stop`, `restart`, and `down`
+commands apply to both.
 
-The web tier may use `SAFEBOX_WEB_WORKERS` greater than one. The profile still
-starts exactly one wallet-owning container. See the
+For an intentional web-only development run, target the web service explicitly:
+
+```sh
+docker compose stop service-acorn-worker
+docker compose up --detach safebox-web
+```
+
+The web tier may use `SAFEBOX_WEB_WORKERS` greater than one. The Compose project
+still starts exactly one wallet-owning worker container. See the
 [Deployment Runbook](docs/DEPLOYMENT.md) for the complete one-image/two-process
 procedure, verification, routine operations, backup boundary, and retirement.
 
 Stop the service without deleting the image:
 
 ```sh
-docker compose --profile service-acorn down
+docker compose down
 ```
 
 The Compose service requires `SAFEBOX_COOKIE_KEY`, runs with a read-only root
@@ -461,7 +469,7 @@ For each request, the dependency:
    `LoadedAcornDependency`; and
 5. passes that request-scoped component to the route.
 
-The optional provider wallet uses a separate process boundary:
+The provider wallet uses a separate process boundary:
 
 ```text
 web workers -> durable provider jobs -> one standalone service Acorn worker

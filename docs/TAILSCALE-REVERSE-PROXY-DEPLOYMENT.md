@@ -102,10 +102,10 @@ captured session cookie can recover the `nsec` contained in that session.
 Start the application:
 
 ```sh
-docker compose --profile service-acorn config --quiet
-docker compose --profile service-acorn build
-docker compose --profile service-acorn up --detach
-docker compose --profile service-acorn ps
+docker compose config --quiet
+docker compose build
+docker compose up --detach
+docker compose ps
 docker compose logs --follow safebox-web service-acorn-worker
 ```
 
