@@ -1438,6 +1438,23 @@ files = [
 ]
 
 [[package]]
+name = "jinja2"
+version = "3.1.6"
+description = "A very fast and expressive template engine."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67"},
+    {file = "jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d"},
+]
+
+[package.dependencies]
+MarkupSafe = ">=2.0"
+
+[package.extras]
+i18n = ["Babel (>=2.7)"]
+
+[[package]]
 name = "mako"
 version = "1.4.0"
 description = "A super-fast templating language that borrows the best ideas from the existing templating languages."
@@ -2658,7 +2675,7 @@ post-quantum = ["liboqs-python (>=0.14.1,<0.17.0)"]
 type = "git"
 url = "https://github.com/trbouma/safebox-acorn.git"
 reference = "main"
-resolved_reference = "b0854a08c13580204f59e6aec36ec83adc1fdc95"
+resolved_reference = "28636d4df004b0437abc2d2c365187b787fc1edc"
 
 [[package]]
 name = "secp256k1"
@@ -3477,4 +3494,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.14"
-content-hash = "6e9fd973507d376ec8e0742320856a335971d4d4bd4d1c795bc7d20b8a48884a"
+content-hash = "0dea62ead4e54c3408f62fefb4b725b30a9164b8bdbb5719d54cf4d3c5338724"

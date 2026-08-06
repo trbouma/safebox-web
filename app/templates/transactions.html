@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/wallet">← Back to wallet</a></p>
+{% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
+<section aria-labelledby="receive-ecash-heading">
+  <h2 id="receive-ecash-heading">Incoming ecash</h2>
+  <p>Check this Acorn's home relay for incoming ecash transfers and accept any
+  valid proofs into the wallet balance.</p>
+  {{ retention_notice | safe }}
+  <form method="post" action="/transactions/receive"
+        data-progress-message="Checking for incoming ecash and refreshing accepted proofs. Please wait."
+        data-progress-button="Receiving ecash…">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">Check and receive ecash</button>
+  </form>
+</section>
+<hr>
+{% if entries %}
+<section class="transaction-list" aria-label="Transaction history">
+  {% for entry in entries %}
+  <article class="transaction-card {{ entry.style }}">
+    <header class="transaction-header">
+      <span class="transaction-kind">{{ entry.direction }}</span>
+      <time class="transaction-date">{{ entry.created }}</time>
+    </header>
+    <div class="transaction-amount">{{ entry.sign }}{{ entry.amount }} sats</div>
+    <dl class="transaction-details">
+      <div><dt>Tender</dt><dd>{{ entry.tender }}</dd></div>
+      <div><dt>Fees</dt><dd>{{ entry.fees }} sats</dd></div>
+      <div><dt>Balance</dt><dd>{{ entry.balance }} sats</dd></div>
+    </dl>
+    {% if entry.comment %}<p class="transaction-note"><strong>Note:</strong> {{ entry.comment }}</p>{% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% else %}
+<p>No transaction history was found.</p>
+{% endif %}
+<p><a href="/wallet">Return to wallet</a></p>
+{% endblock %}

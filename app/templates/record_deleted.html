@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}
+<p class="error" role="alert">{{ error }}</p>
+{% else %}
+<p role="status"><strong>Deletion was requested for {{ label }}.</strong></p>
+{% if blob_requested and blob_deleted %}
+<p>The configured Blossom server accepted the encrypted blob deletion request.</p>
+{% elif blob_requested %}
+<p class="error">The relay deletion was requested, but Safebox could not confirm deletion of the encrypted blob.</p>
+{% endif %}
+{% if hidden_count %}
+<p>The original record was no longer visible on {{ hidden_count }} queried relay{% if hidden_count != 1 %}s{% endif %}.</p>
+{% else %}
+<p>Safebox could not confirm that the original record is already hidden by the queried relay.</p>
+{% endif %}
+{% if index_error %}
+<p class="error">The wallet record index could not be updated and may remain stale temporarily.</p>
+{% endif %}
+<p>Deletion is advisory: relays, Blossom servers, mirrors, logs, and backups may retain data.</p>
+{% endif %}
+<p><a href="/records">Return to records</a></p>
+{% if return_url %}<p><a href="{{ return_url }}">Return to the record</a></p>{% endif %}
+{% endblock %}

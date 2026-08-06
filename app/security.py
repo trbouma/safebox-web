@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import base64
 from dataclasses import asdict, dataclass
 import ipaddress
 import json
+import os
+from time import time
 from urllib.parse import urlsplit, urlunsplit
 
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from mnemonic import Mnemonic
 from monstr.encrypt import Keys
 from starlette.requests import Request
@@ -43,25 +50,110 @@ class DepositQuoteState:
 
 
 class SessionCipher:
-    """Encrypt and authenticate browser-held session credentials."""
+    """Encrypt and authenticate browser-held session credentials.
+
+    Version 2 tokens use AES-256-GCM. Unprefixed version 1 Fernet tokens remain
+    readable only so sessions issued before the migration can expire normally.
+    """
+
+    _PREFIX = "v2."
+    _PURPOSE = "safebox-web-session"
+    _AAD = b"safebox-web/session-cookie/v2"
+    _NONCE_BYTES = 12
+    _CLOCK_SKEW_SECONDS = 60
 
     def __init__(self, settings: Settings) -> None:
-        self._fernet = Fernet(settings.cookie_key.encode("ascii"))
+        encoded_key = settings.cookie_key.encode("ascii")
+        self._legacy_fernet = Fernet(encoded_key)
+        master_key = base64.urlsafe_b64decode(encoded_key)
+        session_key = HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=None,
+            info=self._AAD,
+        ).derive(master_key)
+        self._aesgcm = AESGCM(session_key)
         self._ttl = settings.session_ttl_seconds
 
     def encode(self, credentials: SessionCredentials) -> str:
         payload = json.dumps(
-            asdict(credentials), separators=(",", ":"), sort_keys=True
+            {
+                "credentials": asdict(credentials),
+                "issued_at": int(time()),
+                "purpose": self._PURPOSE,
+                "version": 2,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
         ).encode("utf-8")
-        return self._fernet.encrypt(payload).decode("ascii")
+        nonce = os.urandom(self._NONCE_BYTES)
+        ciphertext = self._aesgcm.encrypt(nonce, payload, self._AAD)
+        token = base64.urlsafe_b64encode(nonce + ciphertext).decode("ascii").rstrip("=")
+        return self._PREFIX + token
 
     def decode(self, token: str) -> SessionCredentials:
+        normalized = str(token).strip()
+        if len(normalized) >= 2 and normalized[0] == normalized[-1] == '"':
+            normalized = normalized[1:-1]
+        if normalized.startswith(self._PREFIX):
+            return self._decode_v2(normalized[len(self._PREFIX) :])
+        return self._decode_legacy(normalized)
+
+    def _decode_v2(self, token: str) -> SessionCredentials:
         try:
-            raw = self._fernet.decrypt(token.encode("ascii"), ttl=self._ttl)
+            padded_token = token + "=" * (-len(token) % 4)
+            sealed = base64.b64decode(
+                padded_token.encode("ascii"),
+                altchars=b"-_",
+                validate=True,
+            )
+            if len(sealed) <= self._NONCE_BYTES:
+                raise ValueError("session cookie is truncated")
+            nonce = sealed[: self._NONCE_BYTES]
+            ciphertext = sealed[self._NONCE_BYTES :]
+            raw = self._aesgcm.decrypt(nonce, ciphertext, self._AAD)
             payload = json.loads(raw)
-            credentials = SessionCredentials(**payload)
-        except (InvalidToken, UnicodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            if not isinstance(payload, dict):
+                raise ValueError("session cookie payload is invalid")
+            if (
+                payload.get("version") != 2
+                or payload.get("purpose") != self._PURPOSE
+            ):
+                raise ValueError("session cookie version or purpose is unsupported")
+            issued_at = payload.get("issued_at")
+            if not isinstance(issued_at, int) or isinstance(issued_at, bool):
+                raise ValueError("session cookie timestamp is invalid")
+            now = int(time())
+            if issued_at > now + self._CLOCK_SKEW_SECONDS or now - issued_at > self._ttl:
+                raise ValueError("session cookie is expired")
+            credentials = SessionCredentials(**payload["credentials"])
+        except (
+            InvalidTag,
+            UnicodeError,
+            ValueError,
+            TypeError,
+            KeyError,
+            json.JSONDecodeError,
+        ) as exc:
             raise ValueError("session cookie is invalid or expired") from exc
+        return self._validate_credentials(credentials)
+
+    def _decode_legacy(self, token: str) -> SessionCredentials:
+        try:
+            raw = self._legacy_fernet.decrypt(token.encode("ascii"), ttl=self._ttl)
+            credentials = SessionCredentials(**json.loads(raw))
+        except (
+            InvalidToken,
+            UnicodeError,
+            ValueError,
+            TypeError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise ValueError("session cookie is invalid or expired") from exc
+        return self._validate_credentials(credentials)
+
+    @staticmethod
+    def _validate_credentials(credentials: SessionCredentials) -> SessionCredentials:
         if credentials.version != 1:
             raise ValueError("session cookie version is unsupported")
         return credentials

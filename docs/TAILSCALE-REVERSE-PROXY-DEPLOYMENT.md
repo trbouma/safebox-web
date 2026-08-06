@@ -51,7 +51,7 @@ On the machine running Safebox Web, create `.env` from `.env.example`, generate
 a new cookie key, and use:
 
 ```env
-SAFEBOX_COOKIE_KEY=<new private Fernet-compatible key>
+SAFEBOX_COOKIE_KEY=<new private URL-safe 32-byte application key>
 SAFEBOX_SESSION_TTL_HOURS=720
 SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS=20
 SAFEBOX_PAYMENT_TIMEOUT_SECONDS=90
@@ -126,6 +126,7 @@ On the trusted reverse proxy, the HTTPS virtual host should contain:
 
 ```nginx
 location / {
+    client_max_body_size 11m;
     proxy_pass http://100.64.0.20:8100;
 
     proxy_set_header Host $host;

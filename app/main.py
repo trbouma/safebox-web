@@ -7,12 +7,13 @@ from contextlib import asynccontextmanager
 from html import escape
 import json
 import logging
+import mimetypes
 from pathlib import Path
 import re
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 import qrcode
 import qrcode.image.svg
@@ -20,7 +21,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from acorn import Acorn
-from acorn.func_utils import generate_seed_phrase_and_nsec, npub_to_hex
+from acorn.func_utils import (
+    generate_seed_phrase_and_nsec,
+    npub_to_hex,
+    seed_phrase_and_nsec_from_entropy,
+)
 
 from app.config import Settings
 from app.database import create_database_engine, run_migrations
@@ -51,40 +56,10 @@ from app.security import (
     normalize_bootstrap_relay,
     normalize_home_mint,
 )
+from app.templating import render_template
 
 
 logger = logging.getLogger("safebox_web.security")
-
-
-def _relationship_visual() -> str:
-    """Render the Acorn-to-Safebox relationship without external assets."""
-
-    return """
-<section class="relationship" aria-label="Acorn connected with Safebox">
-  <div class="relationship-card">
-    <svg class="relationship-mark" viewBox="0 0 88 88" aria-hidden="true">
-      <path fill="#65774a" d="M18 34c0-14 12-25 26-25s26 11 26 25H18Z"/>
-      <path fill="#465533" d="M42 12 48 0l10 5-7 12Z"/>
-      <path fill="#955522" d="M20 38h48c0 25-9 39-24 50C29 77 20 63 20 38Z"/>
-      <path d="M25 42h15v11h13v12H42v17" fill="none" stroke="#fffaf1"
-            stroke-width="5" stroke-linejoin="round"/>
-    </svg>
-    <span><strong>Acorn</strong><small>User-controlled component</small></span>
-  </div>
-  <div class="relationship-connection">
-    <span class="relationship-arrow" aria-hidden="true">↔</span>
-        <small>User-controlled session</small>
-  </div>
-  <div class="relationship-card">
-    <svg class="relationship-mark" viewBox="0 0 88 88" aria-hidden="true">
-      <rect x="4" y="4" width="80" height="80" rx="13" fill="#3d60e8"/>
-      <path d="M4 47h20V20h29V4M31 84V59h27V35h26M24 47h15V31h20v16H47v17H4"
-            fill="none" stroke="#f8f9ff" stroke-width="6"
-            stroke-linejoin="miter"/>
-    </svg>
-    <span><strong>Safebox</strong><small>Web service surface</small></span>
-  </div>
-</section>"""
 
 
 def _humanize_retention(seconds: int) -> str:
@@ -135,161 +110,20 @@ def _ecash_retention_notice(settings: Settings) -> str:
 
 
 def _page(title: str, body: str) -> str:
-    return f"""<!doctype html>
-<html lang="en" data-theme="dark">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{escape(title)} · Safebox</title>
-  <style>
-    :root {{
-      color-scheme: dark;
-      --page: #171914;
-      --text: #eef0e8;
-      --muted: #b7baae;
-      --surface: #22251e;
-      --surface-soft: #262b20;
-      --control: #20231d;
-      --border: #4a4f42;
-      --link: #bfd78c;
-      --error: #ffaaa6;
-      --progress: #c5d99d;
-      --pre: #20231d;
-      --credit: #b7d485;
-      --debit: #e9a270;
-      --advisory: #aebce5;
-      --note-border: #45493e;
-    }}
-    html[data-theme="light"] {{
-      color-scheme: light;
-      --page: #ffffff;
-      --text: #20211d;
-      --muted: #625f57;
-      --surface: #faf9f5;
-      --surface-soft: #f4f7ed;
-      --control: #ffffff;
-      --border: #d8d5cc;
-      --link: #40582b;
-      --error: #9b1c1c;
-      --progress: #465533;
-      --pre: #f4f3ef;
-      --credit: #465533;
-      --debit: #7d431b;
-      --advisory: #68769a;
-      --note-border: #e2dfd6;
-    }}
-    html {{ min-height: 100%; -webkit-text-size-adjust: 100%; background: var(--page); }}
-    body {{ font-family: system-ui, sans-serif; max-width: 42rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; overflow-wrap: break-word; background: var(--page); color: var(--text); }}
-    h1, h2 {{ line-height: 1.2; }}
-    img, svg {{ max-width: 100%; }}
-    a {{ color: var(--link); }}
-    label {{ display: block; margin-top: 1rem; }}
-    input, select, textarea, button {{ box-sizing: border-box; font: inherit; min-height: 2.75rem; padding: .6rem; width: 100%; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); }}
-    input[type="checkbox"] {{ min-height: auto; width: auto; margin-right: .45rem; }}
-    textarea {{ min-height: 7rem; }}
-    button {{ cursor: pointer; margin-top: 1.25rem; }}
-    button:disabled {{ cursor: wait; opacity: .65; }}
-    .error {{ color: var(--error); }}
-    .progress {{ margin-top: 1rem; color: var(--progress); font-weight: 650; }}
-    a, code {{ overflow-wrap: anywhere; }}
-    pre {{ background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-wrap; word-break: break-word; }}
-    .page-tools {{ display: flex; justify-content: flex-end; margin-bottom: 1rem; }}
-    .theme-toggle {{ width: auto; min-height: 2.5rem; margin: 0; padding: .4rem .7rem; background: transparent; }}
-    .invoice-qr {{ display: flex; justify-content: center; margin: 1.5rem 0; }}
-    .invoice-qr svg {{ width: min(100%, 22rem); height: auto; }}
-    .lightning-address-card {{ margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); text-align: center; }}
-    .lightning-address-qr {{ display: flex; justify-content: center; margin: 1rem 0; }}
-    .lightning-address-qr svg {{ width: min(100%, 20rem); height: auto; }}
-    .lightning-address-card details {{ text-align: left; }}
-    .retention-notice {{ margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface-soft); }}
-    .retention-notice h2 {{ margin: 0 0 .4rem; font-size: 1.05rem; }}
-    .retention-notice p {{ margin: 0; }}
-    .relationship {{ display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .8rem; align-items: center; margin: 0 0 2.5rem; }}
-    .relationship-card {{ display: flex; align-items: center; gap: .75rem; min-width: 0; padding: .8rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }}
-    .relationship-card span {{ display: flex; min-width: 0; flex-direction: column; }}
-    .relationship-card strong {{ font-size: 1.05rem; }}
-    .relationship-card small, .relationship-connection small {{ color: var(--muted); line-height: 1.25; }}
-    .relationship-mark {{ width: 3.5rem; height: 3.5rem; flex: 0 0 auto; }}
-    .relationship-connection {{ display: flex; flex-direction: column; align-items: center; text-align: center; max-width: 7rem; }}
-    .relationship-arrow {{ color: var(--link); font-size: 2rem; line-height: 1; }}
-    .transaction-list {{ display: grid; gap: 1rem; margin: 1.5rem 0; }}
-    .transaction-card {{ border: 1px solid var(--border); border-left: .35rem solid #777; border-radius: .8rem; padding: 1rem; background: var(--surface); min-width: 0; }}
-    .transaction-card.credit {{ border-left-color: var(--credit); }}
-    .transaction-card.debit {{ border-left-color: var(--debit); }}
-    .transaction-card.advisory {{ border-left-color: var(--advisory); }}
-    .transaction-header {{ display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }}
-    .transaction-kind {{ font-weight: 750; }}
-    .transaction-date {{ color: var(--muted); font-size: .92rem; }}
-    .transaction-amount {{ font-size: 1.45rem; font-weight: 750; margin: .45rem 0 .75rem; }}
-    .transaction-card.credit .transaction-amount {{ color: var(--credit); }}
-    .transaction-card.debit .transaction-amount {{ color: var(--debit); }}
-    .transaction-details {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem 1rem; margin: 0; }}
-    .transaction-details div {{ min-width: 0; }}
-    .transaction-details dt {{ color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }}
-    .transaction-details dd {{ margin: .1rem 0 0; overflow-wrap: anywhere; }}
-    .transaction-note {{ margin: .85rem 0 0; padding-top: .75rem; border-top: 1px solid var(--note-border); overflow-wrap: anywhere; }}
-    @media (max-width: 36rem) {{
-      body {{ margin: 1.25rem auto 2rem; padding: 0 .875rem; }}
-      h1 {{ font-size: 1.75rem; }}
-      h2 {{ font-size: 1.25rem; }}
-      input, select, textarea, button {{ font-size: 1rem; }}
-      button {{ min-height: 3rem; }}
-      p > a:only-child {{ display: inline-flex; min-height: 2.75rem; align-items: center; }}
-      ul, ol {{ padding-left: 1.35rem; }}
-      pre {{ margin-left: -.25rem; margin-right: -.25rem; padding: .75rem; }}
-      .relationship {{ grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .35rem; margin-bottom: 1.5rem; }}
-      .relationship-card {{ flex-direction: column; gap: .25rem; padding: .55rem .35rem; text-align: center; }}
-      .relationship-card strong {{ font-size: .95rem; }}
-      .relationship-card small, .relationship-connection small {{ font-size: .72rem; }}
-      .relationship-mark {{ width: 2.5rem; height: 2.5rem; }}
-      .relationship-connection {{ max-width: 4.5rem; }}
-      .relationship-arrow {{ font-size: 1.5rem; }}
-      .invoice-qr svg, .lightning-address-qr svg {{ width: min(100%, 17rem); }}
-      .lightning-address-card, .retention-notice, .transaction-card {{ border-radius: .7rem; padding: .85rem; }}
-      .transaction-header {{ align-items: flex-start; flex-direction: column; gap: .2rem; }}
-      .transaction-details {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-    }}
-    @media (max-width: 24rem) {{
-      .transaction-details {{ grid-template-columns: 1fr; }}
-      .relationship-connection small {{ display: none; }}
-    }}
-</style>
-  <script src="/static/theme.js" defer></script>
-  <script src="/static/forms.js" defer></script>
-</head>
-<body>
-<div class="page-tools"><button class="theme-toggle" type="button"
-  data-theme-toggle aria-label="Switch colour theme">Use light mode</button></div>
-{_relationship_visual()}<h1>{escape(title)}</h1>{body}</body>
-</html>"""
+    """Render a generic result or error page through the shared Jinja layout."""
+
+    return render_template("page.html", title=title, body=body)
 
 
 def _login_form(
     default_relay: str, csrf_token: str, error: str | None = None
 ) -> str:
-    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
-    return _page(
-        "Connect an Acorn",
-        f"""
-{error_html}
-<p>Safebox does not retain wallet state on the server. Your secret is encrypted
-into an authenticated browser cookie for this session.</p>
-<form method="post" action="/login" autocomplete="off">
-  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-  <label for="secret_type">Recovery material</label>
-  <select id="secret_type" name="secret_type">
-    <option value="nsec">nsec private key</option>
-    <option value="mnemonic">offline mnemonic</option>
-  </select>
-  <label for="secret">Secret</label>
-  <textarea id="secret" name="secret" required spellcheck="false" autocapitalize="none"></textarea>
-  <label for="bootstrap_relay">Bootstrap relay</label>
-  <input id="bootstrap_relay" name="bootstrap_relay" type="text"
-         value="{escape(default_relay, quote=True)}" required spellcheck="false">
-  <button type="submit">Connect</button>
-</form>
-<hr>
-<p>Don't have an Acorn yet? <a href="/create">Create a new Acorn</a>.</p>""",
+    return render_template(
+        "login.html",
+        title="Connect an Acorn",
+        default_relay=default_relay,
+        csrf_token=csrf_token,
+        error=error,
     )
 
 
@@ -300,38 +134,14 @@ def _create_form(
     error: str | None = None,
     mnemonic_words: str = "12",
 ) -> str:
-    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
-    words_12_selected = " selected" if mnemonic_words == "12" else ""
-    words_24_selected = " selected" if mnemonic_words == "24" else ""
-    return _page(
-        "Create a new Acorn",
-        f"""
-{error_html}
-<p>Safebox will generate a new component keypair, initialize its wallet state
-on the home relay, and start a user-controlled session.</p>
-<form method="post" action="/create" autocomplete="off">
-  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-  <label for="home_relay">Home relay</label>
-  <input id="home_relay" name="home_relay" type="text"
-         value="{escape(default_relay, quote=True)}" required spellcheck="false">
-  <label for="home_mint">Home mint</label>
-  <input id="home_mint" name="home_mint" type="text"
-         value="{escape(default_mint, quote=True)}" required spellcheck="false">
-  <label for="mnemonic_words">Offline mnemonic length</label>
-  <select id="mnemonic_words" name="mnemonic_words" required>
-    <option value="12"{words_12_selected}>12 words (default)</option>
-    <option value="24"{words_24_selected}>24 words</option>
-  </select>
-  <p class="muted">Both options can recover the Acorn. The 24-word option uses
-  256 bits of generated entropy instead of 128 bits.</p>
-  <label>
-    <input name="confirmed" type="checkbox" value="yes" required>
-    I understand that Safebox will display sensitive recovery material once the
-    new Acorn has been verified, and I must save it securely.
-  </label>
-  <button type="submit">Create Acorn</button>
-</form>
-<p><a href="/login">Connect an existing Acorn instead</a></p>""",
+    return render_template(
+        "create.html",
+        title="Create a new Acorn",
+        default_relay=default_relay,
+        default_mint=default_mint,
+        csrf_token=csrf_token,
+        error=error,
+        mnemonic_words=mnemonic_words,
     )
 
 
@@ -341,34 +151,16 @@ def _payment_form(
     error: str | None = None,
     balance_status: str | None = None,
 ) -> str:
-    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
-    return _page(
-        "Pay a Lightning address",
-        f"""
-{error_html}
-{balance_status or f'<p>Relay-visible proof total: <strong>{int(balance):,} sats</strong></p>'}
-<p>The payment amount and the mint's fee reserve must fit within one spendable
-keyset. The displayed total balance may therefore be greater than the amount
-available for one payment.</p>
-<form method="post" action="/pay" autocomplete="off"
-      data-progress-message="Payment in progress. Please wait and do not refresh this page."
-      data-progress-button="Sending payment…">
-  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-  <label for="lightning_address">Lightning address</label>
-  <input id="lightning_address" name="lightning_address" type="text"
-         placeholder="alice@example.com" required spellcheck="false" autocapitalize="none">
-  <label for="amount">Amount in sats</label>
-  <input id="amount" name="amount" type="number" min="1" step="1" required>
-  <label for="comment">Comment</label>
-  <input id="comment" name="comment" type="text" maxlength="200"
-         value="Paid from Safebox Web">
-  <label>
-    <input name="confirmed" type="checkbox" value="yes" required>
-    I confirm the recipient and amount and understand that this spends funds.
-  </label>
-  <button type="submit">Send payment</button>
-</form>
-<p><a href="/wallet">Cancel and return to wallet</a></p>""",
+    if balance_status is None:
+        balance_status = (
+            f"<p>Relay-visible proof total: <strong>{int(balance):,} sats</strong></p>"
+        )
+    return render_template(
+        "pay.html",
+        title="Pay a Lightning address",
+        balance_status=balance_status,
+        csrf_token=csrf_token,
+        error=error,
     )
 
 
@@ -428,10 +220,10 @@ def _balance_status_html(
     return relay_html + confirmed_html
 
 
-def _transaction_history_html(entries: list[dict]) -> str:
-    """Render Acorn journal entries as compact, mobile-friendly cards."""
+def _transaction_history_view(entries: list[dict]) -> list[dict]:
+    """Normalize Acorn journal entries for the transaction template."""
 
-    cards: list[str] = []
+    cards: list[dict] = []
     for entry in entries:
         if not isinstance(entry, dict):
             continue
@@ -442,45 +234,33 @@ def _transaction_history_html(entries: list[dict]) -> str:
             "D": ("Debit", "−", "debit"),
             "X": ("Advisory", "", "advisory"),
         }.get(tx_type, (tx_type or "Transaction", "", "advisory"))
-        amount = escape(str(entry.get("amount", 0)))
-        created = escape(str(entry.get("create_time") or "Unknown time"))
-        fees = escape(str(entry.get("fees") or 0))
+        amount = str(entry.get("amount", 0))
+        created = str(entry.get("create_time") or "Unknown time")
+        fees = str(entry.get("fees") or 0)
         current_balance = entry.get("current_balance")
-        balance = "—" if current_balance is None else escape(str(current_balance))
+        balance = "—" if current_balance is None else str(current_balance)
         tendered_amount = entry.get("tendered_amount")
         tendered_currency = str(entry.get("tendered_currency") or "SAT")
         tender = (
             "—"
             if tendered_amount is None
-            else f"{escape(str(tendered_amount))} {escape(tendered_currency)}"
+            else f"{tendered_amount} {tendered_currency}"
         )
         comment = str(entry.get("comment") or "").strip()
-        note = (
-            f'<p class="transaction-note"><strong>Note:</strong> {escape(comment)}</p>'
-            if comment
-            else ""
-        )
-
         cards.append(
-            f"""
-<article class="transaction-card {style}">
-  <header class="transaction-header">
-    <span class="transaction-kind">{escape(direction)}</span>
-    <time class="transaction-date">{created}</time>
-  </header>
-  <div class="transaction-amount">{sign}{amount} sats</div>
-  <dl class="transaction-details">
-    <div><dt>Tender</dt><dd>{tender}</dd></div>
-    <div><dt>Fees</dt><dd>{fees} sats</dd></div>
-    <div><dt>Balance</dt><dd>{balance} sats</dd></div>
-  </dl>
-  {note}
-</article>"""
+            {
+                "direction": direction,
+                "sign": sign,
+                "style": style,
+                "amount": amount,
+                "created": created,
+                "fees": fees,
+                "balance": balance,
+                "tender": tender,
+                "comment": comment,
+            }
         )
-
-    if not cards:
-        return "<p>No transaction history was found.</p>"
-    return '<section class="transaction-list" aria-label="Transaction history">' + "".join(cards) + "</section>"
+    return cards
 
 
 def _transactions_page(
@@ -491,29 +271,13 @@ def _transactions_page(
 ) -> str:
     """Render transaction history together with explicit incoming-ecash receipt."""
 
-    notice_html = (
-        f'<p role="status"><strong>{escape(notice)}</strong></p>' if notice else ""
-    )
-    return _page(
-        "Transaction history",
-        f"""
-<p><a href="/wallet">← Back to wallet</a></p>
-{notice_html}
-<section aria-labelledby="receive-ecash-heading">
-  <h2 id="receive-ecash-heading">Incoming ecash</h2>
-  <p>Check this Acorn's home relay for incoming ecash transfers and accept any
-  valid proofs into the wallet balance.</p>
-  {retention_notice}
-  <form method="post" action="/transactions/receive"
-        data-progress-message="Checking for incoming ecash and refreshing accepted proofs. Please wait."
-        data-progress-button="Receiving ecash…">
-    <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-    <button type="submit">Check and receive ecash</button>
-  </form>
-</section>
-<hr>
-{_transaction_history_html(entries)}
-<p><a href="/wallet">Return to wallet</a></p>""",
+    return render_template(
+        "transactions.html",
+        title="Transaction history",
+        entries=_transaction_history_view(entries),
+        csrf_token=csrf_token,
+        notice=notice,
+        retention_notice=retention_notice,
     )
 
 
@@ -529,39 +293,95 @@ def _record_form(
     """Render the add/update form without retaining record data server-side."""
 
     title = "Update private record" if updating else "Add private record"
-    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
-    readonly = " readonly" if updating else ""
-    text_selected = " selected" if payload_format == "text" else ""
-    json_selected = " selected" if payload_format == "json" else ""
-    return _page(
-        title,
-        f"""
-<p><a href="/records">← Back to records</a></p>
-{error_html}
-<p>The label and payload are encrypted by Acorn and written to the bootstrap
-relay. Safebox does not store a server-side copy.</p>
-<form method="post" action="/record/save" autocomplete="off"
-      data-progress-message="Encrypting, publishing, and verifying the private record. Please wait."
-      data-progress-button="Saving record…">
-  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-  <label for="label">Record label</label>
-  <input id="label" name="label" type="text" maxlength="200" required
-         value="{escape(label, quote=True)}"{readonly}>
-  <label for="payload_format">Content format</label>
-  <select id="payload_format" name="payload_format">
-    <option value="text"{text_selected}>Text</option>
-    <option value="json"{json_selected}>JSON</option>
-  </select>
-  <label for="payload">Private record contents</label>
-  <textarea id="payload" name="payload" maxlength="262144" required>{escape(payload)}</textarea>
-  <label>
-    <input type="checkbox" name="confirmed" value="yes" required>
-    Save this encrypted record. If the label already exists, replace its
-    current value.
-  </label>
-  <button type="submit">{escape(title)}</button>
-</form>""",
+    return render_template(
+        "record_form.html",
+        title=title,
+        csrf_token=csrf_token,
+        label=label,
+        payload=payload,
+        payload_format=payload_format,
+        updating=updating,
+        error=error,
     )
+
+
+def _validate_record_label(value: str) -> str:
+    """Validate a private record label shared by text and blob records."""
+
+    label = str(value).strip()
+    if not label:
+        raise ValueError("Record label is required.")
+    if len(label) > 200 or any(character in label for character in ("\x00", "\r", "\n")):
+        raise ValueError(
+            "Record label must be 200 characters or fewer and remain on one line."
+        )
+    return label
+
+
+def _blob_upload_form(
+    csrf_token: str,
+    max_blob_bytes: int,
+    *,
+    label: str = "",
+    description: str = "",
+    error: str | None = None,
+) -> str:
+    return render_template(
+        "blob_upload.html",
+        title="Store an encrypted blob",
+        csrf_token=csrf_token,
+        max_blob_megabytes=f"{max_blob_bytes / (1024 * 1024):g}",
+        label=label,
+        description=description,
+        error=error,
+    )
+
+
+INLINE_BLOB_IMAGE_TYPES = frozenset(
+    {
+        "image/avif",
+        "image/gif",
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+    }
+)
+
+
+def _blob_preview_kind(media_type: str | None) -> str | None:
+    """Return a narrowly allowlisted browser-native preview type."""
+
+    normalized = str(media_type or "").split(";", 1)[0].strip().lower()
+    if normalized in INLINE_BLOB_IMAGE_TYPES:
+        return "image"
+    if normalized == "application/pdf":
+        return "pdf"
+    return None
+
+
+def _blob_download_headers(
+    label: str,
+    media_type: str | None,
+    *,
+    inline: bool = False,
+) -> dict[str, str]:
+    """Return an injection-safe filename with UTF-8 label support."""
+
+    extension = mimetypes.guess_extension(media_type or "") or ".bin"
+    filename = label if label.lower().endswith(extension.lower()) else label + extension
+    fallback_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", label).strip("._") or "acorn-blob"
+    fallback = (
+        fallback_stem
+        if fallback_stem.lower().endswith(extension.lower())
+        else fallback_stem + extension
+    )
+    disposition = "inline" if inline else "attachment"
+    return {
+        "Content-Disposition": (
+            f'{disposition}; filename="{fallback[:180]}"; '
+            f"filename*=UTF-8''{quote(filename, safe='')}"
+        )
+    }
 
 
 HANDLE_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$")
@@ -589,60 +409,14 @@ def _handle_form(
     hostname: str | None = None,
     error: str | None = None,
 ) -> str:
-    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
     host = hostname or "this service"
-    if existing is not None:
-        address = f"{existing.claimed_handle}@{host}"
-        return _page(
-            "NIP-05 handle",
-            f"""
-<p><a href="/wallet">← Back to wallet</a></p>
-{error_html}
-<p>This Acorn controls <strong>{escape(address)}</strong>.</p>
-<p>Component public key: <code>{escape(existing.npub)}</code></p>
-<p>Resolution relay: <code>{escape(existing.home_relay)}</code></p>
-<p>Submit the current handle to refresh its home relay, or choose another
-unclaimed handle to change the address. Changing it immediately releases the
-current address, which another Acorn may then claim.</p>
-<form method="post" action="/handle" autocomplete="off">
-  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-  <label for="claimed_handle">Handle</label>
-  <input id="claimed_handle" name="claimed_handle" type="text" minlength="1"
-         maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]|[A-Za-z0-9]"
-         value="{escape(existing.claimed_handle, quote=True)}" required
-         spellcheck="false" autocapitalize="none">
-  <button type="submit">Update handle</button>
-</form>
-<p><a href="/.well-known/nostr.json?{urlencode({'name': existing.claimed_handle})}">View public NIP-05 response</a></p>
-<hr>
-<form method="post" action="/handle/remove">
-  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-  <label>
-    <input name="confirmed" type="checkbox" value="yes" required>
-    Remove this public NIP-05 address. The released handle may subsequently be
-    claimed by another Acorn.
-  </label>
-  <button type="submit">Remove handle</button>
-</form>""",
-        )
-
-    return _page(
-        "Claim a NIP-05 handle",
-        f"""
-<p><a href="/wallet">← Back to wallet</a></p>
-{error_html}
-<p>Choose a public handle for this Acorn component. Safebox stores only the
-handle, component public key, and home relay. Your private key is never written
-to this directory.</p>
-<form method="post" action="/handle" autocomplete="off">
-  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-  <label for="claimed_handle">Handle</label>
-  <input id="claimed_handle" name="claimed_handle" type="text" minlength="1"
-         maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]|[A-Za-z0-9]"
-         placeholder="alice" required spellcheck="false" autocapitalize="none">
-  <p>Your address will be <strong>handle@{escape(host)}</strong>.</p>
-  <button type="submit">Claim handle</button>
-</form>""",
+    return render_template(
+        "handle.html",
+        title="NIP-05 handle" if existing is not None else "Claim a NIP-05 handle",
+        csrf_token=csrf_token,
+        existing=existing,
+        host=host,
+        error=error,
     )
 
 
@@ -653,22 +427,17 @@ def _deposit_form(
     error: str | None = None,
     balance_status: str | None = None,
 ) -> str:
-    error_html = f'<p class="error">{escape(error)}</p>' if error else ""
-    return _page(
-        "Deposit funds",
-        f"""
-{error_html}
-{balance_status or f'<p>Relay-visible proof total: <strong>{int(balance):,} sats</strong></p>'}
-<p>Home mint: <code>{escape(home_mint)}</code></p>
-<form method="post" action="/deposit" autocomplete="off"
-      data-progress-message="Creating a deposit invoice. Please wait."
-      data-progress-button="Creating invoice…">
-  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-  <label for="amount">Amount in sats</label>
-  <input id="amount" name="amount" type="number" min="1" step="1" required>
-  <button type="submit">Create Lightning invoice</button>
-</form>
-<p><a href="/wallet">Cancel and return to wallet</a></p>""",
+    if balance_status is None:
+        balance_status = (
+            f"<p>Relay-visible proof total: <strong>{int(balance):,} sats</strong></p>"
+        )
+    return render_template(
+        "deposit.html",
+        title="Deposit funds",
+        home_mint=home_mint,
+        csrf_token=csrf_token,
+        error=error,
+        balance_status=balance_status,
     )
 
 
@@ -744,26 +513,14 @@ def _deposit_invoice_page(
     csrf_token: str,
     message: str | None = None,
 ) -> str:
-    message_html = f'<p class="error">{escape(message)}</p>' if message else ""
-    return _page(
-        "Pay deposit invoice",
-        f"""
-{message_html}
-<p>Pay <strong>{state.amount:,} sats</strong> to the Acorn home mint:</p>
-<p><code>{escape(state.mint)}</code></p>
-<div class="invoice-qr">{_invoice_svg(state.invoice)}</div>
-<label for="invoice">Lightning invoice</label>
-<textarea id="invoice" readonly spellcheck="false">{escape(state.invoice)}</textarea>
-<p>Safebox does not poll for payment. After paying the invoice, use the button
-below to ask the mint to confirm payment and add the funds to this Acorn.</p>
-<form method="post" action="/deposit/check"
-      data-progress-message="Checking and finalizing the deposit. Please wait and do not refresh this page."
-      data-progress-button="Checking deposit…">
-  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-  <input type="hidden" name="deposit_token" value="{escape(state_token, quote=True)}">
-  <button type="submit">I have paid this invoice</button>
-</form>
-<p><a href="/wallet">Return to wallet without checking</a></p>""",
+    return render_template(
+        "deposit_invoice.html",
+        title="Pay deposit invoice",
+        state=state,
+        state_token=state_token,
+        csrf_token=csrf_token,
+        message=message,
+        invoice_svg=_invoice_svg(state.invoice),
     )
 
 
@@ -822,12 +579,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; "
+            "default-src 'self'; script-src 'self'; style-src 'self'; "
             "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
         )
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
+        if (
+            request.url.path == "/record/blob"
+            and response.headers.get("Content-Disposition", "").startswith("inline;")
+        ):
+            # Only allow the narrowly typed decrypted image/PDF response to be
+            # embedded by this application. Other pages remain non-frameable.
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; frame-ancestors 'self'; sandbox"
+            )
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
         if request.url.scheme == "https":
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
         return response
@@ -838,10 +605,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     async def home() -> str:
-        return _page(
-            "Safebox",
-            '<p>A minimal stateless web interface for Acorn.</p><p><a href="/login">Connect an Acorn</a></p>',
-        )
+        return render_template("home.html", title="Safebox")
 
     @app.get("/login", response_class=HTMLResponse)
     async def login_form(request: Request) -> str:
@@ -867,6 +631,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         home_relay: str = Form(...),
         home_mint: str = Form(...),
         mnemonic_words: str = Form("12"),
+        entropy_hex: str = Form(""),
+        entropy_confirmation: str = Form(""),
         confirmed: str | None = Form(None),
     ):
         settings = request.app.state.settings
@@ -891,19 +657,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         if confirmed != "yes":
             return creation_error("Explicit confirmation is required.")
-        if mnemonic_words not in {"12", "24"}:
-            return creation_error("Choose a 12- or 24-word offline mnemonic.")
+
+        supplied_entropy = str(entropy_hex).strip()
+        repeated_entropy = str(entropy_confirmation).strip()
+        uses_external_entropy = bool(supplied_entropy or repeated_entropy)
+        if uses_external_entropy:
+            if not supplied_entropy or not repeated_entropy:
+                return creation_error(
+                    "Enter the external entropy in both fields."
+                )
+            if supplied_entropy != repeated_entropy:
+                return creation_error(
+                    "The external entropy values do not match."
+                )
+            try:
+                seed_phrase, generated_nsec = seed_phrase_and_nsec_from_entropy(
+                    supplied_entropy
+                )
+            except ValueError as exc:
+                return creation_error(f"Invalid external entropy: {exc}")
+        else:
+            if mnemonic_words not in {"12", "24"}:
+                return creation_error(
+                    "Choose a 12- or 24-word offline mnemonic."
+                )
+            mnemonic_strength = 128 if mnemonic_words == "12" else 256
+            seed_phrase, generated_nsec = generate_seed_phrase_and_nsec(
+                strength=mnemonic_strength
+            )
 
         try:
             normalized_relay = normalize_bootstrap_relay(home_relay)
             normalized_mint = normalize_home_mint(home_mint)
         except ValueError as exc:
             return creation_error(str(exc))
-
-        mnemonic_strength = 128 if mnemonic_words == "12" else 256
-        seed_phrase, generated_nsec = generate_seed_phrase_and_nsec(
-            strength=mnemonic_strength
-        )
         acorn = Acorn(
             nsec=generated_nsec,
             home_relay=normalized_relay,
@@ -944,22 +731,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             bootstrap_relay=normalized_relay,
         )
         response = HTMLResponse(
-            _page(
-                "New Acorn created",
-                f"""
-<p class="error"><strong>Save this recovery material now.</strong> Anyone who
-obtains it can control this Acorn and its funds and records.</p>
-<p>Offline mnemonic:</p>
-<pre>{escape(seed_phrase)}</pre>
-<p>nsec private key:</p>
-<pre>{escape(generated_nsec)}</pre>
-<p>Component public key: <code>{escape(acorn.pubkey_bech32)}</code></p>
-<p>Home relay: <code>{escape(normalized_relay)}</code></p>
-<p>Home mint: <code>{escape(normalized_mint)}</code></p>
-<p>This page is not server-side recovery storage. Save the material offline
-before leaving it. Do not refresh or resubmit this page; that would create a
-different Acorn.</p>
-<p><a href="/wallet">Continue to wallet</a></p>""",
+            render_template(
+                "new_acorn.html",
+                title="New Acorn created",
+                seed_phrase=seed_phrase,
+                nsec=generated_nsec,
+                npub=acorn.pubkey_bech32,
+                home_relay=normalized_relay,
+                home_mint=normalized_mint,
             ),
             status_code=201,
         )
@@ -1049,16 +828,12 @@ different Acorn.</p>
                 ClaimedHandle.npub == acorn.pubkey_bech32
             )
         ).first()
-        nip05_html = ""
-        lightning_address_html = ""
+        nip05_address = None
+        lightning_lnurl = None
+        lightning_qr = None
         if claimed_handle is not None:
             nip05_address = (
                 f"{claimed_handle.claimed_handle}@{request.url.hostname}"
-            )
-            nip05_html = (
-                '<p>NIP-05 address: <strong>'
-                f'<a href="/handle">{escape(nip05_address)}</a>'
-                "</strong></p>"
             )
             if settings.service_acorn_enabled:
                 pay_endpoint = str(
@@ -1068,22 +843,7 @@ different Acorn.</p>
                     )
                 )
                 lightning_lnurl = encode_lnurl(pay_endpoint)
-                lightning_address_html = (
-                    '<section class="lightning-address-card" '
-                    'aria-labelledby="lightning-address-heading">'
-                    '<h2 id="lightning-address-heading">Receive Lightning</h2>'
-                    '<p>Lightning address: <strong>'
-                    f"{escape(nip05_address)}"
-                    "</strong></p>"
-                    '<div class="lightning-address-qr" '
-                    'aria-label="Lightning address QR code">'
-                    f"{_qr_svg(lightning_lnurl, include_acorn=True)}"
-                    "</div>"
-                    f"<p>Scan to pay <strong>{escape(nip05_address)}</strong>.</p>"
-                    "<details><summary>Show encoded LNURL</summary>"
-                    f"<code>{escape(lightning_lnurl)}</code></details>"
-                    "</section>"
-                )
+                lightning_qr = _qr_svg(lightning_lnurl, include_acorn=True)
         verification, verification_error = await _read_proof_verification(
             acorn,
             settings.wallet_load_timeout_seconds,
@@ -1094,26 +854,17 @@ different Acorn.</p>
             verification,
             verification_error,
         )
-        return _page(
-            "Connected Acorn",
-            f"""
-<p>Component public key: <code>{escape(acorn.pubkey_bech32)}</code></p>
-<p>Bootstrap relay: <code>{escape(acorn.home_relay)}</code></p>
-{nip05_html}
-{lightning_address_html}
-{_ecash_retention_notice(settings)}
-{balance_status}
-<p>Wallet state was loaded from the relay for this request. It was not stored
-by the web application.</p>
-<p><a href="/deposit">Deposit funds</a></p>
-<p><a href="/pay">Pay a Lightning address</a></p>
-<p><a href="/transactions">View transaction history</a></p>
-<p><a href="/records">View private record labels</a></p>
-<p><a href="/handle">Claim or view a NIP-05 handle</a></p>
-<form method="post" action="/logout">
-  <input type="hidden" name="csrf_token" value="{escape(csrf_token, quote=True)}">
-  <button type="submit">Disconnect</button>
-</form>""",
+        return render_template(
+            "wallet.html",
+            title="Connected Acorn",
+            npub=acorn.pubkey_bech32,
+            home_relay=acorn.home_relay,
+            nip05_address=nip05_address,
+            lightning_lnurl=lightning_lnurl,
+            lightning_qr=lightning_qr,
+            retention_notice=_ecash_retention_notice(settings),
+            balance_status=balance_status,
+            csrf_token=csrf_token,
         )
 
     @app.get("/handle", response_class=HTMLResponse)
@@ -1618,14 +1369,13 @@ by the web application.</p>
                 status_code=502,
             )
 
-        return _page(
-            "Payment successful",
-            f"""
-<p>Sent: <strong>{amount_sats:,} sats</strong></p>
-<p>Fee: <strong>{int(fees):,} sats</strong></p>
-<p>Recipient: <code>{escape(recipient)}</code></p>
-<p>{escape(str(message))}</p>
-<p>Do not refresh this result page. <a href="/wallet">Return to wallet</a>.</p>""",
+        return render_template(
+            "payment_result.html",
+            title="Payment successful",
+            amount=f"{amount_sats:,}",
+            fees=f"{int(fees):,}",
+            recipient=recipient,
+            message=str(message),
         )
 
     @app.get("/transactions", response_class=HTMLResponse)
@@ -1804,20 +1554,230 @@ by the web application.</p>
             )
 
         unique_labels = list(dict.fromkeys(str(label) for label in labels))
-        if unique_labels:
-            items = "".join(
-                f'<li><a href="/record?{urlencode({"label": label})}">'
-                f"{escape(label)}</a></li>"
-                for label in unique_labels
+        return render_template(
+            "records.html",
+            title="Private records",
+            labels=[
+                {
+                    "label": record_label,
+                    "url": f'/record?{urlencode({"label": record_label})}',
+                }
+                for record_label in unique_labels
+            ],
+        )
+
+    @app.get("/blob/upload", response_class=HTMLResponse)
+    async def blob_upload_form(request: Request, acorn: LoadedAcornDependency) -> str:
+        settings = request.app.state.settings
+        return _blob_upload_form(
+            CsrfProtector(settings).issue(),
+            settings.max_blob_bytes,
+        )
+
+    @app.post("/blob/upload", response_class=HTMLResponse)
+    async def upload_blob_record(
+        request: Request,
+        acorn: RecordAcornDependency,
+        csrf_token: str = Form(...),
+        label: str = Form(...),
+        description: str = Form(""),
+        confirmed: str | None = Form(None),
+        blob: UploadFile = File(...),
+    ):
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+        record_label = str(label).strip()
+        record_description = str(description).strip()
+
+        def upload_error(message: str, status_code: int = 400) -> HTMLResponse:
+            return HTMLResponse(
+                _blob_upload_form(
+                    form_token.issue(),
+                    settings.max_blob_bytes,
+                    label=record_label,
+                    description=record_description,
+                    error=message,
+                ),
+                status_code=status_code,
             )
-            content = f"<ul>{items}</ul>"
+
+        if not form_token.verify(csrf_token):
+            return upload_error(
+                "The form token is invalid or expired. Select the file again.",
+                403,
+            )
+        if confirmed != "yes":
+            return upload_error("Explicit confirmation is required.")
+        try:
+            record_label = _validate_record_label(record_label)
+        except ValueError as exc:
+            return upload_error(str(exc))
+        if len(record_description) > 4000:
+            return upload_error("Description must be 4000 characters or fewer.")
+
+        try:
+            await asyncio.wait_for(
+                acorn.get_record_safebox(record_name=record_label),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except ValueError as exc:
+            if "No event found" not in str(exc) and "record not found" not in str(exc):
+                logger.warning(
+                    "blob label availability check failed error_type=%s",
+                    type(exc).__name__,
+                )
+                return upload_error(
+                    "Safebox could not confirm whether that record label already exists.",
+                    502,
+                )
+        except TimeoutError:
+            return upload_error(
+                "Safebox could not confirm whether that record label already exists.",
+                504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "blob label availability check failed error_type=%s",
+                type(exc).__name__,
+            )
+            return upload_error(
+                "Safebox could not confirm whether that record label already exists.",
+                502,
+            )
         else:
-            content = "<p>No private user records were found.</p>"
-        return _page(
-            "Private records",
-            '<p><a href="/record/edit">Add a private record</a></p>'
-            + content
-            + '<p><a href="/wallet">Return to wallet</a></p>',
+            return upload_error(
+                "That record label already exists. Choose a new label to avoid replacing or orphaning its blob.",
+                409,
+            )
+
+        try:
+            blob_data = await blob.read(settings.max_blob_bytes + 1)
+        finally:
+            await blob.close()
+        if not blob_data:
+            return upload_error("Select a non-empty file.")
+        if len(blob_data) > settings.max_blob_bytes:
+            return upload_error(
+                f"The file exceeds the {settings.max_blob_bytes:,}-byte upload limit.",
+                413,
+            )
+
+        original_filename = str(blob.filename or "blob").replace("\\", "/").split("/")[-1]
+        original_filename = "".join(
+            character
+            for character in original_filename
+            if character not in ("\x00", "\r", "\n")
+        )[:255] or "blob"
+        metadata = {
+            "description": record_description,
+            "filename": original_filename,
+            "size": len(blob_data),
+        }
+        try:
+            await asyncio.wait_for(
+                acorn.put_record(
+                    record_name=record_label,
+                    record_value=metadata,
+                    record_type="blob",
+                    record_kind=37375,
+                    blob_data=blob_data,
+                    return_result=True,
+                ),
+                timeout=settings.payment_timeout_seconds,
+            )
+        except TimeoutError:
+            return upload_error(
+                "The encrypted blob save timed out and its outcome is uncertain. Check the record list before retrying.",
+                504,
+            )
+        except ValueError as exc:
+            return upload_error(str(exc))
+        except Exception as exc:
+            logger.warning(
+                "encrypted blob save failed error_type=%s",
+                type(exc).__name__,
+            )
+            return upload_error(
+                "Safebox could not encrypt, upload, publish, and verify the blob record.",
+                502,
+            )
+
+        return RedirectResponse(
+            f'/record?{urlencode({"label": record_label, "saved": "1"})}',
+            status_code=303,
+        )
+
+    @app.get("/record/blob")
+    async def download_record_blob(
+        request: Request,
+        label: str,
+        acorn: LoadedAcornDependency,
+        inline: bool = False,
+    ):
+        settings = request.app.state.settings
+        try:
+            record_label = _validate_record_label(label)
+        except ValueError as exc:
+            return HTMLResponse(
+                _page(
+                    "Encrypted blob",
+                    f'<p class="error">{escape(str(exc))}</p>'
+                    '<p><a href="/records">Return to records</a></p>',
+                ),
+                status_code=400,
+            )
+        try:
+            media_type, blob_data = await asyncio.wait_for(
+                acorn.get_record_blobdata(record_label),
+                timeout=settings.payment_timeout_seconds,
+            )
+        except TimeoutError:
+            return HTMLResponse(
+                _page(
+                    "Encrypted blob",
+                    '<p class="error">Timed out while retrieving and decrypting the blob.</p>'
+                    '<p><a href="/records">Return to records</a></p>',
+                ),
+                status_code=504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "encrypted blob retrieval failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Encrypted blob",
+                    '<p class="error">Unable to retrieve and decrypt the blob.</p>'
+                    '<p><a href="/records">Return to records</a></p>',
+                ),
+                status_code=502,
+            )
+        if not blob_data:
+            return HTMLResponse(
+                _page(
+                    "Encrypted blob",
+                    '<p class="error">This record has no retrievable blob.</p>'
+                    '<p><a href="/records">Return to records</a></p>',
+                ),
+                status_code=404,
+            )
+
+        resolved_type = (
+            str(media_type or "application/octet-stream")
+            .split(";", 1)[0]
+            .strip()
+            .lower()
+        )
+        allow_inline = inline and _blob_preview_kind(resolved_type) is not None
+        return Response(
+            content=blob_data,
+            media_type=resolved_type,
+            headers=_blob_download_headers(
+                record_label,
+                resolved_type,
+                inline=allow_inline,
+            ),
         )
 
     @app.get("/record/edit", response_class=HTMLResponse)
@@ -1926,14 +1886,10 @@ by the web application.</p>
             )
         if confirmed != "yes":
             return save_error("Explicit confirmation is required.")
-        if not record_label:
-            return save_error("Record label is required.")
-        if len(record_label) > 200 or any(
-            character in record_label for character in ("\x00", "\r", "\n")
-        ):
-            return save_error(
-                "Record label must be 200 characters or fewer and remain on one line."
-            )
+        try:
+            record_label = _validate_record_label(record_label)
+        except ValueError as exc:
+            return save_error(str(exc))
         if not record_payload.strip():
             return save_error("Record contents are required.")
         if len(record_payload) > 262_144:
@@ -1981,6 +1937,104 @@ by the web application.</p>
         return RedirectResponse(
             f'/record?{urlencode({"label": record_label, "saved": "1"})}',
             status_code=303,
+        )
+
+    @app.post("/record/delete", response_class=HTMLResponse)
+    async def delete_record(
+        request: Request,
+        acorn: RecordAcornDependency,
+        csrf_token: str = Form(...),
+        label: str = Form(...),
+        confirmed: str | None = Form(None),
+    ):
+        settings = request.app.state.settings
+        record_label = str(label).strip()
+        return_url = f'/record?{urlencode({"label": record_label})}'
+
+        def delete_error(message: str, status_code: int) -> HTMLResponse:
+            return HTMLResponse(
+                render_template(
+                    "record_deleted.html",
+                    title="Delete private record",
+                    label=record_label,
+                    error=message,
+                    return_url=return_url,
+                ),
+                status_code=status_code,
+            )
+
+        if not CsrfProtector(settings).verify(csrf_token):
+            return delete_error(
+                "The deletion form token is invalid or expired. Reload the record and try again.",
+                403,
+            )
+        if confirmed != "yes":
+            return delete_error("Explicit deletion confirmation is required.", 400)
+        try:
+            record_label = _validate_record_label(record_label)
+        except ValueError as exc:
+            return delete_error(str(exc), 400)
+
+        try:
+            user_labels = await asyncio.wait_for(
+                acorn.get_user_record_labels(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except TimeoutError:
+            return delete_error(
+                "Timed out while confirming that this is a user record. Nothing was deleted.",
+                504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "record deletion label check failed error_type=%s",
+                type(exc).__name__,
+            )
+            return delete_error(
+                "Safebox could not confirm that this is a user record. Nothing was deleted.",
+                502,
+            )
+        if record_label not in {str(each) for each in user_labels}:
+            return delete_error("The requested user record was not found.", 404)
+
+        try:
+            result = await asyncio.wait_for(
+                acorn.delete_record(
+                    record_label,
+                    record_kind=37375,
+                    delete_blob=True,
+                ),
+                timeout=settings.payment_timeout_seconds,
+            )
+        except TimeoutError:
+            return delete_error(
+                "The deletion timed out and its outcome is uncertain. Reload the records list before retrying.",
+                504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "private record deletion failed error_type=%s",
+                type(exc).__name__,
+            )
+            return delete_error(
+                "Safebox could not complete the deletion request. Its outcome may be uncertain.",
+                502,
+            )
+
+        if result.get("status") == "NOT_FOUND":
+            return delete_error("The requested user record was not found.", 404)
+
+        blob_cleanup = result.get("blob_cleanup")
+        return render_template(
+            "record_deleted.html",
+            title="Private record deleted",
+            label=record_label,
+            error=None,
+            return_url=None,
+            blob_requested=blob_cleanup is not None,
+            blob_deleted=bool(blob_cleanup and blob_cleanup.get("deleted")),
+            hidden_count=len(result.get("hidden_on") or []),
+            index_error=result.get("index_error"),
         )
 
     @app.get("/record", response_class=HTMLResponse)
@@ -2039,14 +2093,23 @@ by the web application.</p>
                 sort_keys=True,
                 default=str,
             )
-        return _page(
-            label,
-            f"""
-{'<p role="status"><strong>Private record saved and verified.</strong></p>' if saved else ''}
-<p>Type: <code>{escape(str(record_value.type))}</code></p>
-<pre>{escape(rendered_payload)}</pre>
-<p><a href="/record/edit?{urlencode({"label": label})}">Edit this record</a></p>
-<p><a href="/records">Return to records</a></p>""",
+        blob_type = getattr(record_value, "blobtype", None)
+        blob_preview = _blob_preview_kind(blob_type)
+        blob_query = urlencode({"label": label})
+        return render_template(
+            "record.html",
+            title=label,
+            label=label,
+            edit_url=f'/record/edit?{urlencode({"label": label})}',
+            saved=saved,
+            record_type=str(record_value.type),
+            payload=rendered_payload,
+            has_blob=bool(getattr(record_value, "blobref", None)),
+            blob_type=blob_type,
+            blob_preview=blob_preview,
+            blob_url=f"/record/blob?{blob_query}",
+            blob_inline_url=f"/record/blob?{blob_query}&inline=1",
+            delete_csrf_token=CsrfProtector(settings).issue(),
         )
 
     @app.get("/api/session", response_class=JSONResponse)

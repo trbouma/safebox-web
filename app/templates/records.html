@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/record/edit">Add a private record</a></p>
+<p><a href="/blob/upload">Store an encrypted blob</a></p>
+{% if labels %}
+<ul>
+  {% for record in labels %}<li><a href="{{ record.url }}">{{ record.label }}</a></li>{% endfor %}
+</ul>
+{% else %}
+<p>No private user records were found.</p>
+{% endif %}
+<p><a href="/wallet">Return to wallet</a></p>
+{% endblock %}

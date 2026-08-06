@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="error"><strong>Save this recovery material now.</strong> Anyone who
+obtains it can control this Acorn and its funds and records.</p>
+<p>Offline mnemonic:</p>
+<pre>{{ seed_phrase }}</pre>
+<p>nsec private key:</p>
+<pre>{{ nsec }}</pre>
+<p>Component public key: <code>{{ npub }}</code></p>
+<p>Home relay: <code>{{ home_relay }}</code></p>
+<p>Home mint: <code>{{ home_mint }}</code></p>
+<p>This page is not server-side recovery storage. Save the material offline
+before leaving it. Do not refresh or resubmit this page; that would create a
+different Acorn.</p>
+<p><a href="/wallet">Continue to wallet</a></p>
+{% endblock %}

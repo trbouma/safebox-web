@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · Safebox</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/theme.js" defer></script>
+  <script src="/static/forms.js" defer></script>
+</head>
+<body>
+  <div class="page-tools"><button class="theme-toggle" type="button"
+    data-theme-toggle aria-label="Switch colour theme">Use light mode</button></div>
+  {% include "partials/relationship.html" %}
+  <main>
+    <h1>{{ title }}</h1>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

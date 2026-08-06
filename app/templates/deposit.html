@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{{ balance_status | safe }}
+<p>Home mint: <code>{{ home_mint }}</code></p>
+<form method="post" action="/deposit" autocomplete="off"
+      data-progress-message="Creating a deposit invoice. Please wait."
+      data-progress-button="Creating invoice…">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="amount">Amount in sats</label>
+  <input id="amount" name="amount" type="number" min="1" step="1" required>
+  <button type="submit">Create Lightning invoice</button>
+</form>
+<p><a href="/wallet">Cancel and return to wallet</a></p>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p>Safebox does not retain wallet state on the server. Your secret is encrypted
+into an authenticated browser cookie for this session.</p>
+<form method="post" action="/login" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="secret_type">Recovery material</label>
+  <select id="secret_type" name="secret_type">
+    <option value="nsec">nsec private key</option>
+    <option value="mnemonic">offline mnemonic</option>
+  </select>
+  <label for="secret">Secret</label>
+  <textarea id="secret" name="secret" required spellcheck="false" autocapitalize="none"></textarea>
+  <label for="bootstrap_relay">Bootstrap relay</label>
+  <input id="bootstrap_relay" name="bootstrap_relay" type="text"
+         value="{{ default_relay }}" required spellcheck="false">
+  <button type="submit">Connect</button>
+</form>
+<hr>
+<p>Don't have an Acorn yet? <a href="/create">Create a new Acorn</a>.</p>
+{% endblock %}

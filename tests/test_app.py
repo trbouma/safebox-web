@@ -3,12 +3,14 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from html import unescape
+import json
 import os
 import re
 import sqlite3
 from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
+import pytest
 
 
 # app.main deliberately refuses to import without an explicit server-held key.
@@ -17,6 +19,7 @@ os.environ.setdefault("SAFEBOX_COOKIE_KEY", Fernet.generate_key().decode("ascii"
 from fastapi.testclient import TestClient
 
 import app.main as main_module
+import app.security as security_module
 from app.config import (
     DEFAULT_SESSION_TTL_HOURS,
     DEFAULT_SESSION_TTL_SECONDS,
@@ -36,6 +39,7 @@ from app.security import (
     DepositQuoteState,
     SECURE_COOKIE_NAME,
     SessionCipher,
+    SessionCredentials,
 )
 
 
@@ -112,6 +116,13 @@ class FakeLoadedAcorn:
         self.deposit_calls: list[int] = []
         self.quote_checks: list[tuple[str, int]] = []
         self.record_put_calls: list[dict] = []
+        self.record_delete_calls: list[dict] = []
+        self.record_delete_result = {
+            "status": "DELETE_REQUESTED",
+            "hidden_on": [self.home_relay],
+            "blob_cleanup": None,
+            "index_error": None,
+        }
         self.history_entries: list[dict] = list(transaction_history or [])
         self.receive_result = receive_result or {
             "queried": 0,
@@ -157,6 +168,10 @@ class FakeLoadedAcorn:
             "event_id": "record-event-1",
             "verified": True,
         }
+
+    async def delete_record(self, label: str, **kwargs):
+        self.record_delete_calls.append({"label": label, **kwargs})
+        return self.record_delete_result
 
     async def pay_multi(self, amount: int, lnaddress: str, comment: str):
         self.payments.append(
@@ -206,6 +221,44 @@ class FakeCreatedAcorn:
 
     async def load_data(self) -> None:
         self.loaded = True
+
+
+class FakeBlobAcorn(FakeLoadedAcorn):
+    def __init__(
+        self,
+        *,
+        existing_labels: set[str] | None = None,
+        downloaded_type: str | None = "text/plain",
+        downloaded_data: bytes | None = b"private blob contents",
+        record_lookup_error: ValueError | None = None,
+        blob_type: str | None = "text/plain",
+    ) -> None:
+        super().__init__()
+        self.existing_labels = set(existing_labels or set())
+        self.downloaded_type = downloaded_type
+        self.downloaded_data = downloaded_data
+        self.record_lookup_error = record_lookup_error
+        self.blob_type = blob_type
+        self.blob_reads: list[str] = []
+
+    async def get_record_safebox(self, record_name: str):
+        if self.record_lookup_error is not None:
+            raise self.record_lookup_error
+        if record_name not in self.existing_labels:
+            raise ValueError("record not found")
+        return SimpleNamespace(
+            type="blob",
+            payload={"filename": "notes.txt", "description": "Private notes"},
+            blobref="https://blossom.example/encrypted-sha256",
+            blobtype=self.blob_type,
+        )
+
+    async def get_user_record_labels(self) -> list[str]:
+        return sorted(self.existing_labels)
+
+    async def get_record_blobdata(self, record_name: str):
+        self.blob_reads.append(record_name)
+        return self.downloaded_type, self.downloaded_data
 
 
 def test_settings_load_cookie_key_from_working_directory_env_file(
@@ -308,15 +361,29 @@ def test_theme_defaults_to_dark_and_script_is_served() -> None:
 
 
 def test_pages_include_mobile_layout_safeguards() -> None:
-    response = make_https_client().get("/")
+    client = make_https_client()
+    response = client.get("/")
+    stylesheet = client.get("/static/styles.css")
 
     assert response.status_code == 200
     assert '<meta name="viewport" content="width=device-width, initial-scale=1">' in response.text
-    assert "-webkit-text-size-adjust: 100%" in response.text
-    assert "min-height: 2.75rem" in response.text
-    assert "@media (max-width: 36rem)" in response.text
-    assert "@media (max-width: 24rem)" in response.text
-    assert ".transaction-details { grid-template-columns: 1fr; }" in response.text
+    assert 'href="/static/styles.css"' in response.text
+    assert stylesheet.status_code == 200
+    assert stylesheet.headers["content-type"].startswith("text/css")
+    assert "-webkit-text-size-adjust: 100%" in stylesheet.text
+    assert "min-height: 2.75rem" in stylesheet.text
+    assert "@media (max-width: 36rem)" in stylesheet.text
+    assert "@media (max-width: 24rem)" in stylesheet.text
+    assert ".transaction-details { grid-template-columns: 1fr; }" in stylesheet.text
+
+
+def test_pages_use_external_jinja_layout_assets() -> None:
+    response = make_https_client().get("/")
+
+    assert response.status_code == 200
+    assert response.text.count("<!doctype html>") == 1
+    assert "<style>" not in response.text
+    assert "style-src 'self'" in response.headers["content-security-policy"]
 
 
 def test_login_page_links_to_new_acorn_creation() -> None:
@@ -338,6 +405,10 @@ def test_create_form_displays_default_relay_and_mint() -> None:
     assert 'name="mnemonic_words"' in response.text
     assert '<option value="12" selected>' in response.text
     assert '<option value="24">' in response.text
+    assert "Bring your own entropy" in response.text
+    assert 'name="entropy_hex" type="password"' in response.text
+    assert 'name="entropy_confirmation" type="password"' in response.text
+    assert 'pattern="[0-9A-Fa-f]{64}"' in response.text
     assert 'name="confirmed"' in response.text
 
 
@@ -442,6 +513,97 @@ def test_create_acorn_uses_12_words_by_default(monkeypatch) -> None:
 
     assert response.status_code == 201
     assert generated_strengths == [128]
+
+
+def test_create_acorn_uses_confirmed_external_entropy(monkeypatch) -> None:
+    FakeCreatedAcorn.instances.clear()
+    entropy_hex = "02" * 32
+    entropy_calls = []
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "seed_phrase_and_nsec_from_entropy",
+        lambda supplied: (
+            entropy_calls.append(supplied) or TEST_MNEMONIC,
+            TEST_NSEC,
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("random generation must not be used")
+        ),
+    )
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+            "mnemonic_words": "12",
+            "entropy_hex": entropy_hex,
+            "entropy_confirmation": entropy_hex,
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 201
+    assert entropy_calls == [entropy_hex]
+    assert TEST_MNEMONIC in response.text
+    assert entropy_hex not in response.text
+    assert FakeCreatedAcorn.instances[0].created_seed_phrase == TEST_MNEMONIC
+
+
+def test_create_acorn_rejects_mismatched_external_entropy(monkeypatch) -> None:
+    entropy_hex = "02" * 32
+    monkeypatch.setattr(
+        main_module,
+        "seed_phrase_and_nsec_from_entropy",
+        lambda supplied: (_ for _ in ()).throw(
+            AssertionError("mismatched entropy must not be derived")
+        ),
+    )
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+            "entropy_hex": entropy_hex,
+            "entropy_confirmation": "03" * 32,
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "external entropy values do not match" in response.text
+    assert entropy_hex not in response.text
+
+
+def test_create_acorn_rejects_invalid_external_entropy() -> None:
+    invalid_entropy = "not-hex"
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+            "entropy_hex": invalid_entropy,
+            "entropy_confirmation": invalid_entropy,
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "exactly 64 hexadecimal characters" in response.text
+    assert invalid_entropy not in response.text
 
 
 def test_create_acorn_rejects_invalid_mnemonic_length(monkeypatch) -> None:
@@ -896,7 +1058,7 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
     assert "safebox web deposit &lt;confirmed&gt;" in response.text
     assert "invoice-is-not-rendered" not in response.text
     assert "preimage-is-not-rendered" not in response.text
-    assert "@media (max-width: 36rem)" in response.text
+    assert 'href="/static/styles.css"' in response.text
     assert 'action="/transactions/receive"' in response.text
     assert 'name="csrf_token"' in response.text
     assert "Check and receive ecash" in response.text
@@ -1178,6 +1340,290 @@ def test_record_index_links_encoded_labels() -> None:
     assert "/record?label=Travel%2F2026" in response.text
     assert "/record?label=A+%26+B" in response.text
     assert 'href="/record/edit"' in response.text
+    assert 'href="/blob/upload"' in response.text
+
+
+def test_encrypted_blob_upload_form_explains_storage_boundary() -> None:
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeBlobAcorn()
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/blob/upload")
+
+    assert response.status_code == 200
+    assert 'enctype="multipart/form-data"' in response.text
+    assert "AES-256-GCM" in response.text
+    assert "10 MiB" in response.text
+
+
+def test_blob_upload_passes_plaintext_to_acorn_encryption_boundary() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Private Notes",
+            "description": "Encrypted attachment",
+            "confirmed": "yes",
+        },
+        files={"blob": ("notes.txt", b"private blob contents", "text/plain")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/record?label=Private+Notes&saved=1"
+    assert acorn.record_put_calls == [
+        {
+            "record_name": "Private Notes",
+            "record_value": {
+                "description": "Encrypted attachment",
+                "filename": "notes.txt",
+                "size": 21,
+            },
+            "record_type": "blob",
+            "record_kind": 37375,
+            "blob_data": b"private blob contents",
+            "return_result": True,
+        }
+    ]
+
+
+def test_blob_upload_rejects_existing_label_without_orphaning_blob() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(existing_labels={"Private Notes"})
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Private Notes",
+            "confirmed": "yes",
+        },
+        files={"blob": ("notes.txt", b"do not upload", "text/plain")},
+    )
+
+    assert response.status_code == 409
+    assert "already exists" in response.text
+    assert acorn.record_put_calls == []
+
+
+def test_blob_upload_fails_closed_when_existing_record_cannot_be_read() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        record_lookup_error=ValueError("Could not decrypt private record")
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Uncertain Label",
+            "confirmed": "yes",
+        },
+        files={"blob": ("notes.txt", b"do not upload", "text/plain")},
+    )
+
+    assert response.status_code == 502
+    assert "could not confirm" in response.text
+    assert acorn.record_put_calls == []
+
+
+def test_blob_upload_enforces_configured_size_limit() -> None:
+    settings = replace(TEST_SETTINGS, max_blob_bytes=4)
+    app = create_app(settings)
+    acorn = FakeBlobAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": CsrfProtector(settings).issue(),
+            "label": "Too Large",
+            "confirmed": "yes",
+        },
+        files={"blob": ("large.bin", b"12345", "application/octet-stream")},
+    )
+
+    assert response.status_code == 413
+    assert "exceeds the 4-byte upload limit" in response.text
+    assert acorn.record_put_calls == []
+
+
+def test_blob_record_download_returns_decrypted_attachment() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(existing_labels={"Private Notes"})
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    detail = client.get("/record", params={"label": "Private Notes"})
+    response = client.get("/record/blob", params={"label": "Private Notes"})
+
+    assert detail.status_code == 200
+    assert "Download decrypted attachment" in detail.text
+    assert "/record/blob?label=Private+Notes" in detail.text
+    assert response.status_code == 200
+    assert response.content == b"private blob contents"
+    assert response.headers["content-type"].startswith("text/plain")
+    assert "attachment" in response.headers["content-disposition"]
+    assert acorn.blob_reads == ["Private Notes"]
+
+
+def test_image_blob_uses_native_authenticated_inline_preview() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        existing_labels={"Photo"},
+        downloaded_type="image/png",
+        downloaded_data=b"png bytes",
+        blob_type="image/png",
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    detail = client.get("/record", params={"label": "Photo"})
+    preview = client.get(
+        "/record/blob", params={"label": "Photo", "inline": "1"}
+    )
+
+    assert detail.status_code == 200
+    assert '<img src="/record/blob?label=Photo&amp;inline=1"' in detail.text
+    assert "fetch(" not in detail.text
+    assert "URL.createObjectURL" not in detail.text
+    assert preview.status_code == 200
+    assert preview.headers["content-disposition"].startswith("inline;")
+    assert preview.headers["x-frame-options"] == "SAMEORIGIN"
+    assert "frame-ancestors 'self'" in preview.headers["content-security-policy"]
+
+
+def test_pdf_blob_uses_browser_native_object_with_download_fallback() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        existing_labels={"Report"},
+        downloaded_type="application/pdf",
+        downloaded_data=b"%PDF test",
+        blob_type="application/pdf",
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/record", params={"label": "Report"})
+
+    assert response.status_code == 200
+    assert '<object class="blob-preview blob-preview-pdf"' in response.text
+    assert 'type="application/pdf"' in response.text
+    assert "Download decrypted attachment" in response.text
+
+
+def test_blob_record_delete_form_requires_explicit_confirmation() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(existing_labels={"Report"})
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    detail = client.get("/record", params={"label": "Report"})
+    response = client.post(
+        "/record/delete",
+        data={"csrf_token": valid_csrf_token(), "label": "Report"},
+    )
+
+    assert 'action="/record/delete"' in detail.text
+    assert "Delete this record and blob" in detail.text
+    assert response.status_code == 400
+    assert "Explicit deletion confirmation is required" in response.text
+    assert acorn.record_delete_calls == []
+
+
+def test_blob_record_delete_removes_record_and_requests_blob_cleanup() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(existing_labels={"Report"})
+    acorn.record_delete_result = {
+        "status": "DELETE_REQUESTED",
+        "hidden_on": [acorn.home_relay],
+        "blob_cleanup": {
+            "requested": True,
+            "deleted": True,
+            "sha256": "abc123",
+        },
+        "index_error": None,
+    }
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/delete",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Report",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Deletion was requested for Report" in response.text
+    assert "accepted the encrypted blob deletion request" in response.text
+    assert acorn.record_delete_calls == [
+        {
+            "label": "Report",
+            "record_kind": 37375,
+            "delete_blob": True,
+        }
+    ]
+
+
+def test_blob_record_delete_reports_partial_blob_cleanup() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(existing_labels={"Report"})
+    acorn.record_delete_result = {
+        "status": "DELETE_REQUESTED",
+        "hidden_on": [],
+        "blob_cleanup": {"requested": True, "deleted": False},
+        "index_error": None,
+    }
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/delete",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Report",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "could not confirm deletion of the encrypted blob" in response.text
+    assert "could not confirm that the original record is already hidden" in response.text
+
+
+def test_unsafe_blob_type_cannot_be_forced_inline() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        existing_labels={"Markup"},
+        downloaded_type="text/html",
+        downloaded_data=b"<script>alert(1)</script>",
+        blob_type="text/html",
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    detail = client.get("/record", params={"label": "Markup"})
+    attempted_preview = client.get(
+        "/record/blob", params={"label": "Markup", "inline": "1"}
+    )
+
+    assert "No inline preview is available" in detail.text
+    assert "<object" not in detail.text
+    assert attempted_preview.headers["content-disposition"].startswith("attachment;")
+    assert attempted_preview.headers["x-frame-options"] == "DENY"
 
 
 def test_record_detail_renders_escaped_payload() -> None:
@@ -1392,6 +1838,7 @@ def test_nsec_login_uses_encrypted_secure_cookie_and_dependency() -> None:
 
     token = client.cookies.get(SECURE_COOKIE_NAME)
     assert token is not None
+    assert token.startswith("v2.")
     assert TEST_NSEC not in token
     assert "relay.example.com" not in token
 
@@ -1406,6 +1853,77 @@ def test_nsec_login_uses_encrypted_secure_cookie_and_dependency() -> None:
     assert payload["bootstrap_relay"] == "wss://relay.example.com"
     assert payload["npub"].startswith(TEST_NPUB)
     assert "nsec" not in payload
+
+
+def test_session_cipher_uses_randomized_aes_256_gcm_tokens() -> None:
+    cipher = SessionCipher(TEST_SETTINGS)
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+
+    first = cipher.encode(credentials)
+    second = cipher.encode(credentials)
+
+    assert first.startswith("v2.")
+    assert second.startswith("v2.")
+    assert first != second
+    assert cipher.decode(first) == credentials
+    assert cipher.decode(second) == credentials
+
+
+def test_aes_256_gcm_session_rejects_tampering() -> None:
+    cipher = SessionCipher(TEST_SETTINGS)
+    token = cipher.encode(
+        SessionCredentials(
+            nsec=TEST_NSEC,
+            bootstrap_relay="wss://relay.example.com",
+        )
+    )
+    replacement = "A" if token[-2] != "A" else "B"
+    tampered = token[:-2] + replacement + token[-1]
+
+    with pytest.raises(ValueError, match="invalid or expired"):
+        cipher.decode(tampered)
+
+
+def test_aes_256_gcm_session_enforces_absolute_expiry(monkeypatch) -> None:
+    cipher = SessionCipher(TEST_SETTINGS)
+    monkeypatch.setattr(security_module, "time", lambda: 1_000_000)
+    token = cipher.encode(
+        SessionCredentials(
+            nsec=TEST_NSEC,
+            bootstrap_relay="wss://relay.example.com",
+        )
+    )
+
+    monkeypatch.setattr(
+        security_module,
+        "time",
+        lambda: 1_000_000 + TEST_SETTINGS.session_ttl_seconds + 1,
+    )
+
+    with pytest.raises(ValueError, match="invalid or expired"):
+        cipher.decode(token)
+
+
+def test_session_cipher_accepts_unexpired_legacy_fernet_cookie() -> None:
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+    legacy_payload = json.dumps(
+        {
+            "bootstrap_relay": credentials.bootstrap_relay,
+            "nsec": credentials.nsec,
+            "version": credentials.version,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    legacy_token = Fernet(TEST_KEY.encode("ascii")).encrypt(legacy_payload).decode("ascii")
+
+    assert SessionCipher(TEST_SETTINGS).decode(legacy_token) == credentials
 
 
 def test_offline_mnemonic_login_derives_nsec_but_does_not_store_phrase() -> None:

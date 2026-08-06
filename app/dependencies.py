@@ -46,13 +46,15 @@ CredentialsDependency = Annotated[
 ]
 
 
-def get_acorn(credentials: CredentialsDependency) -> Acorn:
+def get_acorn(credentials: CredentialsDependency, settings: SettingsDependency) -> Acorn:
     """Build a request-scoped Acorn component without loading or storing state."""
 
     return Acorn(
         nsec=credentials.nsec,
         home_relay=credentials.bootstrap_relay,
         relays=[credentials.bootstrap_relay],
+        blossom_home_server=settings.blossom_home_server,
+        blossom_servers=[settings.blossom_home_server],
     )
 
 

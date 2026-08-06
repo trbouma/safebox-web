@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p>Safebox will generate a new component keypair, initialize its wallet state
+on the home relay, and start a user-controlled session.</p>
+<form method="post" action="/create" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="home_relay">Home relay</label>
+  <input id="home_relay" name="home_relay" type="text"
+         value="{{ default_relay }}" required spellcheck="false">
+  <label for="home_mint">Home mint</label>
+  <input id="home_mint" name="home_mint" type="text"
+         value="{{ default_mint }}" required spellcheck="false">
+  <label for="mnemonic_words">Offline mnemonic length</label>
+  <select id="mnemonic_words" name="mnemonic_words" required>
+    <option value="12"{% if mnemonic_words == "12" %} selected{% endif %}>12 words (default)</option>
+    <option value="24"{% if mnemonic_words == "24" %} selected{% endif %}>24 words</option>
+  </select>
+  <p class="muted">Both options can recover the Acorn. The 24-word option uses
+  256 bits of generated entropy instead of 128 bits.</p>
+  <details>
+    <summary>Bring your own entropy</summary>
+    <p id="entropy-help">Optionally supply exactly 32 bytes of externally
+    generated entropy as 64 hexadecimal characters. This overrides the
+    mnemonic-length choice and produces a 24-word offline mnemonic. Safebox
+    processes the value for this request but does not store it.</p>
+    <label for="entropy_hex">256-bit entropy</label>
+    <input id="entropy_hex" name="entropy_hex" type="password"
+           minlength="64" maxlength="64" pattern="[0-9A-Fa-f]{64}"
+           aria-describedby="entropy-help" autocomplete="off"
+           spellcheck="false" autocapitalize="none">
+    <label for="entropy_confirmation">Repeat 256-bit entropy</label>
+    <input id="entropy_confirmation" name="entropy_confirmation" type="password"
+           minlength="64" maxlength="64" pattern="[0-9A-Fa-f]{64}"
+           autocomplete="off" spellcheck="false" autocapitalize="none">
+  </details>
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I understand that Safebox will display sensitive recovery material once the
+    new Acorn has been verified, and I must save it securely.
+  </label>
+  <button type="submit">Create Acorn</button>
+</form>
+<p><a href="/login">Connect an existing Acorn instead</a></p>
+{% endblock %}

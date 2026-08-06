@@ -27,6 +27,7 @@ MIN_GIFT_WRAP_RETENTION_SECONDS = 60 * 60
 MAX_GIFT_WRAP_RETENTION_SECONDS = 30 * 24 * 60 * 60
 DEFAULT_SESSION_TTL_HOURS = 30 * 24
 DEFAULT_SESSION_TTL_SECONDS = DEFAULT_SESSION_TTL_HOURS * 60 * 60
+DEFAULT_MAX_BLOB_BYTES = 10 * 1024 * 1024
 
 
 def _session_ttl_seconds_from_env() -> int:
@@ -174,6 +175,8 @@ class Settings:
     payment_timeout_seconds: float = 90.0
     default_bootstrap_relay: str = "wss://relay.getsafebox.app"
     default_home_mint: str = "https://mint.getsafebox.app"
+    blossom_home_server: str = "https://blossom.getsafebox.app"
+    max_blob_bytes: int = DEFAULT_MAX_BLOB_BYTES
     database_url: str = "sqlite:///data/database.db"
     provider_invoice_wait_seconds: float = 10.0
     lnurl_min_sendable_msat: int = 1000
@@ -194,7 +197,7 @@ class Settings:
             Fernet(self.cookie_key.encode("ascii"))
         except (TypeError, ValueError) as exc:
             raise ValueError(
-                "SAFEBOX_COOKIE_KEY must be a valid URL-safe Fernet key"
+                "SAFEBOX_COOKIE_KEY must be a valid URL-safe 32-byte application key"
             ) from exc
         if self.session_ttl_seconds < 60:
             raise ValueError("session lifetime must be at least 60 seconds")
@@ -202,6 +205,10 @@ class Settings:
             raise ValueError("SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS must be positive")
         if self.payment_timeout_seconds <= 0:
             raise ValueError("SAFEBOX_PAYMENT_TIMEOUT_SECONDS must be positive")
+        if self.max_blob_bytes <= 0:
+            raise ValueError("SAFEBOX_MAX_BLOB_BYTES must be positive")
+        if not self.blossom_home_server.strip():
+            raise ValueError("SAFEBOX_BLOSSOM_HOME_SERVER is required")
         if self.provider_invoice_wait_seconds <= 0:
             raise ValueError("SAFEBOX_PROVIDER_INVOICE_WAIT_SECONDS must be positive")
         if self.lnurl_min_sendable_msat < 1000:
@@ -232,8 +239,8 @@ class Settings:
         cookie_key = os.getenv("SAFEBOX_COOKIE_KEY", "").strip()
         if not cookie_key:
             raise RuntimeError(
-                "SAFEBOX_COOKIE_KEY is required; generate one with "
-                "cryptography.fernet.Fernet.generate_key()"
+                "SAFEBOX_COOKIE_KEY is required; generate a URL-safe "
+                "32-byte application key"
             )
         ttl = _session_ttl_seconds_from_env()
         try:
@@ -251,8 +258,11 @@ class Settings:
             lnurl_min = int(os.getenv("SAFEBOX_LNURL_MIN_SENDABLE_MSAT", "1000"))
             lnurl_max = int(os.getenv("SAFEBOX_LNURL_MAX_SENDABLE_MSAT", "100000000"))
             comment_allowed = int(os.getenv("SAFEBOX_LNURL_COMMENT_ALLOWED", "256"))
+            max_blob_bytes = int(
+                os.getenv("SAFEBOX_MAX_BLOB_BYTES", str(DEFAULT_MAX_BLOB_BYTES))
+            )
         except ValueError as exc:
-            raise RuntimeError("Safebox provider payment settings are invalid") from exc
+            raise RuntimeError("Safebox numeric application settings are invalid") from exc
         default_relay = os.getenv(
             "SAFEBOX_DEFAULT_BOOTSTRAP_RELAY",
             "wss://relay.getsafebox.app",
@@ -276,6 +286,11 @@ class Settings:
             payment_timeout_seconds=payment_timeout,
             default_bootstrap_relay=default_relay,
             default_home_mint=default_mint,
+            blossom_home_server=os.getenv(
+                "SAFEBOX_BLOSSOM_HOME_SERVER",
+                "https://blossom.getsafebox.app",
+            ).strip(),
+            max_blob_bytes=max_blob_bytes,
             database_url=os.getenv(
                 "SAFEBOX_DATABASE_URL",
                 "sqlite:///data/database.db",

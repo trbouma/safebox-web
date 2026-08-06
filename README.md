@@ -118,9 +118,18 @@ bootstrap_relay
 session_format_version
 ```
 
-The complete payload is encrypted and authenticated with a server-held Fernet
-key. The cookie is `HttpOnly`, `SameSite=Strict`, and `Secure` everywhere
+The complete payload is encrypted and authenticated using AES-256-GCM. A
+purpose-specific 256-bit session key is derived from the server-held
+`SAFEBOX_COOKIE_KEY` with HKDF-SHA256, and every cookie receives a fresh random
+96-bit nonce. The authenticated payload includes its issuance time and format
+purpose. The cookie is `HttpOnly`, `SameSite=Strict`, and `Secure` everywhere
 except direct loopback development at `http://127.0.0.1:<port>`.
+
+New cookies carry a `v2.` prefix. Unprefixed Fernet cookies issued by versions
+before the AES-256-GCM migration remain readable for no longer than their
+original session lifetime, allowing a deployment upgrade without immediately
+disconnecting every browser. New sessions are never issued in the legacy
+format.
 The default session lifetime is 30 days (`SAFEBOX_SESSION_TTL_HOURS=720`) and is an absolute
 lifetime from login rather than an activity-based sliding window. Extending
 this period improves mobile continuity but also lengthens the exposure window
@@ -145,6 +154,16 @@ The creation form offers either a 12-word or 24-word BIP39 offline mnemonic.
 The 12-word option is the default and uses 128 bits of generated entropy; the
 24-word option uses 256 bits. Both use Acorn's same downstream key derivation
 and can later be entered through the existing offline-mnemonic login flow.
+
+The form also offers **Bring your own entropy**. This accepts exactly 32 bytes
+of externally generated entropy encoded as 64 hexadecimal characters, entered
+and confirmed in masked fields. Browser constraints provide immediate input
+help, but the server performs the authoritative format and equality validation
+using Acorn's external-entropy derivation function. The value deterministically
+produces a 24-word offline mnemonic and its Acorn `nsec`; it is handled in
+request memory and is neither echoed into an error response nor stored by
+Safebox Web. The entropy must come from a cryptographically secure source, not
+from a password or other guessable text.
 
 This architecture moves session custody to the browser; it does not eliminate
 the need to trust the running web code or protect the cookie-encryption key.
@@ -188,6 +207,44 @@ routing, and the application operator controlling the directory code and
 database. Any of these layers can redirect a name while the original Acorn key
 itself remains uncompromised. A proxy allowlist protects forwarded metadata; it
 cannot force an authorized proxy to route to the intended application.
+
+## Encrypted blob records
+
+The private-record index provides a **Store an encrypted blob** action. Safebox
+Web accepts the multipart upload, enforces `SAFEBOX_MAX_BLOB_BYTES`, and passes
+the bytes to the request-scoped Acorn. Acorn then:
+
+1. generates a random 32-byte blob key and 96-bit nonce;
+2. encrypts the bytes with AES-256-GCM;
+3. uploads only the authenticated ciphertext to
+   `SAFEBOX_BLOSSOM_HOME_SERVER`; and
+4. stores the blob reference, ciphertext and plaintext hashes, key, nonce, and
+   descriptive metadata inside the NIP-44-encrypted private record.
+
+Download reverses that flow: Acorn reads and decrypts the private record,
+retrieves the ciphertext from Blossom, verifies both hashes and the GCM tag,
+and returns plaintext bytes for the HTTP response. Safebox Web does not put
+blob contents in its database or retain an application copy. Multipart parsing
+may use transient operating-system temporary storage for larger requests, and
+the plaintext necessarily exists in process memory during encryption and
+download.
+
+The web application intentionally refuses to overwrite an existing record
+label. This avoids silently losing the old encrypted-blob reference or leaving
+an orphaned Blossom object. The record page provides a confirmed deletion form
+that asks Acorn to delete the encrypted Blossom object, publish the NIP-09
+record deletion request, and update the wallet's user-record index.
+
+Deletion is not a universal erasure guarantee. Safebox reports Blossom cleanup
+and relay visibility separately because blob-server deletion can fail and
+NIP-09 remains advisory. Relays, Blossom servers, mirrors, logs, and backups may
+retain copies even after accepting a deletion request.
+
+The Blossom operator can observe ciphertext size, hash, timing, upload and
+download activity, and authorization metadata. It cannot read the plaintext or
+the blob key from the uploaded object. The default application limit is 10 MiB.
+The reverse proxy must enforce a comparable request-body limit because the
+application-level check occurs after multipart parsing.
 
 ## Development and deployment modes
 
@@ -276,10 +333,10 @@ confirm the active source with:
 poetry run python -c "import acorn; print(acorn.__file__)"
 ```
 
-Generate an application cookie key:
+Generate a URL-safe 32-byte application key:
 
 ```sh
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+python3 -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
 ```
 
 Copy `.env.example` to `.env` and place that value in
@@ -370,7 +427,7 @@ browser session.
 Review these deployment values in `.env` before starting:
 
 ```env
-SAFEBOX_COOKIE_KEY=<generated Fernet-compatible key>
+SAFEBOX_COOKIE_KEY=<generated URL-safe 32-byte application key>
 SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
 SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_WEB_WORKERS=1
@@ -443,6 +500,11 @@ proxy is still required for browser access through Docker.
 For a tested deployment where Nginx and Safebox Web run on separate Tailscale
 machines, including the negative and positive transport checks, see
 [Tailscale Reverse-Proxy Deployment](docs/TAILSCALE-REVERSE-PROXY-DEPLOYMENT.md).
+
+Future handle-specific `did:web` hosting, including its wildcard DNS, TLS,
+isolated Nginx route, handle constraints, staged rollout, and rollback plan, is
+captured in the deferred
+[DID Web Wildcard Deployment Note](docs/DID-WEB-WILDCARD-DEPLOYMENT-NOTE.md).
 
 ## Production transport
 
@@ -521,6 +583,9 @@ They do not contact a relay or mint.
 
 - The server cookie key has no rotation mechanism yet; rotation invalidates
   existing sessions.
+- Legacy Fernet session cookies are accepted only as a bounded migration path
+  until their authenticated original lifetime expires. Remove the legacy
+  decoder after the longest pre-migration session lifetime has elapsed.
 - Browser-held encrypted private keys remain bearer credentials if the server
   key is compromised.
 - Python cannot guarantee that decrypted secrets are zeroized from memory.

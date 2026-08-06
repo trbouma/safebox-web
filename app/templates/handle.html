@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/wallet">← Back to wallet</a></p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if existing %}
+<p>This Acorn controls <strong>{{ existing.claimed_handle }}@{{ host }}</strong>.</p>
+<p>Component public key: <code>{{ existing.npub }}</code></p>
+<p>Resolution relay: <code>{{ existing.home_relay }}</code></p>
+<p>Submit the current handle to refresh its home relay, or choose another
+unclaimed handle to change the address. Changing it immediately releases the
+current address, which another Acorn may then claim.</p>
+{% else %}
+<p>Choose a public handle for this Acorn component. Safebox stores only the
+handle, component public key, and home relay. Your private key is never written
+to this directory.</p>
+{% endif %}
+<form method="post" action="/handle" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="claimed_handle">Handle</label>
+  <input id="claimed_handle" name="claimed_handle" type="text" minlength="1"
+         maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]|[A-Za-z0-9]"
+         {% if existing %}value="{{ existing.claimed_handle }}"{% else %}placeholder="alice"{% endif %}
+         required spellcheck="false" autocapitalize="none">
+  {% if not existing %}<p>Your address will be <strong>handle@{{ host }}</strong>.</p>{% endif %}
+  <button type="submit">{% if existing %}Update{% else %}Claim{% endif %} handle</button>
+</form>
+{% if existing %}
+<p><a href="/.well-known/nostr.json?name={{ existing.claimed_handle | urlencode }}">View public NIP-05 response</a></p>
+<hr>
+<form method="post" action="/handle/remove">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    Remove this public NIP-05 address. The released handle may subsequently be
+    claimed by another Acorn.
+  </label>
+  <button type="submit">Remove handle</button>
+</form>
+{% endif %}
+{% endblock %}

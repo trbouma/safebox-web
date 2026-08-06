@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/records">← Back to records</a></p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p>The label and payload are encrypted by Acorn and written to the bootstrap
+relay. Safebox does not store a server-side copy.</p>
+<form method="post" action="/record/save" autocomplete="off"
+      data-progress-message="Encrypting, publishing, and verifying the private record. Please wait."
+      data-progress-button="Saving record…">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="label">Record label</label>
+  <input id="label" name="label" type="text" maxlength="200" required
+         value="{{ label }}"{% if updating %} readonly{% endif %}>
+  <label for="payload_format">Content format</label>
+  <select id="payload_format" name="payload_format">
+    <option value="text"{% if payload_format == "text" %} selected{% endif %}>Text</option>
+    <option value="json"{% if payload_format == "json" %} selected{% endif %}>JSON</option>
+  </select>
+  <label for="payload">Private record contents</label>
+  <textarea id="payload" name="payload" maxlength="262144" required>{{ payload }}</textarea>
+  <label>
+    <input type="checkbox" name="confirmed" value="yes" required>
+    Save this encrypted record. If the label already exists, replace its current value.
+  </label>
+  <button type="submit">{{ title }}</button>
+</form>
+{% endblock %}

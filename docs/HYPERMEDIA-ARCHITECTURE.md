@@ -5,6 +5,14 @@ links, submits HTML forms, receives complete HTML representations, and follows
 HTTP redirects. It is not a JavaScript application that duplicates Acorn or
 wallet workflow logic in the browser.
 
+Browser representations are rendered with Jinja2 templates under
+`app/templates/`. `base.html` owns the shared document structure and includes
+small reusable partials, while page templates own their own headings, forms,
+links, and conditional presentation. Visual rules live in the same-origin
+`app/static/styles.css` file. FastAPI route functions supply plain values and
+perform all workflow decisions; templates format those values but do not call
+Acorn, mutate state, or decide application outcomes.
+
 The same representations are responsive rather than split into separate
 desktop and mobile applications. Narrow-screen styles improve spacing, touch
 targets, QR sizing, long-value wrapping, and transaction-card layout while the
@@ -57,6 +65,24 @@ All application decisions remain on the server. FastAPI routes validate input,
 verify CSRF tokens, reconstruct the request-scoped Acorn, invoke component
 operations, interpret results, and render the next representation.
 
+## Template boundary
+
+The template directory is deliberately a presentation layer rather than a
+second application layer:
+
+- `base.html` provides the common document shell, assets, theme control, and
+  Acorn-to-Safebox relationship visual;
+- named page templates make forms and representations independently readable;
+- `partials/` contains reusable markup that has no workflow authority;
+- Jinja autoescaping applies to route-supplied values by default; and
+- only server-generated HTML fragments such as QR SVGs and existing balance
+  summaries are explicitly marked safe at narrow template boundaries.
+
+New browser pages should be added as templates instead of assembling large HTML
+strings inside `app/main.py`. Small exceptional result and error pages may use
+the generic `page.html` representation until their content is substantial
+enough to justify a named template.
+
 ## Progressive enhancement only
 
 `app/static/forms.js` does not call `fetch()`, open WebSockets, intercept form
@@ -78,12 +104,39 @@ workflow state into JavaScript, `localStorage`, or `sessionStorage`. The
 encrypted session cookie contains the minimum material required to reconstruct
 the attached Acorn. Because it is HTTP-only, page scripts cannot read it.
 
+The current `v2` cookie envelope uses AES-256-GCM with a fresh random nonce and
+a purpose-specific key derived from the server-held application key using
+HKDF-SHA256. Its issuance time, purpose, and credentials are authenticated
+together. The server temporarily accepts unprefixed legacy Fernet sessions only
+for their remaining original lifetime; all newly issued sessions use `v2`.
+
 The server necessarily decrypts the session and holds the operational `nsec`
 in process memory while handling an authenticated request. Acorn loads and
 mutates encrypted relay-backed state from that server-side request boundary.
 Private-record form contents pass through the server in plaintext for the
 duration of the request and are then encrypted by Acorn; they are not stored in
 the Safebox Web database.
+
+Encrypted blob uploads follow the same boundary. The browser submits an
+ordinary multipart form; Safebox validates the request and passes bounded bytes
+to Acorn; Acorn encrypts them before the configured Blossom upload. Download is
+a normal authenticated link whose response is produced only after Acorn has
+retrieved, authenticated, and decrypted the blob. No browser-side upload API,
+key handling, or decryption logic is introduced. The multipart implementation
+may use transient system temporary storage and therefore does not claim that
+plaintext exists only in RAM, only that Safebox Web retains no application or
+database copy.
+
+Safe raster images and PDFs use ordinary authenticated GET resources rendered
+with native HTML elements (`img` and `object`). There is no Fetch API, object-URL
+lifecycle, PDF.js dependency, or client-side viewer state. Inline rendering is
+restricted to an explicit media-type allowlist; every blob retains a normal
+download link as the universal fallback.
+
+Record deletion is also a normal HTML form mutation. The record representation
+contains a CSRF-protected confirmation form, and the POST returns a complete
+result representation describing relay visibility and Blossom cleanup. No
+client-side deletion API or optimistic UI state is involved.
 
 ## Mutation pattern
 

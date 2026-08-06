@@ -71,6 +71,8 @@ Place the generated value in `SAFEBOX_COOKIE_KEY` and review at least:
 ```env
 SAFEBOX_COOKIE_KEY=<new private key>
 SAFEBOX_DATABASE_URL=sqlite:///data/database.db
+SAFEBOX_BLOSSOM_HOME_SERVER=https://blossom.getsafebox.app
+SAFEBOX_MAX_BLOB_BYTES=10485760
 
 SAFEBOX_BIND_ADDRESS=127.0.0.1
 SAFEBOX_PORT=8000
@@ -92,6 +94,17 @@ between `3600` seconds (one hour) and `2592000` seconds (30 days).
 
 Use the actual proxy address for `FORWARDED_ALLOW_IPS` when TLS terminates on
 another machine. Never commit `.env`.
+
+If encrypted blob upload is enabled, configure the reverse proxy's request-body
+limit at or slightly above `SAFEBOX_MAX_BLOB_BYTES` plus multipart overhead. For
+the 10 MiB default, an Nginx HTTPS virtual host can use:
+
+```nginx
+client_max_body_size 11m;
+```
+
+This protects the application before multipart parsing. Safebox Web still
+enforces the exact plaintext file limit itself.
 
 ## 3. Validate and build the image
 
