@@ -1589,6 +1589,9 @@ def test_record_index_links_encoded_labels() -> None:
     assert "/record?label=A+%26+B" in response.text
     assert 'href="/record/edit"' in response.text
     assert 'href="/blob/upload"' not in response.text
+    assert '<table class="record-table">' in response.text
+    assert '<th scope="col">Private Record</th>' in response.text
+    assert response.text.count('class="record-open"') == 3
 
 
 def test_legacy_blob_upload_page_redirects_to_unified_record_form() -> None:
@@ -1714,8 +1717,8 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
     response = client.get("/record/blob", params={"label": "Private Notes"})
 
     assert detail.status_code == 200
-    assert "Blob fingerprint: <code>1EA23F2B</code>" in detail.text
-    assert "Download decrypted attachment" in detail.text
+    assert "Original Record fingerprint: <code>1EA23F2B</code>" in detail.text
+    assert "Download Original Record" in detail.text
     assert "/record/blob?label=Private+Notes" in detail.text
     assert response.status_code == 200
     assert response.content == b"private blob contents"
@@ -1769,7 +1772,7 @@ def test_pdf_blob_uses_browser_native_object_with_download_fallback() -> None:
     assert 'href="/record/blob?label=Report&amp;inline=1"' in response.text
     assert "Open PDF full screen" in response.text
     assert "Embedded PDF support varies by browser" in response.text
-    assert "Download decrypted attachment" in response.text
+    assert "Download Original Record" in response.text
 
 
 def test_blob_fingerprint_is_hidden_when_plaintext_digest_is_invalid() -> None:
@@ -1800,7 +1803,7 @@ def test_blob_record_delete_form_requires_explicit_confirmation() -> None:
     )
 
     assert 'action="/record/delete"' in detail.text
-    assert "Delete this record and attachment" in detail.text
+    assert "Delete this record and Original Record" in detail.text
     assert response.status_code == 400
     assert "Explicit deletion confirmation is required" in response.text
     assert acorn.record_delete_calls == []
@@ -1833,7 +1836,7 @@ def test_blob_record_delete_removes_record_and_requests_blob_cleanup() -> None:
 
     assert response.status_code == 200
     assert "Deletion was requested for Report" in response.text
-    assert "accepted the encrypted blob deletion request" in response.text
+    assert "accepted the Original Record deletion request" in response.text
     assert acorn.record_delete_calls == [
         {
             "label": "Report",
@@ -1865,7 +1868,7 @@ def test_blob_record_delete_reports_partial_blob_cleanup() -> None:
     )
 
     assert response.status_code == 200
-    assert "could not confirm deletion of the encrypted blob" in response.text
+    assert "could not confirm deletion of the Original Record" in response.text
     assert "could not confirm that the original record is already hidden" in response.text
 
 
@@ -1921,6 +1924,7 @@ def test_record_edit_form_loads_and_escapes_existing_payload() -> None:
     assert "<script>alert" not in response.text
     assert 'enctype="multipart/form-data"' in response.text
     assert 'name="attachment" type="file"' in response.text
+    assert "Original Record (optional)" in response.text
     assert "Select a file to attach it to this record" in response.text
 
 

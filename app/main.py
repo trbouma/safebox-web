@@ -97,13 +97,13 @@ def _ecash_retention_notice(settings: Settings) -> str:
     retention = settings.service_acorn_gift_wrap_retention_seconds
     if retention is None:
         message = (
-            "Safebox does not request automatic expiration for encrypted ecash "
+            "Safebox does not request automatic expiration for private ecash "
             "delivery messages. Relays may retain them according to their own policy."
         )
     else:
         duration = _humanize_retention(retention)
         message = (
-            "Safebox asks compatible relays to retain encrypted ecash delivery "
+            "Safebox asks compatible relays to retain private ecash delivery "
             f"messages for {duration} after publication, then expire and delete "
             "them. Receive incoming ecash before this period ends. Relay "
             "enforcement and physical deletion can vary."
@@ -367,7 +367,7 @@ def _blob_upload_form(
 ) -> str:
     return render_template(
         "blob_upload.html",
-        title="Store an encrypted blob",
+        title="Store an Original Record",
         csrf_token=csrf_token,
         max_blob_megabytes=f"{max_blob_bytes / (1024 * 1024):g}",
         label=label,
@@ -1889,7 +1889,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         else:
             return upload_error(
-                "That record label already exists. Choose a new label to avoid replacing or orphaning its blob.",
+                "That record label already exists. Use the record editor to preserve or replace its Original Record.",
                 409,
             )
 
@@ -1930,7 +1930,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except TimeoutError:
             return upload_error(
-                "The encrypted blob save timed out and its outcome is uncertain. Check the record list before retrying.",
+                "Saving the Original Record timed out and its outcome is uncertain. Check the record list before retrying.",
                 504,
             )
         except ValueError as exc:
@@ -1941,7 +1941,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
             return upload_error(
-                "Safebox could not encrypt, upload, publish, and verify the blob record.",
+                "Safebox could not store and verify the Original Record.",
                 502,
             )
 
@@ -1963,7 +1963,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             return HTMLResponse(
                 _page(
-                    "Encrypted blob",
+                    "Original Record",
                     f'<p class="error">{escape(str(exc))}</p>'
                     '<p><a href="/records">Return to records</a></p>',
                 ),
@@ -1977,8 +1977,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except TimeoutError:
             return HTMLResponse(
                 _page(
-                    "Encrypted blob",
-                    '<p class="error">Timed out while retrieving and decrypting the blob.</p>'
+                    "Original Record",
+                    '<p class="error">Timed out while retrieving the Original Record.</p>'
                     '<p><a href="/records">Return to records</a></p>',
                 ),
                 status_code=504,
@@ -1990,8 +1990,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return HTMLResponse(
                 _page(
-                    "Encrypted blob",
-                    '<p class="error">Unable to retrieve and decrypt the blob.</p>'
+                    "Original Record",
+                    '<p class="error">Unable to retrieve the Original Record.</p>'
                     '<p><a href="/records">Return to records</a></p>',
                 ),
                 status_code=502,
@@ -1999,8 +1999,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not blob_data:
             return HTMLResponse(
                 _page(
-                    "Encrypted blob",
-                    '<p class="error">This record has no retrievable blob.</p>'
+                    "Original Record",
+                    '<p class="error">This record has no retrievable Original Record.</p>'
                     '<p><a href="/records">Return to records</a></p>',
                 ),
                 status_code=404,

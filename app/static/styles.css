@@ -68,6 +68,16 @@ figure.blob-preview { padding: .75rem; }
 .blob-preview img { display: block; width: auto; max-height: 38rem; margin: 0 auto; object-fit: contain; }
 .blob-preview-pdf { height: min(70vh, 48rem); }
 .pdf-open-link { display: inline-flex; min-height: 2.75rem; align-items: center; padding: .55rem .8rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); font-weight: 700; }
+.record-actions { display: flex; justify-content: flex-end; margin: 1rem 0; }
+.record-add, .record-open { display: inline-flex; min-height: 2.75rem; box-sizing: border-box; align-items: center; justify-content: center; padding: .55rem .85rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); font-weight: 700; text-decoration: none; }
+.record-table-wrap { margin: 1rem 0 1.5rem; overflow-x: auto; border: 1px solid var(--border); border-radius: .75rem; background: var(--surface); }
+.record-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.record-table th, .record-table td { padding: .8rem 1rem; border-bottom: 1px solid var(--note-border); text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
+.record-table thead th { color: var(--muted); background: var(--surface-soft); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+.record-table thead th:last-child, .record-table td:last-child { width: 5.5rem; text-align: right; }
+.record-table tbody tr:last-child th, .record-table tbody tr:last-child td { border-bottom: 0; }
+.record-table tbody th { font-weight: 650; }
+.record-open { min-height: 2.5rem; padding: .4rem .7rem; }
 .danger-zone { margin: 2rem 0 1.5rem; padding: 1rem; border: 1px solid var(--error); border-radius: .7rem; }
 .danger-zone h2 { margin-top: 0; font-size: 1.15rem; }
 .danger-button { border-color: var(--error); color: var(--error); font-weight: 700; }
@@ -115,6 +125,10 @@ figure.blob-preview { padding: .75rem; }
   .invoice-qr svg, .lightning-address-qr svg { width: min(100%, 17rem); }
   .lightning-address-card, .retention-notice, .transaction-card { border-radius: .7rem; padding: .85rem; }
   .blob-preview-pdf { height: 65vh; min-height: 24rem; }
+  .record-actions { justify-content: stretch; }
+  .record-add { width: 100%; }
+  .record-table th, .record-table td { padding: .7rem .75rem; }
+  .record-table thead th:last-child, .record-table td:last-child { width: 4.75rem; }
   .transaction-header { align-items: flex-start; flex-direction: column; gap: .2rem; }
   .transaction-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

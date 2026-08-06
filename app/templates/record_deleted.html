@@ -5,9 +5,9 @@
 {% else %}
 <p role="status"><strong>Deletion was requested for {{ label }}.</strong></p>
 {% if blob_requested and blob_deleted %}
-<p>The configured Blossom server accepted the encrypted blob deletion request.</p>
+<p>The configured storage server accepted the Original Record deletion request.</p>
 {% elif blob_requested %}
-<p class="error">The relay deletion was requested, but Safebox could not confirm deletion of the encrypted blob.</p>
+<p class="error">The private record deletion was requested, but Safebox could not confirm deletion of the Original Record.</p>
 {% endif %}
 {% if hidden_count %}
 <p>The original record was no longer visible on {{ hidden_count }} queried relay{% if hidden_count != 1 %}s{% endif %}.</p>

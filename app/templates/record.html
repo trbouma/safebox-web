@@ -4,10 +4,10 @@
 <pre>{{ payload }}</pre>
 {% if has_blob %}
 <section class="blob-record" aria-labelledby="blob-heading">
-  <h2 id="blob-heading">Encrypted file attachment</h2>
-  <p>This private record includes an AES-256-GCM encrypted file attachment stored on Blossom.</p>
+  <h2 id="blob-heading">Original Record</h2>
+  <p>The Original Record is protected by Acorn and stored separately from its private record metadata.</p>
   {% if blob_fingerprint %}
-  <p>Blob fingerprint: <code>{{ blob_fingerprint }}</code></p>
+  <p>Original Record fingerprint: <code>{{ blob_fingerprint }}</code></p>
   {% endif %}
   {% if blob_preview == "image" %}
   <figure class="blob-preview">
@@ -25,20 +25,20 @@
   {% else %}
   <p>No inline preview is available{% if blob_type %} for <code>{{ blob_type }}</code>{% endif %}.</p>
   {% endif %}
-  <p><a href="{{ blob_url }}">Download decrypted attachment</a></p>
+  <p><a href="{{ blob_url }}">Download Original Record</a></p>
 </section>
 {% endif %}
 <p><a href="{{ edit_url }}">Edit this record</a></p>
 <section class="danger-zone" aria-labelledby="delete-record-heading">
   <h2 id="delete-record-heading">Delete this record</h2>
-  <p>This requests deletion of the encrypted relay record{% if has_blob %} and its encrypted file attachment{% endif %}.</p>
+  <p>This requests deletion of the private record{% if has_blob %} and its Original Record{% endif %}.</p>
   <p>Relay deletion is advisory, and infrastructure operators may retain copies or backups.</p>
   <form method="post" action="/record/delete">
     <input type="hidden" name="csrf_token" value="{{ delete_csrf_token }}">
     <input type="hidden" name="label" value="{{ label }}">
     <label><input type="checkbox" name="confirmed" value="yes" required>
       I understand that this action cannot be undone through Safebox.</label>
-    <button class="danger-button" type="submit">Delete this record{% if has_blob %} and attachment{% endif %}</button>
+    <button class="danger-button" type="submit">Delete this record{% if has_blob %} and Original Record{% endif %}</button>
   </form>
 </section>
 <p><a href="/records">Return to records</a></p>

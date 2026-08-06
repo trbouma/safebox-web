@@ -2,27 +2,26 @@
 {% block content %}
 <p><a href="/records">← Back to records</a></p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
-<p>Acorn encrypts the file with AES-256-GCM before uploading it to the
-configured Blossom server. The decryption key is retained only inside the
-NIP-44-encrypted private record.</p>
+<p>The Original Record is protected by Acorn and stored separately from its
+private record metadata.</p>
 <p>Maximum file size: <strong>{{ max_blob_megabytes }} MiB</strong>.</p>
 <form method="post" action="/blob/upload" enctype="multipart/form-data"
       autocomplete="off"
-      data-progress-message="Encrypting, uploading, publishing, and verifying the private blob record. Please wait."
-      data-progress-button="Storing encrypted blob…">
+      data-progress-message="Protecting, storing, and verifying the Original Record. Please wait."
+      data-progress-button="Storing Original Record…">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label for="label">Record label</label>
   <input id="label" name="label" type="text" maxlength="200" required
          value="{{ label }}">
   <label for="description">Description</label>
   <textarea id="description" name="description" maxlength="4000">{{ description }}</textarea>
-  <label for="blob">File</label>
+  <label for="blob">Original Record</label>
   <input id="blob" name="blob" type="file" required>
   <label>
     <input type="checkbox" name="confirmed" value="yes" required>
-    Encrypt and store this file. Safebox processes the plaintext during this
-    request but does not retain a plaintext application copy.
+    Protect and store this Original Record. Safebox processes the file during
+    this request but does not retain an application copy.
   </label>
-  <button type="submit">Store encrypted blob</button>
+  <button type="submit">Store Original Record</button>
 </form>
 {% endblock %}
