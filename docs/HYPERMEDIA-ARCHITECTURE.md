@@ -128,10 +128,13 @@ plaintext exists only in RAM, only that Safebox Web retains no application or
 database copy.
 
 Safe raster images and PDFs use ordinary authenticated GET resources rendered
-with native HTML elements (`img` and `object`). There is no Fetch API, object-URL
-lifecycle, PDF.js dependency, or client-side viewer state. Inline rendering is
-restricted to an explicit media-type allowlist; every blob retains a normal
-download link as the universal fallback.
+with native HTML elements (`img` and `object`). PDF records also provide a
+normal same-origin link to the decrypted `application/pdf` response because
+embedded-object support varies across mobile browsers. That link lets a browser
+open its full-screen PDF viewer or hand the document to a reader app; the
+separate attachment response remains available for download. There is no Fetch
+API, object-URL lifecycle, PDF.js dependency, or client-side viewer state.
+Inline rendering is restricted to an explicit media-type allowlist.
 
 Record deletion is also a normal HTML form mutation. The record representation
 contains a CSRF-protected confirmation form, and the POST returns a complete

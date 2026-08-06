@@ -3,7 +3,7 @@
 <p>Component public key: <code>{{ npub }}</code></p>
 <p>Bootstrap relay: <code>{{ home_relay }}</code></p>
 {% if record_protection_available %}
-<p>Protected-record recovery backup:
+<p>Protected record mnemonic backup:
   <strong>{% if record_protection_backup_confirmed %}confirmed{% else %}not yet confirmed{% endif %}</strong>
   — <a href="/record-protection/recovery">view recovery options</a>
 </p>

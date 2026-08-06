@@ -11,7 +11,7 @@ on the home relay, and start a user-controlled session.</p>
   <label for="home_mint">Home mint</label>
   <input id="home_mint" name="home_mint" type="text"
          value="{{ default_mint }}" required spellcheck="false">
-  <label for="mnemonic_words">Offline mnemonic length</label>
+  <label for="mnemonic_words">Safebox Acorn mnemonic length</label>
   <select id="mnemonic_words" name="mnemonic_words" required>
     <option value="12"{% if mnemonic_words == "12" %} selected{% endif %}>12 words (default)</option>
     <option value="24"{% if mnemonic_words == "24" %} selected{% endif %}>24 words</option>
@@ -22,7 +22,7 @@ on the home relay, and start a user-controlled session.</p>
     <summary>Bring your own entropy</summary>
     <p id="entropy-help">Optionally supply exactly 32 bytes of externally
     generated entropy as 64 hexadecimal characters. This overrides the
-    mnemonic-length choice and produces a 24-word offline mnemonic. Safebox
+    mnemonic-length choice and produces a 24-word Safebox Acorn mnemonic. Safebox
     processes the value for this request but does not store it.</p>
     <label for="entropy_hex">256-bit entropy</label>
     <input id="entropy_hex" name="entropy_hex" type="password"

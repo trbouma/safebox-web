@@ -116,6 +116,34 @@ def _ecash_retention_notice(settings: Settings) -> str:
     )
 
 
+def _safekeeping_message(
+    *,
+    acorn_mnemonic: str,
+    protected_record_mnemonic: str,
+    npub: str,
+    home_relay: str,
+    home_mint: str,
+) -> str:
+    """Build the complete, portable creation-time recovery message."""
+
+    return "\n".join(
+        (
+            "SAFEBOX ACORN SAFEKEEPING MESSAGE",
+            "Keep this message private and offline.",
+            "",
+            "Safebox Acorn mnemonic:",
+            acorn_mnemonic,
+            "",
+            "Protected record mnemonic:",
+            protected_record_mnemonic,
+            "",
+            f"Bootstrap relay: {home_relay}",
+            f"Home mint: {home_mint}",
+            f"Component public key: {npub}",
+        )
+    )
+
+
 def _page(title: str, body: str) -> str:
     """Render a generic result or error page through the shared Jinja layout."""
 
@@ -364,6 +392,15 @@ def _blob_preview_kind(media_type: str | None) -> str | None:
     if normalized == "application/pdf":
         return "pdf"
     return None
+
+
+def _blob_recognition_fingerprint(digest: str | None) -> str | None:
+    """Return an eight-character display fingerprint for a plaintext SHA-256."""
+
+    normalized = str(digest or "").strip()
+    if re.fullmatch(r"[0-9a-fA-F]{64}", normalized) is None:
+        return None
+    return normalized[:8].upper()
 
 
 def _blob_download_headers(
@@ -688,7 +725,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             if mnemonic_words not in {"12", "24"}:
                 return creation_error(
-                    "Choose a 12- or 24-word offline mnemonic."
+                    "Choose a 12- or 24-word Safebox Acorn mnemonic."
                 )
             mnemonic_strength = 128 if mnemonic_words == "12" else 256
             seed_phrase, generated_nsec = generate_seed_phrase_and_nsec(
@@ -771,6 +808,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             bootstrap_relay=normalized_relay,
             record_protection_key=record_protection_key,
         )
+        protected_record_mnemonic = record_protection_recovery_phrase(
+            record_protection_key
+        )
         response = HTMLResponse(
             render_template(
                 "new_acorn.html",
@@ -780,8 +820,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 npub=acorn.pubkey_bech32,
                 home_relay=normalized_relay,
                 home_mint=normalized_mint,
-                record_protection_recovery_phrase=record_protection_recovery_phrase(
-                    record_protection_key
+                protected_record_mnemonic=protected_record_mnemonic,
+                safekeeping_message=_safekeeping_message(
+                    acorn_mnemonic=seed_phrase,
+                    protected_record_mnemonic=protected_record_mnemonic,
+                    npub=acorn.pubkey_bech32,
+                    home_relay=normalized_relay,
+                    home_mint=normalized_mint,
                 ),
                 record_protection_csrf_token=CsrfProtector(settings).issue(),
             ),
@@ -888,7 +933,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return HTMLResponse(
             render_template(
                 "record_protection_warning.html",
-                title="Protected-record recovery",
+                title="Protected record mnemonic",
                 csrf_token=CsrfProtector(settings).issue(),
             ),
             headers={"Cache-Control": "no-store"},
@@ -928,7 +973,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return HTMLResponse(
             render_template(
                 "record_protection_recovery.html",
-                title="Protected-record recovery phrase",
+                title="Protected record mnemonic",
                 recovery_phrase=recovery_phrase,
                 csrf_token=CsrfProtector(settings).issue(),
             ),
@@ -2292,6 +2337,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         blob_type = getattr(record_value, "blobtype", None)
         blob_preview = _blob_preview_kind(blob_type)
+        blob_fingerprint = _blob_recognition_fingerprint(
+            getattr(record_value, "origsha256", None)
+        )
         blob_query = urlencode({"label": label})
         return render_template(
             "record.html",
@@ -2304,6 +2352,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             has_blob=bool(getattr(record_value, "blobref", None)),
             blob_type=blob_type,
             blob_preview=blob_preview,
+            blob_fingerprint=blob_fingerprint,
             blob_url=f"/record/blob?{blob_query}",
             blob_inline_url=f"/record/blob?{blob_query}&inline=1",
             delete_csrf_token=CsrfProtector(settings).issue(),

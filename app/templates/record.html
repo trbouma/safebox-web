@@ -7,11 +7,18 @@
 <section class="blob-record" aria-labelledby="blob-heading">
   <h2 id="blob-heading">Encrypted attachment</h2>
   <p>This record includes an AES-256-GCM encrypted blob stored on Blossom.</p>
+  {% if blob_fingerprint %}
+  <p>Blob fingerprint: <code>{{ blob_fingerprint }}</code></p>
+  {% endif %}
   {% if blob_preview == "image" %}
   <figure class="blob-preview">
     <img src="{{ blob_inline_url }}" alt="Image attached to {{ label }}">
   </figure>
   {% elif blob_preview == "pdf" %}
+  <p><a class="pdf-open-link" href="{{ blob_inline_url }}">Open PDF full screen</a></p>
+  <p class="muted">Embedded PDF support varies by browser. On Android, use
+  the full-screen link; older devices or Incognito mode may open the PDF in a
+  reader app or download it instead.</p>
   <object class="blob-preview blob-preview-pdf" data="{{ blob_inline_url }}"
     type="application/pdf" aria-label="PDF attached to {{ label }}">
     <p>Your browser cannot display this PDF inline. <a href="{{ blob_url }}">Download it instead</a>.</p>

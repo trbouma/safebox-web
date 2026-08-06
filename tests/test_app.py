@@ -238,6 +238,7 @@ class FakeBlobAcorn(FakeLoadedAcorn):
         downloaded_data: bytes | None = b"private blob contents",
         record_lookup_error: ValueError | None = None,
         blob_type: str | None = "text/plain",
+        orig_sha256: str | None = "1ea23f2b" + "0" * 56,
     ) -> None:
         super().__init__()
         self.existing_labels = set(existing_labels or set())
@@ -245,6 +246,7 @@ class FakeBlobAcorn(FakeLoadedAcorn):
         self.downloaded_data = downloaded_data
         self.record_lookup_error = record_lookup_error
         self.blob_type = blob_type
+        self.orig_sha256 = orig_sha256
         self.blob_reads: list[str] = []
 
     async def get_record_safebox(self, record_name: str):
@@ -257,6 +259,7 @@ class FakeBlobAcorn(FakeLoadedAcorn):
             payload={"filename": "notes.txt", "description": "Private notes"},
             blobref="https://blossom.example/encrypted-sha256",
             blobtype=self.blob_type,
+            origsha256=self.orig_sha256,
         )
 
     async def get_user_record_labels(self) -> list[str]:
@@ -350,6 +353,8 @@ def test_progress_script_is_served_from_same_origin() -> None:
     assert response.headers["content-type"].startswith("text/javascript")
     assert 'form.setAttribute("aria-busy", "true")' in response.text
     assert "button.disabled = true" in response.text
+    assert "navigator.clipboard.writeText(target.value)" in response.text
+    assert 'document.execCommand("copy")' in response.text
 
 
 def test_theme_defaults_to_dark_and_script_is_served() -> None:
@@ -381,6 +386,7 @@ def test_pages_include_mobile_layout_safeguards() -> None:
     assert "@media (max-width: 36rem)" in stylesheet.text
     assert "@media (max-width: 24rem)" in stylesheet.text
     assert ".transaction-details { grid-template-columns: 1fr; }" in stylesheet.text
+    assert ".safekeeping-message" in stylesheet.text
 
 
 def test_pages_use_external_jinja_layout_assets() -> None:
@@ -398,7 +404,7 @@ def test_login_page_links_to_new_acorn_creation() -> None:
     assert response.status_code == 200
     assert 'href="/create"' in response.text
     assert "Create a new Acorn" in response.text
-    assert "Restore protected-record access" in response.text
+    assert "Restore protected record access" in response.text
     assert 'name="record_protection_recovery"' in response.text
     assert 'name="record_protection_entropy"' in response.text
 
@@ -457,7 +463,11 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
     assert TEST_MNEMONIC in response.text
     assert TEST_NSEC in response.text
     assert TEST_RPK_PHRASE in response.text
-    assert "Protected-record recovery phrase" in response.text
+    assert "Safebox Acorn safekeeping message" in response.text
+    assert "Safebox Acorn mnemonic:" in response.text
+    assert "Protected record mnemonic:" in response.text
+    assert "Bootstrap relay: wss://relay.example.com" in response.text
+    assert 'data-copy-target="safekeeping-message"' in response.text
     assert "wss://relay.example.com" in response.text
     assert "https://mint.example.com" in response.text
     created = FakeCreatedAcorn.instances[0]
@@ -605,7 +615,7 @@ def test_login_rejects_invalid_record_protection_phrase_without_echoing_it() -> 
     )
 
     assert response.status_code == 400
-    assert "protected-record recovery phrase is not valid" in response.text
+    assert "Protected record mnemonic is not valid" in response.text
     assert invalid_phrase not in response.text
     assert SECURE_COOKIE_NAME not in response.headers.get("set-cookie", "")
 
@@ -867,7 +877,7 @@ def test_create_acorn_rejects_invalid_mnemonic_length(monkeypatch) -> None:
     )
 
     assert response.status_code == 400
-    assert "Choose a 12- or 24-word offline mnemonic" in response.text
+    assert "Choose a 12- or 24-word Safebox Acorn mnemonic" in response.text
     assert generated is False
 
 
@@ -1706,6 +1716,7 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
     response = client.get("/record/blob", params={"label": "Private Notes"})
 
     assert detail.status_code == 200
+    assert "Blob fingerprint: <code>1EA23F2B</code>" in detail.text
     assert "Download decrypted attachment" in detail.text
     assert "/record/blob?label=Private+Notes" in detail.text
     assert response.status_code == 200
@@ -1757,7 +1768,25 @@ def test_pdf_blob_uses_browser_native_object_with_download_fallback() -> None:
     assert response.status_code == 200
     assert '<object class="blob-preview blob-preview-pdf"' in response.text
     assert 'type="application/pdf"' in response.text
+    assert 'href="/record/blob?label=Report&amp;inline=1"' in response.text
+    assert "Open PDF full screen" in response.text
+    assert "Embedded PDF support varies by browser" in response.text
     assert "Download decrypted attachment" in response.text
+
+
+def test_blob_fingerprint_is_hidden_when_plaintext_digest_is_invalid() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        existing_labels={"Legacy blob"},
+        orig_sha256="not-a-sha256",
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/record", params={"label": "Legacy blob"})
+
+    assert response.status_code == 200
+    assert "Blob fingerprint:" not in response.text
 
 
 def test_blob_record_delete_form_requires_explicit_confirmation() -> None:

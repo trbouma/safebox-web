@@ -307,7 +307,7 @@ def nsec_from_offline_mnemonic(value: str) -> str:
 
     phrase = " ".join(str(value).strip().split())
     if not Mnemonic("english").check(phrase):
-        raise ValueError("enter a valid 12- or 24-word BIP39 offline mnemonic")
+        raise ValueError("enter a valid 12- or 24-word Safebox Acorn mnemonic")
     return canonical_nsec(recover_nsec_from_seed(phrase))
 
 

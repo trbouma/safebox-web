@@ -49,3 +49,39 @@ window.addEventListener("pageshow", () => {
     });
   });
 });
+
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-copy-target]");
+  if (!button) {
+    return;
+  }
+
+  const target = document.getElementById(button.dataset.copyTarget);
+  const status = document.getElementById(button.dataset.copyStatus);
+  if (!(target instanceof HTMLTextAreaElement)) {
+    return;
+  }
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(target.value);
+    } else {
+      target.focus();
+      target.select();
+      target.setSelectionRange(0, target.value.length);
+      if (!document.execCommand("copy")) {
+        throw new Error("copy was rejected");
+      }
+    }
+    if (status) {
+      status.textContent = "Safekeeping message copied. Clear the clipboard after storing it safely.";
+    }
+  } catch (_error) {
+    target.focus();
+    target.select();
+    target.setSelectionRange(0, target.value.length);
+    if (status) {
+      status.textContent = "Automatic copy was unavailable. The message is selected for manual copying.";
+    }
+  }
+});

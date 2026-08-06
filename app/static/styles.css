@@ -43,6 +43,7 @@ label { display: block; margin-top: 1rem; }
 input, select, textarea, button { box-sizing: border-box; font: inherit; min-height: 2.75rem; padding: .6rem; width: 100%; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); }
 input[type="checkbox"] { min-height: auto; width: auto; margin-right: .45rem; }
 textarea { min-height: 7rem; }
+.safekeeping-message { min-height: 24rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9rem; line-height: 1.45; white-space: pre-wrap; }
 button { cursor: pointer; margin-top: 1.25rem; }
 button:disabled { cursor: wait; opacity: .65; }
 .error { color: var(--error); }
@@ -66,6 +67,7 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 figure.blob-preview { padding: .75rem; }
 .blob-preview img { display: block; width: auto; max-height: 38rem; margin: 0 auto; object-fit: contain; }
 .blob-preview-pdf { height: min(70vh, 48rem); }
+.pdf-open-link { display: inline-flex; min-height: 2.75rem; align-items: center; padding: .55rem .8rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); font-weight: 700; }
 .danger-zone { margin: 2rem 0 1.5rem; padding: 1rem; border: 1px solid var(--error); border-radius: .7rem; }
 .danger-zone h2 { margin-top: 0; font-size: 1.15rem; }
 .danger-button { border-color: var(--error); color: var(--error); font-weight: 700; }
@@ -98,6 +100,7 @@ figure.blob-preview { padding: .75rem; }
   h1 { font-size: 1.75rem; }
   h2 { font-size: 1.25rem; }
   input, select, textarea, button { font-size: 1rem; }
+  .safekeeping-message { min-height: 31rem; font-size: .9rem; }
   button { min-height: 3rem; }
   p > a:only-child { display: inline-flex; min-height: 2.75rem; align-items: center; }
   ul, ol { padding-left: 1.35rem; }

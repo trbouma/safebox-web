@@ -11,7 +11,7 @@ is limited to optional form-progress feedback.
 This implementation intentionally provides:
 
 - creation of a new Acorn with a selected home relay and home mint;
-- login with an `nsec` or Acorn-compatible BIP39 offline mnemonic;
+- login with an `nsec` or BIP39 Safebox Acorn mnemonic;
 - a bootstrap relay;
 - an encrypted, authenticated browser cookie;
 - request-scoped `Acorn` construction through FastAPI dependency injection;
@@ -137,12 +137,12 @@ of a captured cookie. Changing `SAFEBOX_COOKIE_KEY` invalidates all sessions.
 The former `SAFEBOX_SESSION_TTL_SECONDS` setting remains a compatibility
 fallback, but new deployments should specify the lifetime in hours.
 
-The offline mnemonic is used only to derive the operational `nsec` during the
+The **Safebox Acorn mnemonic** is used only to derive the operational `nsec` during the
 login request. It is not placed in the cookie. The application does not write
 either secret to disk, but the decrypted `nsec` necessarily exists in process
 memory while handling an authenticated request.
 
-When creating a new Acorn, Safebox generates the offline mnemonic and its
+When creating a new Acorn, Safebox generates the Safebox Acorn mnemonic and its
 derived `nsec` in memory, writes the initial encrypted wallet metadata through
 Acorn, and verifies relay readback before starting the session. The selected
 home mint is stored in that relay-backed wallet metadata. Safebox displays the
@@ -150,19 +150,19 @@ recovery material on the creation result page. Acorn also generates an
 independent 256-bit record protection key (RPK). The encrypted session cookie
 holds the `nsec`, bootstrap relay, RPK, and session format version. The RPK is
 never rendered as raw hexadecimal, returned by `/api/session`, logged, or
-written to the application database. Its separately labelled 24-word recovery
+written to the application database. Its separately labelled 24-word mnemonic
 encoding is intentionally rendered only during the confirmed creation or
 recovery ceremony and must be treated as equivalent secret material.
 
 This is an initial key-custody and recovery scaffold only. Protected-record
 encryption is not yet enabled, and the session-held RPK is not itself a recovery
-backup. Acorn encodes the exact RPK as a separately labelled, checksummed
-24-word protected-record recovery phrase. Safebox displays that phrase at
+backup. Acorn encodes the exact RPK as the separately labelled, checksummed
+24-word **Protected record mnemonic**. Safebox displays that mnemonic at
 creation and requires the user to confirm an offline backup. No current record
 depends on the RPK, and the complete protected-record profile still requires
 implementation and review.
 
-The creation form offers either a 12-word or 24-word BIP39 offline mnemonic.
+The creation form offers either a 12-word or 24-word BIP39 Safebox Acorn mnemonic.
 The 12-word option is the default and uses 128 bits of generated entropy; the
 24-word option uses 256 bits. Both use Acorn's same downstream key derivation
 and can later be entered through the existing offline-mnemonic login flow.
@@ -172,7 +172,7 @@ of externally generated entropy encoded as 64 hexadecimal characters, entered
 and confirmed in masked fields. Browser constraints provide immediate input
 help, but the server performs the authoritative format and equality validation
 using Acorn's external-entropy derivation function. The value deterministically
-produces a 24-word offline mnemonic and its Acorn `nsec`; it is handled in
+produces a 24-word Safebox Acorn mnemonic and its Acorn `nsec`; it is handled in
 request memory and is neither echoed into an error response nor stored by
 Safebox Web. The entropy must come from a cryptographically secure source, not
 from a password or other guessable text.
@@ -187,25 +187,42 @@ operating-system cryptographic random source. The supplied entropy is not
 stored, echoed, or placed in the cookie; only the derived working RPK is placed
 in the encrypted cookie.
 
-The protected-record recovery phrase is distinct from the wallet mnemonic:
+The two user-facing mnemonic names are deliberately distinct:
 
 ```text
-Acorn wallet recovery phrase       -> recovers the Acorn signing key
-Protected-record recovery phrase   -> recovers the independent RPK
+Safebox Acorn mnemonic    -> recovers the Acorn signing key
+Protected record mnemonic -> recovers the independent RPK
 ```
 
-Safebox Web encodes the RPK bytes directly as the 24-word phrase; it never
-passes that phrase through the wallet's SLIP-10 key derivation. An authenticated
+Safebox Web encodes the RPK bytes directly as the Protected record mnemonic; it
+never passes that mnemonic through the wallet's SLIP-10 key derivation. At
+creation, Safebox combines both mnemonics, the bootstrap relay, home mint, and
+component public key in one mobile-friendly **Safebox Acorn safekeeping
+message**. The message remains visible and manually selectable without
+JavaScript. A progressive-enhancement button can copy the entire message to
+the clipboard for transfer to a trusted password-manager vault or another
+protected location. Clipboard managers, device synchronization, remote
+sessions, and other applications may retain that copy, so the interface warns
+the user to clear it afterward.
+
+The combined message is a convenience backup, not independent custody of the
+two secrets. Anyone who obtains it can recover both the Acorn signing key and
+the RPK. High-assurance users should additionally keep the two mnemonics in
+separately protected locations rather than relying exclusively on one
+password-manager entry.
+
+An authenticated
 user can select **view recovery options** from the wallet page. The first page
-contains only a warning; a CSRF-protected confirmed POST displays the phrase.
+contains only a warning; a CSRF-protected confirmed POST displays the Protected
+record mnemonic.
 The response is marked `Cache-Control: no-store`. A second confirmed POST marks
 the backup as confirmed inside the encrypted session cookie.
 
-When reconnecting an Acorn, **Restore protected-record access** accepts either
-the separately labelled 24-word phrase or the original external
+When reconnecting an Acorn, **Restore protected record access** accepts either
+the separately labelled 24-word Protected record mnemonic or the original external
 record-protection entropy. Safebox passes the secret to Acorn for validation or
 derivation, stores only the resulting RPK in the encrypted cookie, and marks
-the supplied recovery copy as confirmed. The phrase and entropy are not
+the supplied recovery copy as confirmed. The mnemonic and entropy are not
 returned by `/api/session`, written to the application database, or logged.
 
 This architecture moves session custody to the browser; it does not eliminate
