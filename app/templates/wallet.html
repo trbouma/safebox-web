@@ -1,40 +1,57 @@
 {% extends "base.html" %}
 {% block content %}
-<p>Component public key: <code>{{ npub }}</code></p>
-<p>Bootstrap relay: <code>{{ home_relay }}</code></p>
-{% if record_protection_available %}
-<p>Protected record mnemonic backup:
-  <strong>{% if record_protection_backup_confirmed %}confirmed{% else %}not yet confirmed{% endif %}</strong>
-  — <a href="/record-protection/recovery">view recovery options</a>
-</p>
-{% else %}
-<p>Record protection key: <strong>not attached to this session</strong>.</p>
-{% endif %}
-{% if nip05_address %}
-<p>NIP-05 address: <strong><a href="/handle">{{ nip05_address }}</a></strong></p>
-{% endif %}
-{% if lightning_lnurl %}
-<section class="lightning-address-card" aria-labelledby="lightning-address-heading">
-  <h2 id="lightning-address-heading">Receive Lightning</h2>
-  <p>Lightning address: <strong>{{ nip05_address }}</strong></p>
-  <div class="lightning-address-qr" aria-label="Lightning address QR code">
-    {{ lightning_qr | safe }}
-  </div>
-  <p>Scan to pay <strong>{{ nip05_address }}</strong>.</p>
-  <details><summary>Show encoded LNURL</summary><code>{{ lightning_lnurl }}</code></details>
+<section class="wallet-balance" aria-labelledby="wallet-balance-heading">
+  <h2 id="wallet-balance-heading">Balance</h2>
+  <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
+  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance{% else %}Balance requires verification—review the advisory below{% endif %}</p>
 </section>
-{% endif %}
-{{ retention_notice | safe }}
-{{ balance_status | safe }}
-<p>Wallet state was loaded from the relay for this request. It was not stored
-by the web application.</p>
-<p><a href="/deposit">Deposit funds</a></p>
-<p><a href="/pay">Pay a Lightning address</a></p>
-<p><a href="/transactions">View transaction history</a></p>
-<p><a href="/records">Manage Private Records</a></p>
-<p><a href="/handle">Claim or view a NIP-05 handle</a></p>
+<nav class="wallet-actions" aria-label="Wallet actions">
+  <a href="/deposit">Deposit funds</a>
+  <a href="/pay">Pay a Lightning address</a>
+  <a href="/transactions">View transaction history</a>
+  <a href="/records">Manage private records</a>
+  <a href="/handle">Claim or view a NIP-05 handle</a>
+</nav>
 <form method="post" action="/logout">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <button type="submit">Disconnect</button>
 </form>
+<section class="general-advisories" aria-labelledby="general-advisories-heading">
+  <h2 id="general-advisories-heading">General advisory</h2>
+  <div class="wallet-details">
+    <p>Component public key: <code>{{ npub }}</code></p>
+    <p>Bootstrap relay: <code>{{ home_relay }}</code></p>
+    {% if record_protection_available %}
+    <p>Protected record mnemonic backup:
+      <strong>{% if record_protection_backup_confirmed %}confirmed{% else %}not yet confirmed{% endif %}</strong>
+      — <a href="/record-protection/recovery">view recovery options</a>
+    </p>
+    {% else %}
+    <p>Record protection key: <strong>not attached to this session</strong>.</p>
+    {% endif %}
+    {% if nip05_address %}
+    <p>NIP-05 address: <strong><a href="/handle">{{ nip05_address }}</a></strong></p>
+    {% endif %}
+    <p>Wallet state was loaded from the relay for this request. It was not stored
+    by the web application.</p>
+  </div>
+  <aside class="balance-details" aria-labelledby="balance-details-heading">
+    <h3 id="balance-details-heading">Balance verification</h3>
+    {{ balance_status | safe }}
+  </aside>
+  {% if lightning_lnurl %}
+  <section class="lightning-address-card" aria-labelledby="lightning-address-heading">
+    <h3 id="lightning-address-heading">Receive Lightning</h3>
+    <p>Lightning address: <strong>{{ nip05_address }}</strong></p>
+    <div class="lightning-address-qr" aria-label="Lightning address QR code">
+      {{ lightning_qr | safe }}
+    </div>
+    <p>Scan to pay <strong>{{ nip05_address }}</strong>.</p>
+    <details><summary>Show encoded LNURL</summary><code>{{ lightning_lnurl }}</code></details>
+  </section>
+  {% endif %}
+  {% if retention_notice %}
+  {{ retention_notice | safe }}
+  {% endif %}
+</section>
 {% endblock %}

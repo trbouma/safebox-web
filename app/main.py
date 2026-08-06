@@ -110,7 +110,7 @@ def _ecash_retention_notice(settings: Settings) -> str:
         )
     return (
         '<aside class="retention-notice" aria-labelledby="retention-heading">'
-        '<h2 id="retention-heading">Ecash message retention</h2>'
+        '<h3 id="retention-heading">Ecash message retention</h3>'
         f"<p>{escape(message)}</p>"
         "</aside>"
     )
@@ -253,6 +253,23 @@ def _balance_status_html(
         warning += "Do not make a payment until the proof state has been reviewed.</p>"
         return relay_html + confirmed_html + warning
     return relay_html + confirmed_html
+
+
+def _wallet_balance_summary(
+    relay_balance: int,
+    verification: dict | None,
+) -> tuple[int, bool]:
+    """Choose the safest concise balance for the wallet's primary display."""
+
+    if verification is None:
+        return int(relay_balance), False
+    confirmed = verification.get("mint_confirmed_unspent", {})
+    confirmed_amount = int(confirmed.get("amount", 0))
+    verified = (
+        str(verification.get("status", "inconclusive")) == "clean"
+        and confirmed_amount == int(relay_balance)
+    )
+    return confirmed_amount, verified
 
 
 def _transaction_history_view(entries: list[dict]) -> list[dict]:
@@ -1092,9 +1109,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             verification,
             verification_error,
         )
+        wallet_balance, wallet_balance_verified = _wallet_balance_summary(
+            acorn.get_balance(),
+            verification,
+        )
         return render_template(
             "wallet.html",
-            title="Connected Acorn",
+            title="Acorn is Connected",
+            headline_class="wallet-headline",
             npub=acorn.pubkey_bech32,
             home_relay=acorn.home_relay,
             record_protection_available=(
@@ -1110,6 +1132,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             lightning_qr=lightning_qr,
             retention_notice=_ecash_retention_notice(settings),
             balance_status=balance_status,
+            wallet_balance=wallet_balance,
+            wallet_balance_verified=wallet_balance_verified,
             csrf_token=csrf_token,
         )
 

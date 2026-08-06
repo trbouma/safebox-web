@@ -389,6 +389,23 @@ def test_pages_include_mobile_layout_safeguards() -> None:
     assert ".safekeeping-message" in stylesheet.text
 
 
+def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert '<nav class="wallet-actions" aria-label="Wallet actions">' in response.text
+    assert '<h1 class="wallet-headline">Acorn is Connected</h1>' in response.text
+    assert '<a href="/deposit">Deposit funds</a>' in response.text
+    assert '<a href="/records">Manage private records</a>' in response.text
+    assert '<section class="wallet-balance"' in response.text
+    assert "321 <span>sats</span>" in response.text
+    assert response.text.index("wallet-balance") < response.text.index("wallet-actions")
+    assert response.text.index("wallet-actions") < response.text.index("Component public key")
+
+
 def test_pages_use_external_jinja_layout_assets() -> None:
     response = make_https_client().get("/")
 
@@ -1142,9 +1159,11 @@ def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
     assert 'fill="#ffffff"' in wallet_page.text
     assert 'id="qr-path" fill="#000000"' in wallet_page.text
     assert 'id="acorn-qr-mark"' in wallet_page.text
+    assert "General advisory" in wallet_page.text
     assert "Ecash message retention" in wallet_page.text
     assert "for 1 week after publication" in wallet_page.text
     assert "Relay enforcement and physical deletion can vary" in wallet_page.text
+    assert wallet_page.text.index("Disconnect") < wallet_page.text.index("General advisory")
 
 
 def test_invoice_qr_is_black_and_white_without_centre_mark() -> None:

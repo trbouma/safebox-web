@@ -13,7 +13,7 @@
     data-theme-toggle aria-label="Switch colour theme">Use light mode</button></div>
   {% include "partials/relationship.html" %}
   <main>
-    <h1>{{ title }}</h1>
+    <h1{% if headline_class %} class="{{ headline_class }}"{% endif %}>{{ title }}</h1>
     {% block content %}{% endblock %}
   </main>
 </body>

@@ -37,6 +37,7 @@ html[data-theme="light"] {
 html { min-height: 100%; -webkit-text-size-adjust: 100%; background: var(--page); }
 body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; overflow-wrap: break-word; background: var(--page); color: var(--text); }
 h1, h2 { line-height: 1.2; }
+.wallet-headline { text-align: center; }
 img, svg { max-width: 100%; }
 a { color: var(--link); }
 label { display: block; margin-top: 1rem; }
@@ -46,6 +47,14 @@ textarea { min-height: 7rem; }
 .safekeeping-message { min-height: 24rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9rem; line-height: 1.45; white-space: pre-wrap; }
 button { cursor: pointer; margin-top: 1.25rem; }
 button:disabled { cursor: wait; opacity: .65; }
+.wallet-actions { display: grid; gap: .75rem; margin: 1.5rem 0 .25rem; }
+.wallet-actions a { display: flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; padding: .6rem; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); font-weight: 650; text-align: center; text-decoration: none; }
+.wallet-actions a:hover, .wallet-actions a:focus-visible { border-color: var(--link); color: var(--link); }
+.wallet-balance { margin: 1rem 0 1.5rem; padding: 1.35rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); text-align: center; }
+.wallet-balance h2 { margin: 0; color: var(--muted); font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
+.wallet-balance-amount { margin: .3rem 0 0; color: var(--link); font-size: clamp(2.5rem, 10vw, 4.25rem); font-weight: 800; line-height: 1.05; }
+.wallet-balance-amount span { font-size: .32em; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.wallet-balance-state { margin: .6rem 0 0; color: var(--muted); font-size: .9rem; }
 .error { color: var(--error); }
 .progress { margin-top: 1rem; color: var(--progress); font-weight: 650; }
 a, code { overflow-wrap: anywhere; }
@@ -59,8 +68,14 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .lightning-address-qr svg { width: min(100%, 20rem); height: auto; }
 .lightning-address-card details { text-align: left; }
 .retention-notice { margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface-soft); }
-.retention-notice h2 { margin: 0 0 .4rem; font-size: 1.05rem; }
+.retention-notice h3 { margin: 0 0 .4rem; font-size: 1.05rem; }
 .retention-notice p { margin: 0; }
+.general-advisories { margin-top: 2.5rem; padding-top: 1.25rem; border-top: 1px solid var(--note-border); }
+.general-advisories > h2 { margin-bottom: 0; font-size: 1.2rem; }
+.general-advisories .retention-notice { margin-top: .75rem; }
+.wallet-details, .balance-details { margin: .75rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface-soft); }
+.wallet-details p, .balance-details p { margin: .45rem 0; }
+.balance-details h3 { margin: 0 0 .5rem; font-size: 1.05rem; }
 .blob-record { margin: 1.5rem 0; }
 .blob-record h2 { font-size: 1.15rem; }
 .blob-preview { display: block; box-sizing: border-box; width: 100%; margin: 1rem 0; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); overflow: hidden; }
