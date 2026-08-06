@@ -25,6 +25,35 @@ def _env_bool(name: str, default: bool = False) -> bool:
 DEFAULT_GIFT_WRAP_RETENTION_SECONDS = 7 * 24 * 60 * 60
 MIN_GIFT_WRAP_RETENTION_SECONDS = 60 * 60
 MAX_GIFT_WRAP_RETENTION_SECONDS = 30 * 24 * 60 * 60
+DEFAULT_SESSION_TTL_HOURS = 30 * 24
+DEFAULT_SESSION_TTL_SECONDS = DEFAULT_SESSION_TTL_HOURS * 60 * 60
+
+
+def _session_ttl_seconds_from_env() -> int:
+    """Read the public hours setting, with seconds kept as a legacy fallback."""
+
+    hours_value = os.getenv("SAFEBOX_SESSION_TTL_HOURS", "").strip()
+    if hours_value:
+        try:
+            hours = int(hours_value)
+        except ValueError as exc:
+            raise RuntimeError(
+                "SAFEBOX_SESSION_TTL_HOURS must be an integer"
+            ) from exc
+        if hours < 1:
+            raise RuntimeError("SAFEBOX_SESSION_TTL_HOURS must be at least 1")
+        return hours * 60 * 60
+
+    legacy_seconds = os.getenv("SAFEBOX_SESSION_TTL_SECONDS", "").strip()
+    if legacy_seconds:
+        try:
+            return int(legacy_seconds)
+        except ValueError as exc:
+            raise RuntimeError(
+                "SAFEBOX_SESSION_TTL_SECONDS must be an integer"
+            ) from exc
+
+    return DEFAULT_SESSION_TTL_SECONDS
 
 
 def _gift_wrap_retention_from_env() -> int | None:
@@ -140,7 +169,7 @@ class Settings:
     """Runtime settings that do not contain wallet state."""
 
     cookie_key: str
-    session_ttl_seconds: int = 8 * 60 * 60
+    session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
     wallet_load_timeout_seconds: float = 20.0
     payment_timeout_seconds: float = 90.0
     default_bootstrap_relay: str = "wss://relay.getsafebox.app"
@@ -168,7 +197,7 @@ class Settings:
                 "SAFEBOX_COOKIE_KEY must be a valid URL-safe Fernet key"
             ) from exc
         if self.session_ttl_seconds < 60:
-            raise ValueError("SAFEBOX_SESSION_TTL_SECONDS must be at least 60")
+            raise ValueError("session lifetime must be at least 60 seconds")
         if self.wallet_load_timeout_seconds <= 0:
             raise ValueError("SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS must be positive")
         if self.payment_timeout_seconds <= 0:
@@ -206,10 +235,7 @@ class Settings:
                 "SAFEBOX_COOKIE_KEY is required; generate one with "
                 "cryptography.fernet.Fernet.generate_key()"
             )
-        try:
-            ttl = int(os.getenv("SAFEBOX_SESSION_TTL_SECONDS", str(8 * 60 * 60)))
-        except ValueError as exc:
-            raise RuntimeError("SAFEBOX_SESSION_TTL_SECONDS must be an integer") from exc
+        ttl = _session_ttl_seconds_from_env()
         try:
             load_timeout = float(os.getenv("SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS", "20"))
         except ValueError as exc:

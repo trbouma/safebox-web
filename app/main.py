@@ -672,17 +672,66 @@ def _deposit_form(
     )
 
 
-def _qr_svg(payload: str) -> str:
+def _qr_svg(payload: str, *, include_acorn: bool = False) -> str:
+    """Render a high-contrast QR, optionally with a protected Acorn centre mark."""
+
     qr = qrcode.QRCode(
         version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        error_correction=(
+            qrcode.constants.ERROR_CORRECT_H
+            if include_acorn
+            else qrcode.constants.ERROR_CORRECT_M
+        ),
         box_size=8,
-        border=2,
+        border=4 if include_acorn else 2,
     )
     qr.add_data(payload)
     qr.make(fit=True)
     image = qr.make_image(image_factory=qrcode.image.svg.SvgPathImage)
-    return image.to_string(encoding="unicode")
+    svg = image.to_string(encoding="unicode")
+    svg = svg.replace(
+        "><path",
+        '><rect id="qr-background" width="100%" height="100%" fill="#ffffff" />'
+        '<path shape-rendering="crispEdges"',
+        1,
+    )
+
+    if not include_acorn:
+        return svg
+
+    view_box = re.search(
+        r'viewBox="0 0 ([0-9.]+) ([0-9.]+)"',
+        svg,
+    )
+    if view_box is None:
+        raise RuntimeError("generated QR SVG does not contain a usable viewBox")
+
+    width = float(view_box.group(1))
+    height = float(view_box.group(2))
+    extent = min(width, height)
+    backing_size = extent * 0.21
+    logo_size = extent * 0.15
+    backing_x = (width - backing_size) / 2
+    backing_y = (height - backing_size) / 2
+    logo_x = (width - logo_size) / 2
+    logo_y = (height - logo_size) / 2
+    logo_scale = logo_size / 88
+    radius = backing_size * 0.16
+
+    acorn_mark = f"""
+<g id="acorn-qr-mark" aria-hidden="true">
+  <rect x="{backing_x:.4f}" y="{backing_y:.4f}"
+        width="{backing_size:.4f}" height="{backing_size:.4f}"
+        rx="{radius:.4f}" fill="#ffffff" />
+  <g transform="translate({logo_x:.4f} {logo_y:.4f}) scale({logo_scale:.6f})">
+    <path fill="#000000" d="M18 34c0-14 12-25 26-25s26 11 26 25H18Z"/>
+    <path fill="#000000" d="M42 12 48 0l10 5-7 12Z"/>
+    <path fill="#000000" d="M20 38h48c0 25-9 39-24 50C29 77 20 63 20 38Z"/>
+    <path d="M25 42h15v11h13v12H42v17" fill="none"
+          stroke="#ffffff" stroke-width="5" stroke-linejoin="round"/>
+  </g>
+</g>"""
+    return svg.replace("</svg>", f"{acorn_mark}</svg>", 1)
 
 
 def _invoice_svg(invoice: str) -> str:
@@ -1028,7 +1077,7 @@ different Acorn.</p>
                     "</strong></p>"
                     '<div class="lightning-address-qr" '
                     'aria-label="Lightning address QR code">'
-                    f"{_qr_svg(lightning_lnurl)}"
+                    f"{_qr_svg(lightning_lnurl, include_acorn=True)}"
                     "</div>"
                     f"<p>Scan to pay <strong>{escape(nip05_address)}</strong>.</p>"
                     "<details><summary>Show encoded LNURL</summary>"

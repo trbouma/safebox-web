@@ -121,6 +121,12 @@ session_format_version
 The complete payload is encrypted and authenticated with a server-held Fernet
 key. The cookie is `HttpOnly`, `SameSite=Strict`, and `Secure` everywhere
 except direct loopback development at `http://127.0.0.1:<port>`.
+The default session lifetime is 30 days (`SAFEBOX_SESSION_TTL_HOURS=720`) and is an absolute
+lifetime from login rather than an activity-based sliding window. Extending
+this period improves mobile continuity but also lengthens the exposure window
+of a captured cookie. Changing `SAFEBOX_COOKIE_KEY` invalidates all sessions.
+The former `SAFEBOX_SESSION_TTL_SECONDS` setting remains a compatibility
+fallback, but new deployments should specify the lifetime in hours.
 
 The offline mnemonic is used only to derive the operational `nsec` during the
 login request. It is not placed in the cookie. The application does not write

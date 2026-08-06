@@ -17,7 +17,11 @@ os.environ.setdefault("SAFEBOX_COOKIE_KEY", Fernet.generate_key().decode("ascii"
 from fastapi.testclient import TestClient
 
 import app.main as main_module
-from app.config import Settings
+from app.config import (
+    DEFAULT_SESSION_TTL_HOURS,
+    DEFAULT_SESSION_TTL_SECONDS,
+    Settings,
+)
 from app.dependencies import (
     get_acorn,
     get_deposit_acorn,
@@ -209,16 +213,43 @@ def test_settings_load_cookie_key_from_working_directory_env_file(
 ) -> None:
     env_key = Fernet.generate_key().decode("ascii")
     (tmp_path / ".env").write_text(
-        f"SAFEBOX_COOKIE_KEY={env_key}\nSAFEBOX_SESSION_TTL_SECONDS=7200\n",
+        f"SAFEBOX_COOKIE_KEY={env_key}\nSAFEBOX_SESSION_TTL_HOURS=2\n",
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
+    monkeypatch.delenv("SAFEBOX_SESSION_TTL_HOURS", raising=False)
     monkeypatch.delenv("SAFEBOX_SESSION_TTL_SECONDS", raising=False)
 
     settings = Settings.from_env()
 
     assert settings.cookie_key == env_key
+    assert settings.session_ttl_seconds == 7200
+
+
+def test_default_session_lifetime_is_30_days() -> None:
+    settings = Settings(cookie_key=TEST_KEY)
+
+    assert DEFAULT_SESSION_TTL_HOURS == 720
+    assert DEFAULT_SESSION_TTL_SECONDS == 2_592_000
+    assert settings.session_ttl_seconds == DEFAULT_SESSION_TTL_SECONDS
+
+
+def test_legacy_session_lifetime_seconds_remains_supported(
+    tmp_path, monkeypatch
+) -> None:
+    env_key = Fernet.generate_key().decode("ascii")
+    (tmp_path / ".env").write_text(
+        f"SAFEBOX_COOKIE_KEY={env_key}\nSAFEBOX_SESSION_TTL_SECONDS=7200\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
+    monkeypatch.delenv("SAFEBOX_SESSION_TTL_HOURS", raising=False)
+    monkeypatch.delenv("SAFEBOX_SESSION_TTL_SECONDS", raising=False)
+
+    settings = Settings.from_env()
+
     assert settings.session_ttl_seconds == 7200
 
 
@@ -697,9 +728,22 @@ def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
     assert "Lightning address QR code" in wallet_page.text
     assert expected_lnurl in wallet_page.text
     assert "<svg" in wallet_page.text
+    assert 'id="qr-background"' in wallet_page.text
+    assert 'fill="#ffffff"' in wallet_page.text
+    assert 'id="qr-path" fill="#000000"' in wallet_page.text
+    assert 'id="acorn-qr-mark"' in wallet_page.text
     assert "Ecash message retention" in wallet_page.text
     assert "for 1 week after publication" in wallet_page.text
     assert "Relay enforcement and physical deletion can vary" in wallet_page.text
+
+
+def test_invoice_qr_is_black_and_white_without_centre_mark() -> None:
+    svg = main_module._invoice_svg("lnbc1pytest")
+
+    assert 'id="qr-background"' in svg
+    assert 'fill="#ffffff"' in svg
+    assert 'id="qr-path" fill="#000000"' in svg
+    assert 'id="acorn-qr-mark"' not in svg
 
 
 def test_wallet_hides_lightning_qr_when_provider_is_disabled(tmp_path) -> None:
