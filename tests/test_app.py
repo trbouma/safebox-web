@@ -1588,20 +1588,18 @@ def test_record_index_links_encoded_labels() -> None:
     assert "/record?label=Travel%2F2026" in response.text
     assert "/record?label=A+%26+B" in response.text
     assert 'href="/record/edit"' in response.text
-    assert 'href="/blob/upload"' in response.text
+    assert 'href="/blob/upload"' not in response.text
 
 
-def test_encrypted_blob_upload_form_explains_storage_boundary() -> None:
+def test_legacy_blob_upload_page_redirects_to_unified_record_form() -> None:
     app = create_app(TEST_SETTINGS)
     app.dependency_overrides[get_loaded_acorn] = lambda: FakeBlobAcorn()
     client = TestClient(app, base_url="https://safebox.example")
 
-    response = client.get("/blob/upload")
+    response = client.get("/blob/upload", follow_redirects=False)
 
-    assert response.status_code == 200
-    assert 'enctype="multipart/form-data"' in response.text
-    assert "AES-256-GCM" in response.text
-    assert "10 MiB" in response.text
+    assert response.status_code == 303
+    assert response.headers["location"] == "/record/edit"
 
 
 def test_blob_upload_passes_plaintext_to_acorn_encryption_boundary() -> None:
@@ -1802,7 +1800,7 @@ def test_blob_record_delete_form_requires_explicit_confirmation() -> None:
     )
 
     assert 'action="/record/delete"' in detail.text
-    assert "Delete this record and blob" in detail.text
+    assert "Delete this record and attachment" in detail.text
     assert response.status_code == 400
     assert "Explicit deletion confirmation is required" in response.text
     assert acorn.record_delete_calls == []
@@ -1921,6 +1919,9 @@ def test_record_edit_form_loads_and_escapes_existing_payload() -> None:
     assert '<option value="json" selected>JSON</option>' in response.text
     assert "&lt;script&gt;alert" in response.text
     assert "<script>alert" not in response.text
+    assert 'enctype="multipart/form-data"' in response.text
+    assert 'name="attachment" type="file"' in response.text
+    assert "Select a file to attach it to this record" in response.text
 
 
 def test_record_save_encrypts_publishes_and_verifies() -> None:
@@ -1948,9 +1949,66 @@ def test_record_save_encrypts_publishes_and_verifies() -> None:
             "record_value": "A private update",
             "record_type": "generic",
             "record_kind": 37375,
+            "blob_data": None,
+            "preserve_existing_blob": True,
             "return_result": True,
         }
     ]
+
+
+def test_record_save_can_include_an_encrypted_file_attachment() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/save",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Travel Documents",
+            "payload": "Boarding pass",
+            "confirmed": "yes",
+        },
+        files={"attachment": ("pass.pdf", b"private pdf", "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert acorn.record_put_calls == [
+        {
+            "record_name": "Travel Documents",
+            "record_value": "Boarding pass",
+            "record_type": "generic",
+            "record_kind": 37375,
+            "blob_data": b"private pdf",
+            "preserve_existing_blob": True,
+            "return_result": True,
+        }
+    ]
+
+
+def test_record_save_allows_a_file_only_private_record() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/save",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Passport",
+            "payload": "",
+            "confirmed": "yes",
+        },
+        files={"attachment": ("passport.pdf", b"private pdf", "application/pdf")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert acorn.record_put_calls[0]["record_value"] == ""
+    assert acorn.record_put_calls[0]["blob_data"] == b"private pdf"
 
 
 def test_record_save_requires_confirmation_without_mutating() -> None:

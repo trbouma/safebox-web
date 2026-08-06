@@ -1,12 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 {% if saved %}<p role="status"><strong>Private record saved and verified.</strong></p>{% endif %}
-<p>Type: <code>{{ record_type }}</code></p>
 <pre>{{ payload }}</pre>
 {% if has_blob %}
 <section class="blob-record" aria-labelledby="blob-heading">
-  <h2 id="blob-heading">Encrypted attachment</h2>
-  <p>This record includes an AES-256-GCM encrypted blob stored on Blossom.</p>
+  <h2 id="blob-heading">Encrypted file attachment</h2>
+  <p>This private record includes an AES-256-GCM encrypted file attachment stored on Blossom.</p>
   {% if blob_fingerprint %}
   <p>Blob fingerprint: <code>{{ blob_fingerprint }}</code></p>
   {% endif %}
@@ -32,14 +31,14 @@
 <p><a href="{{ edit_url }}">Edit this record</a></p>
 <section class="danger-zone" aria-labelledby="delete-record-heading">
   <h2 id="delete-record-heading">Delete this record</h2>
-  <p>This requests deletion of the encrypted relay record{% if has_blob %} and its encrypted Blossom blob{% endif %}.</p>
+  <p>This requests deletion of the encrypted relay record{% if has_blob %} and its encrypted file attachment{% endif %}.</p>
   <p>Relay deletion is advisory, and infrastructure operators may retain copies or backups.</p>
   <form method="post" action="/record/delete">
     <input type="hidden" name="csrf_token" value="{{ delete_csrf_token }}">
     <input type="hidden" name="label" value="{{ label }}">
     <label><input type="checkbox" name="confirmed" value="yes" required>
       I understand that this action cannot be undone through Safebox.</label>
-    <button class="danger-button" type="submit">Delete this record{% if has_blob %} and blob{% endif %}</button>
+    <button class="danger-button" type="submit">Delete this record{% if has_blob %} and attachment{% endif %}</button>
   </form>
 </section>
 <p><a href="/records">Return to records</a></p>

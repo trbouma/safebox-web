@@ -297,11 +297,13 @@ database. Any of these layers can redirect a name while the original Acorn key
 itself remains uncompromised. A proxy allowlist protects forwarded metadata; it
 cannot force an authorized proxy to route to the intended application.
 
-## Encrypted blob records
+## Private records with encrypted attachments
 
-The private-record index provides a **Store an encrypted blob** action. Safebox
-Web accepts the multipart upload, enforces `SAFEBOX_MAX_BLOB_BYTES`, and passes
-the bytes to the request-scoped Acorn. Acorn then:
+Safebox Web presents one private-record model. A record has a label and content
+and may optionally include an encrypted file attachment; an attachment is not a
+separate user-facing record type. The unified add/update form accepts the
+multipart upload, enforces `SAFEBOX_MAX_BLOB_BYTES`, and passes the bytes to the
+request-scoped Acorn. Acorn then:
 
 1. generates a random 32-byte blob key and 96-bit nonce;
 2. encrypts the bytes with AES-256-GCM;
@@ -318,11 +320,13 @@ may use transient operating-system temporary storage for larger requests, and
 the plaintext necessarily exists in process memory during encryption and
 download.
 
-The web application intentionally refuses to overwrite an existing record
-label. This avoids silently losing the old encrypted-blob reference or leaving
-an orphaned Blossom object. The record page provides a confirmed deletion form
-that asks Acorn to delete the encrypted Blossom object, publish the NIP-09
-record deletion request, and update the wallet's user-record index.
+Updating record content without selecting a file preserves any existing
+attachment metadata and decryption material. Selecting a new file replaces the
+attachment after the updated relay record is successfully published and asks
+the configured Blossom servers to delete the superseded ciphertext. The record
+page provides a confirmed deletion form that asks Acorn to delete the encrypted
+attachment, publish the NIP-09 record deletion request, and update the wallet's
+user-record index.
 
 Deletion is not a universal erasure guarantee. Safebox reports Blossom cleanup
 and relay visibility separately because blob-server deletion can fail and

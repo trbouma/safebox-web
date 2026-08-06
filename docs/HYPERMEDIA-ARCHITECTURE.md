@@ -126,13 +126,14 @@ KEM does not, by itself, justify moving cryptographic state or application logic
 into browser JavaScript; any browser participation would require a separate,
 explicitly reviewed design.
 
-Encrypted blob uploads follow the same boundary. The browser submits an
-ordinary multipart form; Safebox validates the request and passes bounded bytes
-to Acorn; Acorn encrypts them before the configured Blossom upload. Download is
-a normal authenticated link whose response is produced only after Acorn has
-retrieved, authenticated, and decrypted the blob. No browser-side upload API,
-key handling, or decryption logic is introduced. The multipart implementation
-may use transient system temporary storage and therefore does not claim that
+Optional encrypted file attachments follow the same boundary and remain part
+of the private-record workflow. The browser submits one ordinary multipart
+record form; Safebox validates the request and passes bounded bytes to Acorn;
+Acorn encrypts them before the configured Blossom upload. Download is a normal
+authenticated link whose response is produced only after Acorn has retrieved,
+authenticated, and decrypted the attachment. No browser-side upload API, key
+handling, or decryption logic is introduced. The multipart implementation may
+use transient system temporary storage and therefore does not claim that
 plaintext exists only in RAM, only that Safebox Web retains no application or
 database copy.
 

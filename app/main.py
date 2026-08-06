@@ -318,11 +318,13 @@ def _transactions_page(
 
 def _record_form(
     csrf_token: str,
+    max_blob_bytes: int,
     *,
     label: str = "",
     payload: str = "",
     payload_format: str = "text",
     updating: bool = False,
+    has_blob: bool = False,
     error: str | None = None,
 ) -> str:
     """Render the add/update form without retaining record data server-side."""
@@ -336,6 +338,8 @@ def _record_form(
         payload=payload,
         payload_format=payload_format,
         updating=updating,
+        has_blob=has_blob,
+        max_blob_megabytes=f"{max_blob_bytes / (1024 * 1024):g}",
         error=error,
     )
 
@@ -1809,12 +1813,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/blob/upload", response_class=HTMLResponse)
-    async def blob_upload_form(request: Request, acorn: LoadedAcornDependency) -> str:
-        settings = request.app.state.settings
-        return _blob_upload_form(
-            CsrfProtector(settings).issue(),
-            settings.max_blob_bytes,
-        )
+    async def blob_upload_form(request: Request, acorn: LoadedAcornDependency):
+        """Keep old bookmarks working while presenting one record workflow."""
+        return RedirectResponse("/record/edit", status_code=303)
 
     @app.post("/blob/upload", response_class=HTMLResponse)
     async def upload_blob_record(
@@ -2031,7 +2032,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings = request.app.state.settings
         record_label = str(label or "").strip()
         if not record_label:
-            return _record_form(CsrfProtector(settings).issue())
+            return _record_form(
+                CsrfProtector(settings).issue(),
+                settings.max_blob_bytes,
+            )
 
         try:
             record_value = await asyncio.wait_for(
@@ -2042,6 +2046,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse(
                 _record_form(
                     CsrfProtector(settings).issue(),
+                    settings.max_blob_bytes,
                     label=record_label,
                     updating=True,
                     error="Timed out while loading the record for editing.",
@@ -2052,6 +2057,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse(
                 _record_form(
                     CsrfProtector(settings).issue(),
+                    settings.max_blob_bytes,
                     label=record_label,
                     error="The requested record was not found.",
                 ),
@@ -2065,6 +2071,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse(
                 _record_form(
                     CsrfProtector(settings).issue(),
+                    settings.max_blob_bytes,
                     label=record_label,
                     updating=True,
                     error="Unable to load the record from the bootstrap relay.",
@@ -2087,10 +2094,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payload_format = "json"
         return _record_form(
             CsrfProtector(settings).issue(),
+            settings.max_blob_bytes,
             label=record_label,
             payload=rendered_payload,
             payload_format=payload_format,
             updating=True,
+            has_blob=bool(getattr(record_value, "blobref", None)),
         )
 
     @app.post("/record/save", response_class=HTMLResponse)
@@ -2102,17 +2111,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: str = Form(...),
         payload_format: str = Form("text"),
         confirmed: str | None = Form(None),
+        attachment: UploadFile | None = File(None),
     ):
         settings = request.app.state.settings
         form_token = CsrfProtector(settings)
         record_label = str(label).strip()
         record_payload = str(payload)
         selected_format = str(payload_format).strip().lower()
+        attachment_data: bytes | None = None
+        attachment_selected = bool(attachment and attachment.filename)
 
         def save_error(message: str, status_code: int = 400) -> HTMLResponse:
             return HTMLResponse(
                 _record_form(
                     form_token.issue(),
+                    settings.max_blob_bytes,
                     label=record_label,
                     payload=record_payload,
                     payload_format=selected_format,
@@ -2132,19 +2145,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             record_label = _validate_record_label(record_label)
         except ValueError as exc:
             return save_error(str(exc))
-        if not record_payload.strip():
-            return save_error("Record contents are required.")
+        if not record_payload.strip() and not attachment_selected:
+            return save_error("Enter record contents or select a file attachment.")
         if len(record_payload) > 262_144:
             return save_error("Record contents must be 262144 characters or fewer.")
         if selected_format not in {"text", "json"}:
             return save_error("Choose text or JSON as the record content format.")
-        if selected_format == "json":
+        if selected_format == "json" and record_payload.strip():
             try:
                 stored_payload = json.loads(record_payload)
             except json.JSONDecodeError:
                 return save_error("JSON record contents must contain valid JSON.")
+        elif selected_format == "json":
+            stored_payload = {}
         else:
             stored_payload = record_payload
+
+        if attachment_selected and attachment is not None:
+            try:
+                attachment_data = await attachment.read(settings.max_blob_bytes + 1)
+            finally:
+                await attachment.close()
+            if not attachment_data:
+                return save_error("Select a non-empty attachment.")
+            if len(attachment_data) > settings.max_blob_bytes:
+                return save_error(
+                    f"The attachment exceeds the {settings.max_blob_bytes:,}-byte upload limit.",
+                    413,
+                )
 
         try:
             await asyncio.wait_for(
@@ -2153,9 +2181,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     record_value=stored_payload,
                     record_type="generic",
                     record_kind=37375,
+                    blob_data=attachment_data,
+                    preserve_existing_blob=True,
                     return_result=True,
                 ),
-                timeout=settings.wallet_load_timeout_seconds,
+                timeout=(
+                    settings.payment_timeout_seconds
+                    if attachment_data is not None
+                    else settings.wallet_load_timeout_seconds
+                ),
             )
         except TimeoutError:
             return save_error(
