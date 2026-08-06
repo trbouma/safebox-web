@@ -117,6 +117,15 @@ Private-record form contents pass through the server in plaintext for the
 duration of the request and are then encrypted by Acorn; they are not stored in
 the Safebox Web database.
 
+This application boundary is also the designated location for any optional KEM
+experiment. Such an experiment is not currently part of Acorn's stable API or
+record format and would not remove the need to trust TLS termination, the
+reverse proxy, or the running Safebox Web process. KEM-derived material passed
+to Acorn must look like an ordinary validated secret or payload. Introducing a
+KEM does not, by itself, justify moving cryptographic state or application logic
+into browser JavaScript; any browser participation would require a separate,
+explicitly reviewed design.
+
 Encrypted blob uploads follow the same boundary. The browser submits an
 ordinary multipart form; Safebox validates the request and passes bounded bytes
 to Acorn; Acorn encrypts them before the configured Blossom upload. Download is

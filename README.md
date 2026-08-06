@@ -108,6 +108,35 @@ proofs, but a deposit never authorizes automatic swapping or consolidation of
 the existing wallet. `RECEIVE_PROOF_MAINTENANCE_ENABLED=false` is passed
 explicitly by the Docker deployment as defense in depth.
 
+## KEM experimentation boundary
+
+Safebox Web is the current boundary for any optional key-encapsulation
+mechanism (KEM) experiment. A KEM is deliberately not part of Safebox Acorn's
+ordinary component API, dependency set, or persisted record format. This lets
+the application evaluate an emerging algorithm without making Acorn wallets or
+records depend on an experimental cryptographic profile.
+
+Safebox Web does not currently claim production KEM protection or system-wide
+post-quantum security. Practical protection already comes from independently
+encrypted AES-256-GCM blobs, independent per-blob keys, separation of the Acorn
+key from the Record Protection Key, and explicit recovery boundaries. Nostr
+signatures, NIP-44, TLS termination, the running application, and operational
+infrastructure retain their own trust and cryptographic limits.
+
+If a KEM experiment is introduced here, it must:
+
+- remain optional and independently versioned;
+- stay outside ordinary Acorn serialization and interoperability contracts;
+- hand Acorn only an ordinary validated secret or payload;
+- preserve the existing TLS and authenticated-session requirements rather than
+  replacing them;
+- define downgrade, failure, recovery, migration, and dependency behavior; and
+- avoid any claim that installing a KEM makes the complete system quantum-safe.
+
+Moving a KEM into Acorn is deferred until there is a stable algorithm choice,
+an interoperable envelope, test vectors, supported-platform evidence, and
+independent review.
+
 ## Stateless session boundary
 
 After login, the browser cookie contains only:
