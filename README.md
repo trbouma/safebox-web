@@ -146,9 +146,17 @@ When creating a new Acorn, Safebox generates the offline mnemonic and its
 derived `nsec` in memory, writes the initial encrypted wallet metadata through
 Acorn, and verifies relay readback before starting the session. The selected
 home mint is stored in that relay-backed wallet metadata. Safebox displays the
-recovery material on the creation result page; the session cookie still holds
-only the `nsec`, bootstrap relay, and session format version. The user must save
-the displayed recovery material securely before leaving the page.
+recovery material on the creation result page. Acorn also generates an
+independent 256-bit record protection key (RPK). The encrypted session cookie
+holds the `nsec`, bootstrap relay, RPK, and session format version. The RPK is
+never rendered into HTML, returned by `/api/session`, logged, or written to the
+application database.
+
+This is an initial key-custody scaffold only. Protected-record encryption is
+not yet enabled, and the session-held RPK is not a recovery backup. It is lost
+when the cookie is cleared or expires. No current record depends on it. A later
+recovery ceremony must be completed before protected records can safely use
+the key.
 
 The creation form offers either a 12-word or 24-word BIP39 offline mnemonic.
 The 12-word option is the default and uses 128 bits of generated entropy; the
@@ -164,6 +172,16 @@ produces a 24-word offline mnemonic and its Acorn `nsec`; it is handled in
 request memory and is neither echoed into an error response nor stored by
 Safebox Web. The entropy must come from a cryptographically secure source, not
 from a password or other guessable text.
+
+A separate **Bring your own record-protection entropy** option accepts another
+32-byte value in the same masked, confirmed form. This value must be generated
+independently and must not be reused as wallet entropy. Acorn derives the RPK
+with HKDF-SHA256 and the domain-separation context
+`safebox-acorn/record-protection-key/v1`; Safebox Web does not implement the
+derivation itself. If this field is blank, Acorn obtains fresh entropy from the
+operating-system cryptographic random source. The supplied entropy is not
+stored, echoed, or placed in the cookie; only the derived working RPK is placed
+in the encrypted cookie.
 
 This architecture moves session custody to the browser; it does not eliminate
 the need to trust the running web code or protect the cookie-encryption key.

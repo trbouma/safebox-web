@@ -19,6 +19,7 @@ from mnemonic import Mnemonic
 from monstr.encrypt import Keys
 from starlette.requests import Request
 
+from acorn import validate_record_protection_key
 from acorn.func_utils import recover_nsec_from_seed
 
 from app.config import Settings
@@ -34,6 +35,7 @@ class SessionCredentials:
 
     nsec: str
     bootstrap_relay: str
+    record_protection_key: str | None = None
     version: int = 1
 
 
@@ -76,6 +78,7 @@ class SessionCipher:
         self._ttl = settings.session_ttl_seconds
 
     def encode(self, credentials: SessionCredentials) -> str:
+        credentials = self._validate_credentials(credentials)
         payload = json.dumps(
             {
                 "credentials": asdict(credentials),
@@ -156,6 +159,11 @@ class SessionCipher:
     def _validate_credentials(credentials: SessionCredentials) -> SessionCredentials:
         if credentials.version != 1:
             raise ValueError("session cookie version is unsupported")
+        if credentials.record_protection_key is not None:
+            try:
+                validate_record_protection_key(credentials.record_protection_key)
+            except ValueError as exc:
+                raise ValueError("session cookie record protection key is invalid") from exc
         return credentials
 
 
@@ -294,7 +302,11 @@ def nsec_from_offline_mnemonic(value: str) -> str:
 
 
 def credentials_from_login(
-    *, secret_type: str, secret: str, bootstrap_relay: str
+    *,
+    secret_type: str,
+    secret: str,
+    bootstrap_relay: str,
+    record_protection_key: str | None = None,
 ) -> SessionCredentials:
     if secret_type == "nsec":
         nsec = canonical_nsec(secret)
@@ -302,9 +314,14 @@ def credentials_from_login(
         nsec = nsec_from_offline_mnemonic(secret)
     else:
         raise ValueError("select nsec or offline mnemonic")
+    if record_protection_key is not None:
+        record_protection_key = validate_record_protection_key(
+            record_protection_key
+        )
     return SessionCredentials(
         nsec=nsec,
         bootstrap_relay=normalize_bootstrap_relay(bootstrap_relay),
+        record_protection_key=record_protection_key,
     )
 
 

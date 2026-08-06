@@ -20,7 +20,11 @@ import qrcode.image.svg
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
-from acorn import Acorn
+from acorn import (
+    Acorn,
+    generate_record_protection_key,
+    record_protection_key_from_entropy,
+)
 from acorn.func_utils import (
     generate_seed_phrase_and_nsec,
     npub_to_hex,
@@ -633,6 +637,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         mnemonic_words: str = Form("12"),
         entropy_hex: str = Form(""),
         entropy_confirmation: str = Form(""),
+        record_protection_entropy_hex: str = Form(""),
+        record_protection_entropy_confirmation: str = Form(""),
         confirmed: str | None = Form(None),
     ):
         settings = request.app.state.settings
@@ -686,6 +692,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 strength=mnemonic_strength
             )
 
+        supplied_rpk_entropy = str(record_protection_entropy_hex).strip()
+        repeated_rpk_entropy = str(
+            record_protection_entropy_confirmation
+        ).strip()
+        uses_external_rpk_entropy = bool(
+            supplied_rpk_entropy or repeated_rpk_entropy
+        )
+        if uses_external_rpk_entropy:
+            if not supplied_rpk_entropy or not repeated_rpk_entropy:
+                return creation_error(
+                    "Enter the record-protection entropy in both fields."
+                )
+            if supplied_rpk_entropy != repeated_rpk_entropy:
+                return creation_error(
+                    "The record-protection entropy values do not match."
+                )
+            if supplied_entropy and supplied_rpk_entropy.lower() == supplied_entropy.lower():
+                return creation_error(
+                    "Wallet entropy and record-protection entropy must be independent."
+                )
+            try:
+                record_protection_key = record_protection_key_from_entropy(
+                    supplied_rpk_entropy
+                )
+            except ValueError as exc:
+                return creation_error(
+                    f"Invalid record-protection entropy: {exc}"
+                )
+        else:
+            record_protection_key = generate_record_protection_key()
+
         try:
             normalized_relay = normalize_bootstrap_relay(home_relay)
             normalized_mint = normalize_home_mint(home_mint)
@@ -729,6 +766,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             secret_type="nsec",
             secret=generated_nsec,
             bootstrap_relay=normalized_relay,
+            record_protection_key=record_protection_key,
         )
         response = HTMLResponse(
             render_template(

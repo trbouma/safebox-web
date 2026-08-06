@@ -52,6 +52,7 @@ TEST_MNEMONIC = (
 )
 TEST_NSEC = "nsec1yddnfntunakhu3v4ll56ujcuk4sxm79v526j05s2qly026ergt6q682r8v"
 TEST_NPUB = "npub1"
+TEST_RPK = "a5" * 32
 
 
 def make_https_client() -> TestClient:
@@ -409,6 +410,9 @@ def test_create_form_displays_default_relay_and_mint() -> None:
     assert 'name="entropy_hex" type="password"' in response.text
     assert 'name="entropy_confirmation" type="password"' in response.text
     assert 'pattern="[0-9A-Fa-f]{64}"' in response.text
+    assert "Bring your own record-protection entropy" in response.text
+    assert 'name="record_protection_entropy_hex" type="password"' in response.text
+    assert 'name="record_protection_entropy_confirmation" type="password"' in response.text
     assert 'name="confirmed"' in response.text
 
 
@@ -423,6 +427,9 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
             generated_strengths.append(strength) or TEST_MNEMONIC,
             TEST_NSEC,
         ),
+    )
+    monkeypatch.setattr(
+        main_module, "generate_record_protection_key", lambda: TEST_RPK
     )
     client = make_https_client()
 
@@ -458,9 +465,102 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
     assert token is not None
     assert TEST_NSEC not in token
     assert TEST_MNEMONIC not in token
+    assert TEST_RPK not in token
     credentials = SessionCipher(TEST_SETTINGS).decode(token)
     assert credentials.nsec == TEST_NSEC
     assert credentials.bootstrap_relay == "wss://relay.example.com"
+    assert credentials.record_protection_key == TEST_RPK
+
+
+def test_create_acorn_uses_external_record_protection_entropy(monkeypatch) -> None:
+    FakeCreatedAcorn.instances.clear()
+    rpk_entropy = "03" * 32
+    calls = []
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "record_protection_key_from_entropy",
+        lambda supplied: calls.append(supplied) or TEST_RPK,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "generate_record_protection_key",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("random RPK generation must not be used")
+        ),
+    )
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+            "record_protection_entropy_hex": rpk_entropy,
+            "record_protection_entropy_confirmation": rpk_entropy,
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 201
+    assert calls == [rpk_entropy]
+    assert rpk_entropy not in response.text
+    token = client.cookies.get(SECURE_COOKIE_NAME)
+    assert token is not None
+    credentials = SessionCipher(TEST_SETTINGS).decode(token)
+    assert credentials.record_protection_key == TEST_RPK
+
+
+def test_create_acorn_rejects_mismatched_record_protection_entropy() -> None:
+    FakeCreatedAcorn.instances.clear()
+    entropy = "04" * 32
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+            "record_protection_entropy_hex": entropy,
+            "record_protection_entropy_confirmation": "05" * 32,
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "record-protection entropy values do not match" in response.text
+    assert entropy not in response.text
+    assert FakeCreatedAcorn.instances == []
+
+
+def test_create_acorn_rejects_reused_wallet_and_record_protection_entropy() -> None:
+    entropy = "06" * 32
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+            "entropy_hex": entropy,
+            "entropy_confirmation": entropy,
+            "record_protection_entropy_hex": entropy.upper(),
+            "record_protection_entropy_confirmation": entropy.upper(),
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "must be independent" in response.text
+    assert entropy not in response.text
 
 
 def test_create_acorn_requires_confirmation_before_generating(monkeypatch) -> None:
@@ -1853,6 +1953,7 @@ def test_nsec_login_uses_encrypted_secure_cookie_and_dependency() -> None:
     assert payload["bootstrap_relay"] == "wss://relay.example.com"
     assert payload["npub"].startswith(TEST_NPUB)
     assert "nsec" not in payload
+    assert "record_protection_key" not in payload
 
 
 def test_session_cipher_uses_randomized_aes_256_gcm_tokens() -> None:
@@ -1860,6 +1961,7 @@ def test_session_cipher_uses_randomized_aes_256_gcm_tokens() -> None:
     credentials = SessionCredentials(
         nsec=TEST_NSEC,
         bootstrap_relay="wss://relay.example.com",
+        record_protection_key=TEST_RPK,
     )
 
     first = cipher.encode(credentials)
@@ -1885,6 +1987,18 @@ def test_aes_256_gcm_session_rejects_tampering() -> None:
 
     with pytest.raises(ValueError, match="invalid or expired"):
         cipher.decode(tampered)
+
+
+def test_aes_256_gcm_session_rejects_invalid_record_protection_key() -> None:
+    cipher = SessionCipher(TEST_SETTINGS)
+    with pytest.raises(ValueError, match="record protection key is invalid"):
+        cipher.encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+                record_protection_key="not-a-key",
+            )
+        )
 
 
 def test_aes_256_gcm_session_enforces_absolute_expiry(monkeypatch) -> None:

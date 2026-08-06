@@ -34,6 +34,27 @@ on the home relay, and start a user-controlled session.</p>
            minlength="64" maxlength="64" pattern="[0-9A-Fa-f]{64}"
            autocomplete="off" spellcheck="false" autocapitalize="none">
   </details>
+  <details>
+    <summary>Bring your own record-protection entropy</summary>
+    <p id="record-protection-entropy-help">Safebox normally asks Acorn to
+    generate an independent record protection key. Optionally supply a separate
+    32-byte, cryptographically random value as 64 hexadecimal characters.
+    Acorn derives the key using a record-protection-specific context. This
+    value must not be reused as the wallet entropy. Protected records are not
+    enabled yet; the resulting working key is held only in the encrypted
+    session cookie.</p>
+    <label for="record_protection_entropy_hex">Record-protection entropy</label>
+    <input id="record_protection_entropy_hex"
+           name="record_protection_entropy_hex" type="password"
+           minlength="64" maxlength="64" pattern="[0-9A-Fa-f]{64}"
+           aria-describedby="record-protection-entropy-help" autocomplete="off"
+           spellcheck="false" autocapitalize="none">
+    <label for="record_protection_entropy_confirmation">Repeat record-protection entropy</label>
+    <input id="record_protection_entropy_confirmation"
+           name="record_protection_entropy_confirmation" type="password"
+           minlength="64" maxlength="64" pattern="[0-9A-Fa-f]{64}"
+           autocomplete="off" spellcheck="false" autocapitalize="none">
+  </details>
   <label>
     <input name="confirmed" type="checkbox" value="yes" required>
     I understand that Safebox will display sensitive recovery material once the
