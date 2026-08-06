@@ -36,6 +36,7 @@ class SessionCredentials:
     nsec: str
     bootstrap_relay: str
     record_protection_key: str | None = None
+    record_protection_backup_confirmed: bool = False
     version: int = 1
 
 
@@ -164,6 +165,15 @@ class SessionCipher:
                 validate_record_protection_key(credentials.record_protection_key)
             except ValueError as exc:
                 raise ValueError("session cookie record protection key is invalid") from exc
+        if not isinstance(credentials.record_protection_backup_confirmed, bool):
+            raise ValueError("session cookie record protection status is invalid")
+        if (
+            credentials.record_protection_backup_confirmed
+            and credentials.record_protection_key is None
+        ):
+            raise ValueError(
+                "session cookie cannot confirm a missing record protection key"
+            )
         return credentials
 
 
@@ -307,6 +317,7 @@ def credentials_from_login(
     secret: str,
     bootstrap_relay: str,
     record_protection_key: str | None = None,
+    record_protection_backup_confirmed: bool = False,
 ) -> SessionCredentials:
     if secret_type == "nsec":
         nsec = canonical_nsec(secret)
@@ -322,6 +333,7 @@ def credentials_from_login(
         nsec=nsec,
         bootstrap_relay=normalize_bootstrap_relay(bootstrap_relay),
         record_protection_key=record_protection_key,
+        record_protection_backup_confirmed=record_protection_backup_confirmed,
     )
 
 

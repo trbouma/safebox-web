@@ -18,6 +18,10 @@ os.environ.setdefault("SAFEBOX_COOKIE_KEY", Fernet.generate_key().decode("ascii"
 
 from fastapi.testclient import TestClient
 
+from acorn import (
+    record_protection_key_from_entropy,
+    record_protection_recovery_phrase,
+)
 import app.main as main_module
 import app.security as security_module
 from app.config import (
@@ -53,6 +57,7 @@ TEST_MNEMONIC = (
 TEST_NSEC = "nsec1yddnfntunakhu3v4ll56ujcuk4sxm79v526j05s2qly026ergt6q682r8v"
 TEST_NPUB = "npub1"
 TEST_RPK = "a5" * 32
+TEST_RPK_PHRASE = record_protection_recovery_phrase(TEST_RPK)
 
 
 def make_https_client() -> TestClient:
@@ -393,6 +398,9 @@ def test_login_page_links_to_new_acorn_creation() -> None:
     assert response.status_code == 200
     assert 'href="/create"' in response.text
     assert "Create a new Acorn" in response.text
+    assert "Restore protected-record access" in response.text
+    assert 'name="record_protection_recovery"' in response.text
+    assert 'name="record_protection_entropy"' in response.text
 
 
 def test_create_form_displays_default_relay_and_mint() -> None:
@@ -448,6 +456,8 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
     assert "New Acorn created" in response.text
     assert TEST_MNEMONIC in response.text
     assert TEST_NSEC in response.text
+    assert TEST_RPK_PHRASE in response.text
+    assert "Protected-record recovery phrase" in response.text
     assert "wss://relay.example.com" in response.text
     assert "https://mint.example.com" in response.text
     created = FakeCreatedAcorn.instances[0]
@@ -470,6 +480,134 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
     assert credentials.nsec == TEST_NSEC
     assert credentials.bootstrap_relay == "wss://relay.example.com"
     assert credentials.record_protection_key == TEST_RPK
+    assert credentials.record_protection_backup_confirmed is False
+
+
+def test_record_protection_recovery_display_requires_confirmation_and_marks_backup() -> None:
+    client = make_https_client()
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+        record_protection_key=TEST_RPK,
+    )
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        SessionCipher(TEST_SETTINGS).encode(credentials),
+        domain="safebox.example",
+        path="/",
+    )
+
+    warning = client.get("/record-protection/recovery")
+    assert warning.status_code == 200
+    assert "Sensitive recovery material is about to be displayed" in warning.text
+    assert TEST_RPK_PHRASE not in warning.text
+    assert warning.headers["cache-control"] == "no-store"
+
+    rejected = client.post(
+        "/record-protection/recovery",
+        data={"csrf_token": valid_csrf_token()},
+    )
+    assert rejected.status_code == 403
+    assert TEST_RPK_PHRASE not in rejected.text
+
+    displayed = client.post(
+        "/record-protection/recovery",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "confirmed": "yes",
+        },
+    )
+    assert displayed.status_code == 200
+    assert TEST_RPK_PHRASE in displayed.text
+    assert TEST_RPK not in displayed.text
+    assert displayed.headers["cache-control"] == "no-store"
+
+    confirmed = client.post(
+        "/record-protection/confirm",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "confirmed": "yes",
+        },
+        follow_redirects=False,
+    )
+    assert confirmed.status_code == 303
+    updated_token = client.cookies.get(SECURE_COOKIE_NAME)
+    updated = SessionCipher(TEST_SETTINGS).decode(updated_token)
+    assert updated.record_protection_key == TEST_RPK
+    assert updated.record_protection_backup_confirmed is True
+
+
+def test_login_restores_record_protection_key_from_recovery_phrase() -> None:
+    client = make_https_client()
+
+    response = client.post(
+        "/login",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "secret_type": "nsec",
+            "secret": TEST_NSEC,
+            "bootstrap_relay": "relay.example.com",
+            "record_protection_recovery": TEST_RPK_PHRASE,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    token = client.cookies.get(SECURE_COOKIE_NAME)
+    assert token is not None
+    assert TEST_RPK_PHRASE not in token
+    assert TEST_RPK not in token
+    credentials = SessionCipher(TEST_SETTINGS).decode(token)
+    assert credentials.record_protection_key == TEST_RPK
+    assert credentials.record_protection_backup_confirmed is True
+
+
+def test_login_restores_record_protection_key_from_external_entropy() -> None:
+    entropy = "17" * 32
+    expected_rpk = record_protection_key_from_entropy(entropy)
+    client = make_https_client()
+
+    response = client.post(
+        "/login",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "secret_type": "nsec",
+            "secret": TEST_NSEC,
+            "bootstrap_relay": "relay.example.com",
+            "record_protection_entropy": entropy,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    token = client.cookies.get(SECURE_COOKIE_NAME)
+    assert token is not None
+    assert entropy not in token
+    assert expected_rpk not in token
+    credentials = SessionCipher(TEST_SETTINGS).decode(token)
+    assert credentials.record_protection_key == expected_rpk
+    assert credentials.record_protection_backup_confirmed is True
+
+
+def test_login_rejects_invalid_record_protection_phrase_without_echoing_it() -> None:
+    invalid_phrase = "abandon " * 23 + "abandon"
+    client = make_https_client()
+
+    response = client.post(
+        "/login",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "secret_type": "nsec",
+            "secret": TEST_NSEC,
+            "bootstrap_relay": "relay.example.com",
+            "record_protection_recovery": invalid_phrase,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "protected-record recovery phrase is not valid" in response.text
+    assert invalid_phrase not in response.text
+    assert SECURE_COOKIE_NAME not in response.headers.get("set-cookie", "")
 
 
 def test_create_acorn_uses_external_record_protection_entropy(monkeypatch) -> None:
@@ -1997,6 +2135,19 @@ def test_aes_256_gcm_session_rejects_invalid_record_protection_key() -> None:
                 nsec=TEST_NSEC,
                 bootstrap_relay="wss://relay.example.com",
                 record_protection_key="not-a-key",
+            )
+        )
+
+
+def test_session_rejects_confirmed_backup_without_record_protection_key() -> None:
+    cipher = SessionCipher(TEST_SETTINGS)
+
+    with pytest.raises(ValueError, match="cannot confirm a missing"):
+        cipher.encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+                record_protection_backup_confirmed=True,
             )
         )
 

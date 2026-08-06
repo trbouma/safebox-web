@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from html import escape
 import json
 import logging
@@ -24,6 +25,8 @@ from acorn import (
     Acorn,
     generate_record_protection_key,
     record_protection_key_from_entropy,
+    record_protection_key_from_recovery_phrase,
+    record_protection_recovery_phrase,
 )
 from acorn.func_utils import (
     generate_seed_phrase_and_nsec,
@@ -777,6 +780,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 npub=acorn.pubkey_bech32,
                 home_relay=normalized_relay,
                 home_mint=normalized_mint,
+                record_protection_recovery_phrase=record_protection_recovery_phrase(
+                    record_protection_key
+                ),
+                record_protection_csrf_token=CsrfProtector(settings).issue(),
             ),
             status_code=201,
         )
@@ -798,6 +805,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         secret_type: str = Form(...),
         secret: str = Form(...),
         bootstrap_relay: str = Form(...),
+        record_protection_recovery: str = Form(""),
+        record_protection_entropy: str = Form(""),
     ):
         settings = request.app.state.settings
         if not CsrfProtector(settings).verify(csrf_token):
@@ -810,10 +819,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=403,
             )
         try:
+            recovery_phrase = str(record_protection_recovery).strip()
+            recovery_entropy = str(record_protection_entropy).strip()
+            if recovery_phrase and recovery_entropy:
+                raise ValueError(
+                    "enter either the protected-record recovery phrase or "
+                    "external entropy, not both"
+                )
+            if recovery_phrase:
+                record_protection_key = (
+                    record_protection_key_from_recovery_phrase(recovery_phrase)
+                )
+            elif recovery_entropy:
+                record_protection_key = record_protection_key_from_entropy(
+                    recovery_entropy
+                )
+            else:
+                record_protection_key = None
             credentials = credentials_from_login(
                 secret_type=secret_type,
                 secret=secret,
                 bootstrap_relay=bootstrap_relay,
+                record_protection_key=record_protection_key,
+                record_protection_backup_confirmed=(
+                    record_protection_key is not None
+                ),
             )
         except ValueError as exc:
             return HTMLResponse(
@@ -829,6 +859,118 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.set_cookie(
             key=cookie_name_for_request(request),
             value=SessionCipher(settings).encode(credentials),
+            max_age=settings.session_ttl_seconds,
+            httponly=True,
+            secure=not is_loopback_http_request(request),
+            samesite="strict",
+            path="/",
+        )
+        return response
+
+    @app.get("/record-protection/recovery", response_class=HTMLResponse)
+    async def record_protection_recovery_warning(
+        request: Request,
+        credentials: CredentialsDependency,
+    ):
+        settings = request.app.state.settings
+        if credentials.record_protection_key is None:
+            return HTMLResponse(
+                _page(
+                    "Record protection is not attached",
+                    "<p>This session does not contain a record protection key. "
+                    "Disconnect and reconnect with the protected-record recovery "
+                    "phrase or external entropy.</p>"
+                    '<p><a href="/wallet">Back to wallet</a></p>',
+                ),
+                status_code=409,
+                headers={"Cache-Control": "no-store"},
+            )
+        return HTMLResponse(
+            render_template(
+                "record_protection_warning.html",
+                title="Protected-record recovery",
+                csrf_token=CsrfProtector(settings).issue(),
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/record-protection/recovery", response_class=HTMLResponse)
+    async def display_record_protection_recovery(
+        request: Request,
+        credentials: CredentialsDependency,
+        csrf_token: str = Form(...),
+        confirmed: str | None = Form(None),
+    ):
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token) or confirmed != "yes":
+            return HTMLResponse(
+                _page(
+                    "Recovery material not displayed",
+                    "<p>Valid confirmation is required.</p>"
+                    '<p><a href="/record-protection/recovery">Try again</a></p>',
+                ),
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
+        if credentials.record_protection_key is None:
+            return HTMLResponse(
+                _page(
+                    "Record protection is not attached",
+                    "<p>This session does not contain a record protection key.</p>"
+                    '<p><a href="/wallet">Back to wallet</a></p>',
+                ),
+                status_code=409,
+                headers={"Cache-Control": "no-store"},
+            )
+        recovery_phrase = record_protection_recovery_phrase(
+            credentials.record_protection_key
+        )
+        return HTMLResponse(
+            render_template(
+                "record_protection_recovery.html",
+                title="Protected-record recovery phrase",
+                recovery_phrase=recovery_phrase,
+                csrf_token=CsrfProtector(settings).issue(),
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/record-protection/confirm")
+    async def confirm_record_protection_backup(
+        request: Request,
+        credentials: CredentialsDependency,
+        csrf_token: str = Form(...),
+        confirmed: str | None = Form(None),
+    ):
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token) or confirmed != "yes":
+            return HTMLResponse(
+                _page(
+                    "Backup not confirmed",
+                    "<p>Valid confirmation is required.</p>"
+                    '<p><a href="/record-protection/recovery">Return</a></p>',
+                ),
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
+        if credentials.record_protection_key is None:
+            return HTMLResponse(
+                _page(
+                    "Record protection is not attached",
+                    "<p>This session does not contain a record protection key.</p>"
+                    '<p><a href="/wallet">Back to wallet</a></p>',
+                ),
+                status_code=409,
+                headers={"Cache-Control": "no-store"},
+            )
+        updated_credentials = replace(
+            credentials,
+            record_protection_backup_confirmed=True,
+        )
+        response = RedirectResponse("/wallet", status_code=303)
+        response.set_cookie(
+            key=cookie_name_for_request(request),
+            value=SessionCipher(settings).encode(updated_credentials),
             max_age=settings.session_ttl_seconds,
             httponly=True,
             secure=not is_loopback_http_request(request),
@@ -861,6 +1003,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> str:
         settings = request.app.state.settings
         csrf_token = CsrfProtector(settings).issue()
+        session_credentials = None
+        session_token = request.cookies.get(cookie_name_for_request(request))
+        if session_token:
+            try:
+                session_credentials = SessionCipher(settings).decode(session_token)
+            except ValueError:
+                # The normal LoadedAcorn dependency rejects invalid cookies.
+                # This fallback exists for dependency-overridden test clients.
+                session_credentials = None
         claimed_handle = session.exec(
             select(ClaimedHandle).where(
                 ClaimedHandle.npub == acorn.pubkey_bech32
@@ -897,6 +1048,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             title="Connected Acorn",
             npub=acorn.pubkey_bech32,
             home_relay=acorn.home_relay,
+            record_protection_available=(
+                session_credentials is not None
+                and session_credentials.record_protection_key is not None
+            ),
+            record_protection_backup_confirmed=(
+                session_credentials is not None
+                and session_credentials.record_protection_backup_confirmed
+            ),
             nip05_address=nip05_address,
             lightning_lnurl=lightning_lnurl,
             lightning_qr=lightning_qr,

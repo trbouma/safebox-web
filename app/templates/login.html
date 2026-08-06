@@ -15,6 +15,21 @@ into an authenticated browser cookie for this session.</p>
   <label for="bootstrap_relay">Bootstrap relay</label>
   <input id="bootstrap_relay" name="bootstrap_relay" type="text"
          value="{{ default_relay }}" required spellcheck="false">
+  <details>
+    <summary>Restore protected-record access</summary>
+    <p>Optional. Enter either the separately labelled 24-word protected-record
+    recovery phrase or the original 256-bit external record-protection entropy.
+    Do not enter the Acorn wallet mnemonic here.</p>
+    <label for="record_protection_recovery">Protected-record recovery phrase</label>
+    <input id="record_protection_recovery" name="record_protection_recovery"
+           type="password" autocomplete="off" spellcheck="false"
+           autocapitalize="none">
+    <label for="record_protection_entropy">External record-protection entropy</label>
+    <input id="record_protection_entropy" name="record_protection_entropy"
+           type="password" minlength="64" maxlength="64"
+           pattern="[0-9A-Fa-f]{64}" autocomplete="off" spellcheck="false"
+           autocapitalize="none">
+  </details>
   <button type="submit">Connect</button>
 </form>
 <hr>

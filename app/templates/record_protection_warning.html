@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="error"><strong>Sensitive recovery material is about to be displayed.</strong></p>
+<p>The protected-record recovery phrase gives access to the independent record
+protection key. Display it only in a private environment. Screenshots,
+clipboard managers, browser extensions, terminal capture, and nearby observers
+may expose it.</p>
+<form method="post" action="/record-protection/recovery">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I understand and want to display the protected-record recovery phrase.
+  </label>
+  <button type="submit">Display recovery phrase</button>
+</form>
+<p><a href="/wallet">Cancel and return to wallet</a></p>
+{% endblock %}

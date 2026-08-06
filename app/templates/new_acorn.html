@@ -6,11 +6,23 @@ obtains it can control this Acorn and its funds and records.</p>
 <pre>{{ seed_phrase }}</pre>
 <p>nsec private key:</p>
 <pre>{{ nsec }}</pre>
+<p><strong>Protected-record recovery phrase:</strong></p>
+<pre>{{ record_protection_recovery_phrase }}</pre>
+<p>This separately labelled 24-word phrase recovers only the independent
+record protection key. It is not the Acorn wallet recovery phrase and must not
+be entered as one.</p>
 <p>Component public key: <code>{{ npub }}</code></p>
 <p>Home relay: <code>{{ home_relay }}</code></p>
 <p>Home mint: <code>{{ home_mint }}</code></p>
 <p>This page is not server-side recovery storage. Save the material offline
 before leaving it. Do not refresh or resubmit this page; that would create a
 different Acorn.</p>
-<p><a href="/wallet">Continue to wallet</a></p>
+<form method="post" action="/record-protection/confirm">
+  <input type="hidden" name="csrf_token" value="{{ record_protection_csrf_token }}">
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I saved the separately labelled protected-record recovery phrase offline.
+  </label>
+  <button type="submit">Confirm backup and continue</button>
+</form>
 {% endblock %}

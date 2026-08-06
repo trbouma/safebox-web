@@ -149,14 +149,18 @@ home mint is stored in that relay-backed wallet metadata. Safebox displays the
 recovery material on the creation result page. Acorn also generates an
 independent 256-bit record protection key (RPK). The encrypted session cookie
 holds the `nsec`, bootstrap relay, RPK, and session format version. The RPK is
-never rendered into HTML, returned by `/api/session`, logged, or written to the
-application database.
+never rendered as raw hexadecimal, returned by `/api/session`, logged, or
+written to the application database. Its separately labelled 24-word recovery
+encoding is intentionally rendered only during the confirmed creation or
+recovery ceremony and must be treated as equivalent secret material.
 
-This is an initial key-custody scaffold only. Protected-record encryption is
-not yet enabled, and the session-held RPK is not a recovery backup. It is lost
-when the cookie is cleared or expires. No current record depends on it. A later
-recovery ceremony must be completed before protected records can safely use
-the key.
+This is an initial key-custody and recovery scaffold only. Protected-record
+encryption is not yet enabled, and the session-held RPK is not itself a recovery
+backup. Acorn encodes the exact RPK as a separately labelled, checksummed
+24-word protected-record recovery phrase. Safebox displays that phrase at
+creation and requires the user to confirm an offline backup. No current record
+depends on the RPK, and the complete protected-record profile still requires
+implementation and review.
 
 The creation form offers either a 12-word or 24-word BIP39 offline mnemonic.
 The 12-word option is the default and uses 128 bits of generated entropy; the
@@ -182,6 +186,27 @@ derivation itself. If this field is blank, Acorn obtains fresh entropy from the
 operating-system cryptographic random source. The supplied entropy is not
 stored, echoed, or placed in the cookie; only the derived working RPK is placed
 in the encrypted cookie.
+
+The protected-record recovery phrase is distinct from the wallet mnemonic:
+
+```text
+Acorn wallet recovery phrase       -> recovers the Acorn signing key
+Protected-record recovery phrase   -> recovers the independent RPK
+```
+
+Safebox Web encodes the RPK bytes directly as the 24-word phrase; it never
+passes that phrase through the wallet's SLIP-10 key derivation. An authenticated
+user can select **view recovery options** from the wallet page. The first page
+contains only a warning; a CSRF-protected confirmed POST displays the phrase.
+The response is marked `Cache-Control: no-store`. A second confirmed POST marks
+the backup as confirmed inside the encrypted session cookie.
+
+When reconnecting an Acorn, **Restore protected-record access** accepts either
+the separately labelled 24-word phrase or the original external
+record-protection entropy. Safebox passes the secret to Acorn for validation or
+derivation, stores only the resulting RPK in the encrypted cookie, and marks
+the supplied recovery copy as confirmed. The phrase and entropy are not
+returned by `/api/session`, written to the application database, or logged.
 
 This architecture moves session custody to the browser; it does not eliminate
 the need to trust the running web code or protect the cookie-encryption key.

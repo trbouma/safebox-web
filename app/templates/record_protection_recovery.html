@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="error"><strong>Keep this phrase private.</strong></p>
+<p>Acorn protected-record recovery phrase:</p>
+<pre>{{ recovery_phrase }}</pre>
+<p>This phrase recovers the independent record protection key. It does not
+recover the Acorn signing key, wallet funds, or relay location.</p>
+<form method="post" action="/record-protection/confirm">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I saved this separately labelled phrase offline.
+  </label>
+  <button type="submit">Confirm backup and return to wallet</button>
+</form>
+{% endblock %}
