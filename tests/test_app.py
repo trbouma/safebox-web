@@ -353,9 +353,11 @@ def test_page_displays_acorn_safebox_relationship_visual() -> None:
 
     assert response.status_code == 200
     assert 'aria-label="Acorn connected with Safebox"' in response.text
-    assert "User-controlled component" in response.text
-    assert "User-controlled session" in response.text
-    assert "Web service surface" in response.text
+    assert 'role="img" aria-label="Acorn"' in response.text
+    assert 'role="img" aria-label="Safebox"' in response.text
+    assert "User-controlled component" not in response.text
+    assert "User-controlled session" not in response.text
+    assert "Web service surface" not in response.text
 
 
 def test_progress_script_is_served_from_same_origin() -> None:
