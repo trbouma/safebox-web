@@ -37,6 +37,12 @@ storage. Do not change the path casually on an existing deployment: migrate the
 recovery file while the worker is stopped or the next start will create a
 different wallet and abandon the old authority.
 
+For a proposed next step that replaces plaintext provider-secret storage with
+separate, audited, least-privilege secret delivery, see the
+[OpenBao Integration Note](OPENBAO-INTEGRATION-NOTE.md). OpenBao is not part of
+the current deployment and should not be introduced without completing the
+documented migration and recovery tests.
+
 Never run more than one `service-acorn-worker` container against that state.
 `SAFEBOX_WEB_WORKERS` may be greater than one because those processes never own
 the provider wallet. Multiple web workers improve request capacity but do not
