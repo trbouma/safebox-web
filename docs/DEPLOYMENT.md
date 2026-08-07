@@ -77,6 +77,7 @@ Place the generated value in `SAFEBOX_COOKIE_KEY` and review at least:
 ```env
 SAFEBOX_COOKIE_KEY=<new private key>
 SAFEBOX_DATABASE_URL=sqlite:///data/database.db
+SAFEBOX_ALLOWED_WS_RELAYS=
 SAFEBOX_BLOSSOM_HOME_SERVER=https://blossom.getsafebox.app
 SAFEBOX_MAX_BLOB_BYTES=10485760
 
@@ -92,6 +93,19 @@ SAFEBOX_SERVICE_ACORN_STATE_FILE=data/service-acorn.json
 SAFEBOX_SERVICE_ACORN_POLL_SECONDS=0.5
 SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800
 ```
+
+Secure `wss://` relay URLs need no allowlist entry. To deliberately use one or
+more non-TLS relays on localhost, a private network, or a protected VPN, list
+each exact URL with an explicit port:
+
+```env
+SAFEBOX_ALLOWED_WS_RELAYS=ws://localhost:8735,ws://beelink:8735
+```
+
+Any `ws://` value used as `SAFEBOX_DEFAULT_BOOTSTRAP_RELAY` or
+`SAFEBOX_SERVICE_ACORN_HOME_RELAY` must appear in this list. The connection is
+made by the Safebox process, so `localhost` refers to that process's host
+namespace; inside Docker it normally refers to the container itself.
 
 If `SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS` is absent, both the
 application settings and Compose configuration default it to seven days. Set

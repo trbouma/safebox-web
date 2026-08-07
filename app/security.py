@@ -265,11 +265,8 @@ class CsrfProtector:
         return payload == self._PAYLOAD
 
 
-def normalize_bootstrap_relay(value: str) -> str:
-    """Normalize and validate a secure relay URL.
-
-    Plain ``ws://`` is accepted only for an IPv4 loopback relay.
-    """
+def _normalize_relay_url(value: str, *, require_ws_port: bool = False) -> str:
+    """Return a canonical WebSocket relay URL without applying access policy."""
 
     relay = str(value).strip()
     if not relay:
@@ -282,16 +279,43 @@ def normalize_bootstrap_relay(value: str) -> str:
         raise ValueError("bootstrap relay must be a ws:// or wss:// URL")
     if parsed.username or parsed.password or parsed.fragment:
         raise ValueError("bootstrap relay must not contain credentials or a fragment")
-    if parsed.scheme == "ws":
-        try:
-            address = ipaddress.ip_address(parsed.hostname)
-        except ValueError as exc:
-            raise ValueError("unencrypted ws:// relays are allowed only on loopback") from exc
-        if not address.is_loopback:
-            raise ValueError("unencrypted ws:// relays are allowed only on loopback")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("bootstrap relay port is invalid") from exc
+    if require_ws_port and parsed.scheme == "ws" and port is None:
+        raise ValueError("allowed ws:// relays must include an explicit port")
 
+    hostname = parsed.hostname.lower()
+    canonical_host = f"[{hostname}]" if ":" in hostname else hostname
+    canonical_netloc = canonical_host if port is None else f"{canonical_host}:{port}"
     normalized_path = parsed.path or ""
-    return urlunsplit((parsed.scheme, parsed.netloc, normalized_path, parsed.query, ""))
+    return urlunsplit(
+        (parsed.scheme.lower(), canonical_netloc, normalized_path, parsed.query, "")
+    )
+
+
+def normalize_bootstrap_relay(
+    value: str,
+    allowed_ws_relays: tuple[str, ...] | list[str] = (),
+) -> str:
+    """Normalize a relay URL and require explicit authorization for ws://."""
+
+    normalized = _normalize_relay_url(value, require_ws_port=True)
+    if urlsplit(normalized).scheme != "ws":
+        return normalized
+
+    allowed: set[str] = set()
+    for configured in allowed_ws_relays:
+        candidate = _normalize_relay_url(configured, require_ws_port=True)
+        if urlsplit(candidate).scheme != "ws":
+            raise ValueError("SAFEBOX_ALLOWED_WS_RELAYS may contain only ws:// URLs")
+        allowed.add(candidate)
+    if normalized not in allowed:
+        raise ValueError(
+            "ws:// relay is not listed in SAFEBOX_ALLOWED_WS_RELAYS"
+        )
+    return normalized
 
 
 def normalize_home_mint(value: str) -> str:
@@ -355,6 +379,7 @@ def credentials_from_login(
     bootstrap_relay: str,
     record_protection_key: str | None = None,
     record_protection_backup_confirmed: bool = False,
+    allowed_ws_relays: tuple[str, ...] | list[str] = (),
 ) -> SessionCredentials:
     if secret_type == "nsec":
         nsec = canonical_nsec(secret)
@@ -368,7 +393,10 @@ def credentials_from_login(
         )
     return SessionCredentials(
         nsec=nsec,
-        bootstrap_relay=normalize_bootstrap_relay(bootstrap_relay),
+        bootstrap_relay=normalize_bootstrap_relay(
+            bootstrap_relay,
+            allowed_ws_relays,
+        ),
         record_protection_key=record_protection_key,
         record_protection_backup_confirmed=record_protection_backup_confirmed,
     )

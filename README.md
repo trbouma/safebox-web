@@ -529,6 +529,7 @@ Review these deployment values in `.env` before starting:
 
 ```env
 SAFEBOX_COOKIE_KEY=<generated URL-safe 32-byte application key>
+SAFEBOX_ALLOWED_WS_RELAYS=
 SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
 SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_WEB_WORKERS=1

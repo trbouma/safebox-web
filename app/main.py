@@ -888,7 +888,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             record_protection_key = generate_record_protection_key()
 
         try:
-            normalized_relay = normalize_bootstrap_relay(home_relay)
+            normalized_relay = normalize_bootstrap_relay(
+                home_relay,
+                settings.allowed_ws_relays,
+            )
             normalized_mint = normalize_home_mint(home_mint)
         except ValueError as exc:
             return creation_error(str(exc))
@@ -931,6 +934,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             secret=generated_nsec,
             bootstrap_relay=normalized_relay,
             record_protection_key=record_protection_key,
+            allowed_ws_relays=settings.allowed_ws_relays,
         )
         protected_record_mnemonic = record_protection_recovery_phrase(
             record_protection_key
@@ -1013,6 +1017,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 record_protection_backup_confirmed=(
                     record_protection_key is not None
                 ),
+                allowed_ws_relays=settings.allowed_ws_relays,
             )
         except ValueError as exc:
             return HTMLResponse(

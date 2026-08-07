@@ -30,6 +30,16 @@ DEFAULT_SESSION_TTL_SECONDS = DEFAULT_SESSION_TTL_HOURS * 60 * 60
 DEFAULT_MAX_BLOB_BYTES = 10 * 1024 * 1024
 
 
+def _allowed_ws_relays_from_env() -> tuple[str, ...]:
+    """Return the operator's comma-delimited exact ws:// relay allowlist."""
+
+    return tuple(
+        relay.strip()
+        for relay in os.getenv("SAFEBOX_ALLOWED_WS_RELAYS", "").split(",")
+        if relay.strip()
+    )
+
+
 def _session_ttl_seconds_from_env() -> int:
     """Read the public hours setting, with seconds kept as a legacy fallback."""
 
@@ -91,6 +101,7 @@ class ServiceAcornSettings:
     payment_timeout_seconds: float = 90.0
     database_url: str = "sqlite:///data/database.db"
     service_acorn_poll_seconds: float = 0.5
+    allowed_ws_relays: tuple[str, ...] = ()
     service_acorn_enabled: bool = False
     service_acorn_home_relay: str = "wss://relay.getsafebox.app"
     service_acorn_home_mint: str = "https://mint.getsafebox.app"
@@ -146,6 +157,7 @@ class ServiceAcornSettings:
                 "SAFEBOX_DATABASE_URL", "sqlite:///data/database.db"
             ).strip(),
             service_acorn_poll_seconds=poll_seconds,
+            allowed_ws_relays=_allowed_ws_relays_from_env(),
             service_acorn_enabled=_env_bool("SAFEBOX_SERVICE_ACORN_ENABLED", False),
             service_acorn_home_relay=os.getenv(
                 "SAFEBOX_SERVICE_ACORN_HOME_RELAY",
@@ -173,6 +185,7 @@ class Settings:
     session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
     wallet_load_timeout_seconds: float = 20.0
     payment_timeout_seconds: float = 90.0
+    allowed_ws_relays: tuple[str, ...] = ()
     default_bootstrap_relay: str = "wss://relay.getsafebox.app"
     default_home_mint: str = "https://mint.getsafebox.app"
     blossom_home_server: str = "https://blossom.getsafebox.app"
@@ -284,6 +297,7 @@ class Settings:
             session_ttl_seconds=ttl,
             wallet_load_timeout_seconds=load_timeout,
             payment_timeout_seconds=payment_timeout,
+            allowed_ws_relays=_allowed_ws_relays_from_env(),
             default_bootstrap_relay=default_relay,
             default_home_mint=default_mint,
             blossom_home_server=os.getenv(

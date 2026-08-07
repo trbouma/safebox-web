@@ -48,6 +48,7 @@ from app.security import (
     SECURE_COOKIE_NAME,
     SessionCipher,
     SessionCredentials,
+    normalize_bootstrap_relay,
 )
 
 
@@ -307,6 +308,73 @@ def test_default_session_lifetime_is_30_days() -> None:
     assert DEFAULT_SESSION_TTL_HOURS == 720
     assert DEFAULT_SESSION_TTL_SECONDS == 2_592_000
     assert settings.session_ttl_seconds == DEFAULT_SESSION_TTL_SECONDS
+
+
+def test_settings_load_comma_delimited_ws_relay_allowlist(
+    tmp_path, monkeypatch
+) -> None:
+    env_key = Fernet.generate_key().decode("ascii")
+    (tmp_path / ".env").write_text(
+        f"SAFEBOX_COOKIE_KEY={env_key}\n"
+        "SAFEBOX_ALLOWED_WS_RELAYS=ws://localhost:8735, ws://beelink:7777\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
+    monkeypatch.delenv("SAFEBOX_ALLOWED_WS_RELAYS", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.allowed_ws_relays == (
+        "ws://localhost:8735",
+        "ws://beelink:7777",
+    )
+
+
+def test_ws_relay_requires_exact_allowlist_entry() -> None:
+    with pytest.raises(ValueError, match="SAFEBOX_ALLOWED_WS_RELAYS"):
+        normalize_bootstrap_relay("ws://localhost:8735")
+
+    assert normalize_bootstrap_relay(
+        "ws://LOCALHOST:8735",
+        ("ws://localhost:8735",),
+    ) == "ws://localhost:8735"
+
+
+def test_ws_relay_allowlist_requires_explicit_port() -> None:
+    with pytest.raises(ValueError, match="explicit port"):
+        normalize_bootstrap_relay(
+            "ws://localhost",
+            ("ws://localhost",),
+        )
+
+
+def test_login_accepts_exactly_allowlisted_ws_relay() -> None:
+    settings = replace(
+        TEST_SETTINGS,
+        allowed_ws_relays=("ws://localhost:8735",),
+    )
+    client = TestClient(
+        create_app(settings),
+        base_url="https://safebox.example",
+    )
+
+    response = client.post(
+        "/login",
+        data={
+            "csrf_token": CsrfProtector(settings).issue(),
+            "secret_type": "nsec",
+            "secret": TEST_NSEC,
+            "bootstrap_relay": "ws://LOCALHOST:8735",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    token = client.cookies.get(SECURE_COOKIE_NAME)
+    assert token is not None
+    credentials = SessionCipher(settings).decode(token)
+    assert credentials.bootstrap_relay == "ws://localhost:8735"
 
 
 def test_legacy_session_lifetime_seconds_remains_supported(
@@ -2546,7 +2614,7 @@ def test_tampered_cookie_is_rejected() -> None:
     assert response.json()["detail"] == "Acorn session is invalid or expired"
 
 
-def test_insecure_remote_websocket_relay_is_rejected() -> None:
+def test_unlisted_ws_relay_is_rejected() -> None:
     client = make_https_client()
 
     response = client.post(
@@ -2555,9 +2623,9 @@ def test_insecure_remote_websocket_relay_is_rejected() -> None:
             "csrf_token": valid_csrf_token(),
             "secret_type": "nsec",
             "secret": TEST_NSEC,
-            "bootstrap_relay": "ws://relay.example.com",
+            "bootstrap_relay": "ws://relay.example.com:8735",
         },
     )
 
     assert response.status_code == 400
-    assert "loopback" in response.text
+    assert "SAFEBOX_ALLOWED_WS_RELAYS" in response.text

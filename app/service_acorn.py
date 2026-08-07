@@ -97,11 +97,17 @@ async def start_service_acorn(
     if recovered:
         state = _read_private_state(path)
         nsec = str(state["nsec"])
-        home_relay = normalize_bootstrap_relay(str(state["home_relay"]))
+        home_relay = normalize_bootstrap_relay(
+            str(state["home_relay"]),
+            settings.allowed_ws_relays,
+        )
         home_mint = normalize_home_mint(str(state["home_mint"]))
         initialized = bool(state["initialized"])
     else:
-        home_relay = normalize_bootstrap_relay(settings.service_acorn_home_relay)
+        home_relay = normalize_bootstrap_relay(
+            settings.service_acorn_home_relay,
+            settings.allowed_ws_relays,
+        )
         home_mint = normalize_home_mint(settings.service_acorn_home_mint)
         seed_phrase, nsec = key_generator()
         initialized = False
