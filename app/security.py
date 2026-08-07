@@ -52,6 +52,16 @@ class DepositQuoteState:
     version: int = 1
 
 
+@dataclass(frozen=True)
+class InvoicePaymentState:
+    """Client-held state for one reviewed Lightning invoice payment."""
+
+    invoice: str
+    amount: int
+    purpose: str = "safebox-web-invoice-payment"
+    version: int = 1
+
+
 class SessionCipher:
     """Encrypt and authenticate browser-held session credentials.
 
@@ -203,6 +213,33 @@ class DepositQuoteCipher:
             raise ValueError("deposit quote is incomplete")
         if len(state.quote) > 512 or len(state.mint) > 2048 or len(state.invoice) > 2048:
             raise ValueError("deposit quote contains an oversized field")
+        return state
+
+
+class InvoicePaymentCipher:
+    """Encrypt and authenticate a short-lived reviewed Lightning invoice."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._fernet = Fernet(settings.cookie_key.encode("ascii"))
+        self._ttl = min(settings.session_ttl_seconds, 15 * 60)
+
+    def encode(self, state: InvoicePaymentState) -> str:
+        payload = json.dumps(
+            asdict(state), separators=(",", ":"), sort_keys=True
+        ).encode("utf-8")
+        return self._fernet.encrypt(payload).decode("ascii")
+
+    def decode(self, token: str) -> InvoicePaymentState:
+        try:
+            raw = self._fernet.decrypt(str(token).encode("ascii"), ttl=self._ttl)
+            payload = json.loads(raw)
+            state = InvoicePaymentState(**payload)
+        except (InvalidToken, UnicodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("invoice payment review is invalid or expired") from exc
+        if state.version != 1 or state.purpose != "safebox-web-invoice-payment":
+            raise ValueError("invoice payment version or purpose is unsupported")
+        if state.amount <= 0 or not state.invoice or len(state.invoice) > 4096:
+            raise ValueError("invoice payment state is incomplete")
         return state
 
 

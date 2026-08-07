@@ -7,6 +7,7 @@ import json
 import os
 import re
 import sqlite3
+import time
 from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
@@ -35,12 +36,15 @@ from app.dependencies import (
     get_loaded_acorn,
     get_payment_acorn,
     get_receive_acorn,
+    get_session_credentials,
 )
 from app.main import create_app
 from app.security import (
     CsrfProtector,
     DepositQuoteCipher,
     DepositQuoteState,
+    InvoicePaymentCipher,
+    InvoicePaymentState,
     SECURE_COOKIE_NAME,
     SessionCipher,
     SessionCredentials,
@@ -119,6 +123,7 @@ class FakeLoadedAcorn:
         self.verification_status = verification_status
         self.loaded = False
         self.payments: list[dict] = []
+        self.invoice_payments: list[dict] = []
         self.deposit_calls: list[int] = []
         self.quote_checks: list[tuple[str, int]] = []
         self.record_put_calls: list[dict] = []
@@ -185,6 +190,13 @@ class FakeLoadedAcorn:
         )
         self.balance -= amount + 1
         return f"Payment of {amount} sats successful!", 1
+
+    async def pay_multi_invoice(self, lninvoice: str, comment: str):
+        self.invoice_payments.append(
+            {"invoice": lninvoice, "comment": comment}
+        )
+        self.balance -= 22
+        return "Paid 21 sats with fees 1 sats successful!", 1, "hash", "preimage", None
 
     def deposit(self, amount: int):
         self.deposit_calls.append(amount)
@@ -1405,6 +1417,180 @@ def test_payment_form_displays_balance_and_confirmation() -> None:
     assert 'name="confirmed"' in response.text
     assert "Payment in progress. Please wait" in response.text
     assert "Sending payment…" in response.text
+
+
+def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None:
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/scan/lightning")
+
+    assert response.status_code == 200
+    assert 'data-lightning-scanner' in response.text
+    assert 'src="/static/lightning-scan.js"' in response.text
+    assert 'method="post" action="/scan/lightning"' in response.text
+    assert "Camera scanning requires JavaScript" in response.text
+
+
+def test_scanned_lightning_address_prefills_payment_review() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/scan/lightning",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_payment": "LIGHTNING:alice@example.com",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Pay a Lightning address" in response.text
+    assert 'value="alice@example.com"' in response.text
+    assert acorn.payments == []
+
+
+def test_scanned_non_lightning_qr_is_rejected_without_payment() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/scan/lightning",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_payment": "https://example.com/not-a-lightning-address",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "does not contain a supported Lightning address or fixed-amount" in response.text
+    assert acorn.payments == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        "https://alice@example.com",
+        "alice@example",
+        "alice@@example.com",
+        "alice example@example.com",
+    ),
+)
+def test_lightning_address_normalizer_rejects_non_address_payloads(payload: str) -> None:
+    assert main_module._normalize_lightning_address(payload) is None
+
+
+def test_real_bolt11_invoice_is_decoded_for_review() -> None:
+    bolt11_module = main_module.bolt11
+    invoice = bolt11_module.Bolt11(
+        currency="bc",
+        date=int(time.time()),
+        amount_msat=bolt11_module.MilliSatoshi(21_000),
+        tags=bolt11_module.Tags(
+            [
+                bolt11_module.Tag(bolt11_module.TagChar.payment_hash, "00" * 32),
+                bolt11_module.Tag(bolt11_module.TagChar.payment_secret, "11" * 32),
+                bolt11_module.Tag(bolt11_module.TagChar.description, "Test invoice"),
+            ]
+        ),
+    )
+    encoded = bolt11_module.encode(invoice, private_key="12" * 32)
+
+    decoded = main_module._decode_lightning_invoice(f"lightning:{encoded}")
+
+    assert decoded is not None
+    assert decoded["amount"] == 21
+    assert decoded["description"] == "Test invoice"
+
+
+def test_invoice_review_state_rejects_tampering() -> None:
+    cipher = InvoicePaymentCipher(TEST_SETTINGS)
+    token = cipher.encode(
+        InvoicePaymentState(invoice="lnbc210n1pytestinvoice", amount=21)
+    )
+
+    with pytest.raises(ValueError, match="invalid or expired"):
+        cipher.decode(token[:-2] + "xx")
+
+
+def test_scanned_invoice_renders_review_without_exposing_raw_invoice(monkeypatch) -> None:
+    invoice = "lnbc210n1pytestinvoice"
+    monkeypatch.setattr(
+        main_module,
+        "_decode_lightning_invoice",
+        lambda value: {
+            "invoice": invoice,
+            "amount": 21,
+            "description": "Coffee",
+            "expiry": "2026-08-06 23:59:00",
+            "payment_hash": "ab" * 32,
+        }
+        if str(value).removeprefix("lightning:") == invoice
+        else None,
+    )
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/scan/lightning",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_payment": f"lightning:{invoice}",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Review Lightning invoice" in response.text
+    assert "21 sats" in response.text
+    assert "Coffee" in response.text
+    assert 'name="invoice_state"' in response.text
+    assert invoice not in response.text
+    assert acorn.invoice_payments == []
+
+
+def test_confirmed_scanned_invoice_delegates_to_acorn(monkeypatch) -> None:
+    invoice = "lnbc210n1pytestinvoice"
+    decoded = {
+        "invoice": invoice,
+        "amount": 21,
+        "description": "Coffee",
+        "expiry": "2026-08-06 23:59:00",
+        "payment_hash": "ab" * 32,
+    }
+    monkeypatch.setattr(main_module, "_decode_lightning_invoice", lambda value: decoded)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    state_token = InvoicePaymentCipher(TEST_SETTINGS).encode(
+        InvoicePaymentState(invoice=invoice, amount=21)
+    )
+
+    response = client.post(
+        "/pay/invoice",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "invoice_state": state_token,
+            "comment": "pytest invoice",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Invoice payment successful" in response.text
+    assert acorn.invoice_payments == [
+        {"invoice": invoice, "comment": "pytest invoice"}
+    ]
 
 
 def test_deposit_form_displays_home_mint_and_amount_field() -> None:

@@ -6,7 +6,13 @@ Safebox Web is a minimal FastAPI interface for the installable
 The browser interface follows a documented
 [server-rendered hypermedia architecture](docs/HYPERMEDIA-ARCHITECTURE.md).
 Application and wallet logic remains in FastAPI and Acorn; browser JavaScript
-is limited to optional form-progress feedback.
+is limited to progressive presentation behavior and narrowly scoped device
+input such as QR acquisition.
+
+An optional passkey-protected browser vault for reconnecting after session
+expiry is under evaluation and is not implemented. See the
+[Local Acorn Vault Design Note](docs/LOCAL-ACORN-VAULT-DESIGN-NOTE.md) for its
+security model, alternatives, compatibility gate, and decision criteria.
 
 This implementation intentionally provides:
 
@@ -21,6 +27,8 @@ This implementation intentionally provides:
 - private-record label listing, retrieval, creation, and user-confirmed update;
 - user-confirmed Lightning deposits through the Acorn home mint;
 - confirmed Lightning-address payments through Acorn;
+- camera acquisition of Lightning addresses and fixed-amount BOLT11 invoices
+  from QR codes with a manual-entry fallback and server-side validation;
 - an initial LNURL-pay path for receiving Lightning at claimed handles and
   delivering the settled value as ecash;
 - a companion standalone service Acorn worker for Lightning settlement and

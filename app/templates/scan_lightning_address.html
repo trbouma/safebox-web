@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p>Point the camera at a QR code containing a Lightning address or invoice. Scanning only
+acquires the payment request; you will review the recipient or invoice and confirm
+before any funds are sent.</p>
+
+<section class="scanner" data-lightning-scanner>
+  <video class="scanner-video" data-scanner-video playsinline muted></video>
+  <p class="scanner-status" data-scanner-status role="status" aria-live="polite">
+    Camera scanning has not started.
+  </p>
+  <button type="button" data-scanner-start>Start camera</button>
+  <button type="button" data-scanner-stop hidden>Stop camera</button>
+</section>
+
+<form method="post" action="/scan/lightning" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="lightning_payment">Scanned or manually entered Lightning address or invoice</label>
+  <input id="lightning_payment" name="lightning_payment" type="text"
+         value="{{ lightning_address }}" placeholder="alice@example.com" required
+         spellcheck="false" autocapitalize="none" autocomplete="off"
+         data-scanner-result>
+  <button type="submit">Review Lightning payment</button>
+</form>
+<noscript><p>Camera scanning requires JavaScript. You can still enter the
+Lightning address or invoice manually.</p></noscript>
+<p><a href="/wallet">Cancel and return to wallet</a></p>
+<script type="module" src="/static/lightning-scan.js"></script>
+{% endblock %}

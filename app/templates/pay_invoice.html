@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p>Review the decoded invoice before authorizing payment.</p>
+<dl class="invoice-review">
+  <div><dt>Amount</dt><dd>{{ "{:,}".format(amount) }} sats</dd></div>
+  <div><dt>Description</dt><dd>{{ description or "No description supplied" }}</dd></div>
+  <div><dt>Expires</dt><dd>{{ expiry }}</dd></div>
+  <div><dt>Payment hash</dt><dd><code>{{ payment_hash }}</code></dd></div>
+</dl>
+<p>The mint may add a fee reserve. The complete amount and reserve must fit in
+one spendable keyset.</p>
+<form method="post" action="/pay/invoice" autocomplete="off"
+      data-progress-message="Invoice payment in progress. Please wait and do not refresh this page."
+      data-progress-button="Paying invoice…">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="invoice_state" value="{{ state_token }}">
+  <label for="comment">Comment</label>
+  <input id="comment" name="comment" type="text" maxlength="200"
+         value="Paid from Safebox Web">
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I confirm this invoice and understand that payment spends funds and cannot be reversed.
+  </label>
+  <button type="submit">Pay Lightning invoice</button>
+</form>
+<p><a href="/scan/lightning">Cancel and scan again</a></p>
+{% endblock %}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from datetime import datetime, timezone
 from html import escape
 import json
 import logging
@@ -13,6 +14,7 @@ from pathlib import Path
 import re
 from urllib.parse import quote, urlencode
 
+import bolt11
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -54,6 +56,8 @@ from app.security import (
     CsrfProtector,
     DepositQuoteCipher,
     DepositQuoteState,
+    InvoicePaymentCipher,
+    InvoicePaymentState,
     SessionCipher,
     cookie_name_for_request,
     credentials_from_login,
@@ -185,6 +189,7 @@ def _payment_form(
     csrf_token: str,
     error: str | None = None,
     balance_status: str | None = None,
+    lightning_address: str = "",
 ) -> str:
     if balance_status is None:
         balance_status = (
@@ -195,6 +200,104 @@ def _payment_form(
         title="Pay a Lightning address",
         balance_status=balance_status,
         csrf_token=csrf_token,
+        error=error,
+        lightning_address=lightning_address,
+    )
+
+
+def _lightning_scan_form(
+    csrf_token: str,
+    error: str | None = None,
+    lightning_address: str = "",
+) -> str:
+    return render_template(
+        "scan_lightning_address.html",
+        title="Scan a Lightning payment",
+        csrf_token=csrf_token,
+        error=error,
+        lightning_address=lightning_address,
+    )
+
+
+def _normalize_lightning_address(value: str) -> str | None:
+    """Return a conservative Lightning address extracted from scanner input."""
+
+    recipient = str(value or "").strip()
+    if recipient[:10].lower() == "lightning:":
+        recipient = recipient[10:].strip()
+    if (
+        not recipient
+        or len(recipient) > 320
+        or recipient.count("@") != 1
+        or any(character.isspace() for character in recipient)
+    ):
+        return None
+    local_part, domain = recipient.split("@", 1)
+    if (
+        not re.fullmatch(r"[A-Za-z0-9._+~-]{1,64}", local_part)
+        or local_part.startswith(".")
+        or local_part.endswith(".")
+        or ".." in local_part
+        or len(domain) > 253
+    ):
+        return None
+    labels = domain.split(".")
+    if len(labels) < 2 or any(
+        not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
+        for label in labels
+    ):
+        return None
+    return f"{local_part}@{domain.lower()}"
+
+
+def _decode_lightning_invoice(value: str) -> dict[str, object] | None:
+    """Validate a fixed-amount, unexpired mainnet BOLT11 invoice."""
+
+    invoice = str(value or "").strip()
+    if invoice[:10].lower() == "lightning:":
+        invoice = invoice[10:].strip()
+    if len(invoice) > 4096 or not invoice.lower().startswith("lnbc"):
+        return None
+    try:
+        decoded = bolt11.decode(invoice)
+    except Exception:
+        return None
+    if not decoded.is_mainnet() or decoded.has_expired() or decoded.amount_msat is None:
+        return None
+    amount_msat = int(decoded.amount_msat)
+    if amount_msat <= 0 or amount_msat % 1000 != 0:
+        return None
+    return {
+        "invoice": invoice,
+        "amount": amount_msat // 1000,
+        "description": str(decoded.description or ""),
+        "expiry": datetime.fromtimestamp(
+            decoded.expiry_time,
+            tz=timezone.utc,
+        ).isoformat(sep=" ", timespec="seconds"),
+        "payment_hash": str(decoded.payment_hash),
+    }
+
+
+def _invoice_payment_form(
+    *,
+    csrf_token: str,
+    state_token: str,
+    amount: int,
+    description: str,
+    expiry: str,
+    payment_hash: str,
+    error: str | None = None,
+) -> str:
+    return render_template(
+        "pay_invoice.html",
+        title="Review Lightning invoice",
+        csrf_token=csrf_token,
+        state_token=state_token,
+        amount=amount,
+        description=description,
+        expiry=expiry,
+        payment_hash=payment_hash,
         error=error,
     )
 
@@ -1502,6 +1605,224 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return RedirectResponse("/wallet", status_code=303)
 
+    @app.get("/scan/lightning-address", include_in_schema=False)
+    async def legacy_lightning_address_scanner() -> RedirectResponse:
+        return RedirectResponse("/scan/lightning", status_code=303)
+
+    @app.get("/scan/lightning", response_class=HTMLResponse)
+    async def lightning_scanner(
+        request: Request,
+        credentials: CredentialsDependency,
+    ) -> str:
+        del credentials
+        return _lightning_scan_form(
+            CsrfProtector(request.app.state.settings).issue()
+        )
+
+    @app.post("/scan/lightning", response_class=HTMLResponse)
+    async def accept_scanned_lightning_payment(
+        request: Request,
+        acorn: PaymentAcornDependency,
+        csrf_token: str = Form(...),
+        lightning_payment: str = Form(...),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+
+        def scan_error(message: str, status_code: int = 400) -> HTMLResponse:
+            return HTMLResponse(
+                _lightning_scan_form(
+                    form_token.issue(),
+                    error=message,
+                    lightning_address=str(lightning_payment).strip(),
+                ),
+                status_code=status_code,
+            )
+
+        if not form_token.verify(csrf_token):
+            return scan_error("The form token is invalid or expired. Scan again.", 403)
+
+        recipient = _normalize_lightning_address(lightning_payment)
+        invoice = _decode_lightning_invoice(lightning_payment)
+        if recipient is None and invoice is None:
+            return scan_error(
+                "The QR code does not contain a supported Lightning address or fixed-amount mainnet invoice."
+            )
+
+        if invoice is not None:
+            state_token = InvoicePaymentCipher(settings).encode(
+                InvoicePaymentState(
+                    invoice=str(invoice["invoice"]),
+                    amount=int(invoice["amount"]),
+                )
+            )
+            return HTMLResponse(
+                _invoice_payment_form(
+                    csrf_token=form_token.issue(),
+                    state_token=state_token,
+                    amount=int(invoice["amount"]),
+                    description=str(invoice["description"]),
+                    expiry=str(invoice["expiry"]),
+                    payment_hash=str(invoice["payment_hash"]),
+                )
+            )
+
+        verification, verification_error = await _read_proof_verification(
+            acorn,
+            settings.wallet_load_timeout_seconds,
+        )
+        return HTMLResponse(
+            _payment_form(
+                acorn.get_balance(),
+                form_token.issue(),
+                balance_status=_balance_status_html(
+                    acorn.get_balance(),
+                    len(acorn.proofs),
+                    verification,
+                    verification_error,
+                ),
+                lightning_address=recipient,
+            )
+        )
+
+    @app.post("/pay/invoice", response_class=HTMLResponse)
+    async def pay_lightning_invoice(
+        request: Request,
+        acorn: PaymentAcornDependency,
+        csrf_token: str = Form(...),
+        invoice_state: str = Form(...),
+        comment: str = Form("Paid from Safebox Web"),
+        confirmed: str | None = Form(None),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+        if not form_token.verify(csrf_token):
+            return HTMLResponse(
+                _page(
+                    "Invoice payment not authorized",
+                    '<p class="error">The form token is invalid or expired. Scan the invoice again.</p>'
+                    '<p><a href="/scan/lightning">Return to scanner</a></p>',
+                ),
+                status_code=403,
+            )
+        if confirmed != "yes":
+            return HTMLResponse(
+                _page(
+                    "Invoice payment not authorized",
+                    '<p class="error">Explicit invoice payment confirmation is required.</p>'
+                    '<p><a href="/scan/lightning">Return to scanner</a></p>',
+                ),
+                status_code=400,
+            )
+        try:
+            state = InvoicePaymentCipher(settings).decode(invoice_state)
+        except ValueError:
+            return HTMLResponse(
+                _page(
+                    "Invoice review expired",
+                    '<p class="error">The reviewed invoice is invalid or expired. Scan it again.</p>'
+                    '<p><a href="/scan/lightning">Return to scanner</a></p>',
+                ),
+                status_code=400,
+            )
+        invoice = _decode_lightning_invoice(state.invoice)
+        if invoice is None or int(invoice["amount"]) != state.amount:
+            return HTMLResponse(
+                _page(
+                    "Invoice is no longer payable",
+                    '<p class="error">The invoice is invalid, expired, or no longer matches the reviewed amount.</p>'
+                    '<p><a href="/scan/lightning">Return to scanner</a></p>',
+                ),
+                status_code=400,
+            )
+        payment_comment = str(comment).strip() or "Paid from Safebox Web"
+        if len(payment_comment) > 200:
+            return HTMLResponse(
+                _page(
+                    "Invoice payment not authorized",
+                    '<p class="error">Payment comment must be 200 characters or fewer.</p>'
+                    '<p><a href="/scan/lightning">Return to scanner</a></p>',
+                ),
+                status_code=400,
+            )
+        verification, verification_error = await _read_proof_verification(
+            acorn,
+            settings.wallet_load_timeout_seconds,
+        )
+        if verification is None:
+            return HTMLResponse(
+                _page(
+                    "Invoice payment blocked",
+                    f'<p class="error">{escape(verification_error or "Mint verification was unavailable.")}</p>'
+                    '<p><a href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=503,
+            )
+        if verification.get("status") != "clean":
+            return HTMLResponse(
+                _page(
+                    "Invoice payment blocked",
+                    '<p class="error">The wallet proof state is not clean. Review it before spending.</p>'
+                    '<p><a href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=409,
+            )
+        confirmed_balance = int(
+            verification.get("mint_confirmed_unspent", {}).get("amount", 0)
+        )
+        if state.amount > confirmed_balance:
+            return HTMLResponse(
+                _page(
+                    "Invoice payment blocked",
+                    '<p class="error">The invoice exceeds the mint-confirmed spendable balance.</p>'
+                    '<p><a href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=400,
+            )
+        try:
+            message, fees, _payment_hash, _preimage, _description_hash = (
+                await asyncio.wait_for(
+                    acorn.pay_multi_invoice(
+                        lninvoice=state.invoice,
+                        comment=payment_comment,
+                    ),
+                    timeout=settings.payment_timeout_seconds,
+                )
+            )
+        except TimeoutError:
+            logger.warning("lightning invoice payment timed out outcome=unknown")
+            return HTMLResponse(
+                _page(
+                    "Invoice payment status unresolved",
+                    "<p>The payment timed out before Safebox received a final result. "
+                    "Do not retry it. Reconcile pending payments and review transaction "
+                    "history first.</p><p><a href=\"/wallet\">Return to wallet</a></p>",
+                ),
+                status_code=504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "lightning invoice payment did not return success error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Invoice payment not confirmed",
+                    "<p>Safebox did not receive a confirmed successful result. Do not "
+                    "retry blindly. Reconcile pending payments and review transaction "
+                    "history first.</p><p><a href=\"/wallet\">Return to wallet</a></p>",
+                ),
+                status_code=502,
+            )
+        return render_template(
+            "payment_result.html",
+            title="Invoice payment successful",
+            amount=f"{state.amount:,}",
+            fees=f"{int(fees):,}",
+            recipient="Lightning invoice",
+            message=str(message),
+        )
+
     @app.get("/pay", response_class=HTMLResponse)
     async def payment_form(request: Request, acorn: PaymentAcornDependency) -> str:
         settings = request.app.state.settings
@@ -1574,13 +1895,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 409,
             )
 
-        recipient = str(lightning_address).strip()
-        if (
-            recipient.count("@") != 1
-            or any(character.isspace() for character in recipient)
-            or recipient.startswith("@")
-            or recipient.endswith("@")
-        ):
+        recipient = _normalize_lightning_address(lightning_address)
+        if recipient is None:
             return payment_error("Enter a valid Lightning address such as alice@example.com.")
 
         try:

@@ -24,6 +24,12 @@ not read or manage Acorn credentials, wallet state, records, payments, or
 workflow decisions; without JavaScript, the complete application continues to
 work in its default dark theme.
 
+An optional passkey-protected browser vault is being evaluated as a deliberate,
+narrow exception for reconnecting an Acorn after session expiry. It is not
+implemented. The tradeoffs, alternatives, compatibility gate, and go/no-go
+criteria are documented in the
+[Local Acorn Vault Design Note](./LOCAL-ACORN-VAULT-DESIGN-NOTE.md).
+
 ## Upstream component boundary
 
 This document is the Safebox Web implementation of the authoritative
@@ -59,7 +65,8 @@ The browser layer is intentionally limited to:
 - `303 See Other` redirects after successful mutations where the resulting
   resource has a stable URL;
 - an encrypted, authenticated, HTTP-only session cookie; and
-- optional presentation-only JavaScript for submission progress feedback.
+- optional JavaScript for presentation feedback and narrowly scoped browser
+  device input.
 
 All application decisions remain on the server. FastAPI routes validate input,
 verify CSRF tokens, reconstruct the request-scoped Acorn, invoke component
@@ -96,6 +103,17 @@ submission, store application state, or calculate wallet outcomes. It only:
 The script never calls `preventDefault()`. With JavaScript disabled or the
 script unavailable, links and forms continue to work through normal browser
 and HTTP behavior. Progress feedback is an enhancement, not a dependency.
+
+The Lightning-payment scanner is a second bounded enhancement. Its same-origin
+script controls the camera and copies decoded QR text into an ordinary HTML
+form. It does not classify recipients, initiate payments, access the session
+cookie, or call Acorn. The browser submits the acquired value to a
+CSRF-protected route, where Safebox classifies and validates either a Lightning
+address or a fixed-amount mainnet BOLT11 invoice. Addresses enter the existing
+payment-review form. Invoices receive a separate review representation backed
+by a short-lived encrypted state token; the server rechecks the decoded amount
+and expiry before invoking Acorn. Manual entry remains available when
+JavaScript, camera access, or QR decoding is unavailable.
 
 ## State and trust boundary
 
