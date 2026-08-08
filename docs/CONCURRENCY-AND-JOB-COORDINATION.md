@@ -50,6 +50,7 @@ QUOTE_PENDING
     -> SETTLED
     -> DELIVERING
     -> DELIVERED
+    -> RECEIPT_PENDING -> DELIVERED | RECEIPT_FAILED
 ```
 
 SQLite uses WAL mode, a 30-second busy timeout, and short database sessions.
@@ -81,6 +82,11 @@ The discovery response should eventually include a short-lived opaque callback
 token. A uniqueness constraint must bind that token and the requested payment
 terms to at most one invoice. Repeating an identical callback should return the
 existing invoice rather than enqueue new work.
+
+Validated NIP-57 callbacks now close one part of this gap: the signed kind-9734
+event id is unique in `provider_zap`, and a repeated request returns the
+existing provider invoice. Ordinary LNURL callbacks still lack an equivalent
+idempotency key and remain subject to the limitation above.
 
 ### Sequential provider throughput
 

@@ -1070,8 +1070,20 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         payment_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(provider_payment)")
         }
-    assert {"alembic_version", "claimed_handle", "provider_payment"}.issubset(tables)
-    assert revision == ("20260804_0002",)
+        provider_identity_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(provider_identity)")
+        }
+        provider_zap_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(provider_zap)")
+        }
+    assert {
+        "alembic_version",
+        "claimed_handle",
+        "provider_identity",
+        "provider_payment",
+        "provider_zap",
+    }.issubset(tables)
+    assert revision == ("20260808_0003",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -1094,6 +1106,17 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "updated_at",
         "next_check_at",
     } == payment_columns
+    assert {"name", "nostr_pubkey", "updated_at"} == provider_identity_columns
+    assert {
+        "id",
+        "payment_id",
+        "request_event_id",
+        "request_json",
+        "receipt_relays_json",
+        "receipt_event_id",
+        "receipt_json",
+        "receipt_error",
+    } == provider_zap_columns
 
 
 def test_web_lifespan_does_not_own_the_service_acorn(tmp_path) -> None:

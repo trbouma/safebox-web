@@ -13,9 +13,13 @@ from sqlmodel import Session, select
 
 from app.dependencies import SettingsDependency
 from app.models import ClaimedHandle
+from app.nip57 import validate_zap_request
 from app.provider_payments import (
     enqueue_provider_payment,
+    get_payment_for_zap_request,
+    get_provider_identity,
     get_provider_payment,
+    get_provider_zap,
     wait_for_provider_invoice,
 )
 
@@ -91,15 +95,24 @@ async def lnurl_pay_resolve(
         )
     )
     host = request.url.hostname or "localhost"
+    provider_identity = get_provider_identity(request.app.state.database_engine)
+    payload = {
+        "callback": callback,
+        "minSendable": settings.lnurl_min_sendable_msat,
+        "maxSendable": settings.lnurl_max_sendable_msat,
+        "metadata": _metadata(registration.claimed_handle, host),
+        "commentAllowed": settings.lnurl_comment_allowed,
+        "tag": "payRequest",
+    }
+    if provider_identity is not None:
+        payload.update(
+            {
+                "allowsNostr": True,
+                "nostrPubkey": provider_identity.nostr_pubkey,
+            }
+        )
     return JSONResponse(
-        {
-            "callback": callback,
-            "minSendable": settings.lnurl_min_sendable_msat,
-            "maxSendable": settings.lnurl_max_sendable_msat,
-            "metadata": _metadata(registration.claimed_handle, host),
-            "commentAllowed": settings.lnurl_comment_allowed,
-            "tag": "payRequest",
-        },
+        payload,
         headers=_cors_headers(),
     )
 
@@ -121,8 +134,6 @@ async def lnurl_pay_callback(
     registration = _registration(request.app.state.database_engine, handle)
     if registration is None:
         return _error("Lightning address not found")
-    if nostr:
-        return _error("Nostr zap requests are not supported yet")
     try:
         amount_msat = int(amount)
     except (TypeError, ValueError):
@@ -140,14 +151,57 @@ async def lnurl_pay_callback(
 
     host = request.url.hostname or "localhost"
     metadata = _metadata(registration.claimed_handle, host)
-    payment_id = enqueue_provider_payment(
-        request.app.state.database_engine,
-        registration=registration,
-        amount_msat=amount_msat,
-        comment=comment,
-        metadata=metadata,
-        mint=settings.service_acorn_home_mint,
-    )
+    zap_request = None
+    if nostr:
+        provider_identity = get_provider_identity(request.app.state.database_engine)
+        if provider_identity is None:
+            return _error("Nostr zap service is not ready")
+        try:
+            from acorn.func_utils import npub_to_hex
+
+            expected_lnurl = encode_lnurl(
+                str(
+                    request.url_for(
+                        "lnurl_pay_resolve",
+                        handle=registration.claimed_handle,
+                    )
+                )
+            )
+            zap_request = validate_zap_request(
+                nostr,
+                amount_msat=amount_msat,
+                recipient_pubkey=npub_to_hex(registration.npub),
+                provider_pubkey=provider_identity.nostr_pubkey,
+                expected_lnurl=expected_lnurl,
+            )
+        except (RuntimeError, ValueError) as exc:
+            logger.warning("zap request rejected handle=%s error=%s", handle, exc)
+            return _error(str(exc))
+        existing = get_payment_for_zap_request(
+            request.app.state.database_engine,
+            zap_request.event_id,
+        )
+        if existing is not None:
+            payment_id = existing.payment_id
+        else:
+            payment_id = enqueue_provider_payment(
+                request.app.state.database_engine,
+                registration=registration,
+                amount_msat=amount_msat,
+                comment=zap_request.content or comment,
+                metadata=metadata,
+                mint=settings.service_acorn_home_mint,
+                zap_request=zap_request,
+            )
+    else:
+        payment_id = enqueue_provider_payment(
+            request.app.state.database_engine,
+            registration=registration,
+            amount_msat=amount_msat,
+            comment=comment,
+            metadata=metadata,
+            mint=settings.service_acorn_home_mint,
+        )
     try:
         payment = await wait_for_provider_invoice(
             request.app.state.database_engine,
@@ -184,6 +238,7 @@ async def provider_payment_status(request: Request, payment_id: str):
     payment = get_provider_payment(request.app.state.database_engine, payment_id)
     if payment is None:
         return _error("Provider payment not found")
+    zap = get_provider_zap(request.app.state.database_engine, payment.payment_id)
     return JSONResponse(
         {
             "status": "OK",
@@ -193,6 +248,7 @@ async def provider_payment_status(request: Request, payment_id: str):
             "amount": payment.amount_sat,
             "unit": "sat",
             "deliveryEventId": payment.delivery_event_id,
+            "zapReceiptEventId": zap.receipt_event_id if zap else None,
             "error": payment.error,
         },
         headers=_cors_headers(),

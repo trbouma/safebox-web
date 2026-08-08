@@ -145,8 +145,13 @@ recovery file remains for reconciliation and retry.
 ## Provider-payment limitation
 
 The worker now consumes the first durable LNURL provider-payment jobs: invoice
-creation, settlement checking, and gift-wrapped ecash delivery. This is still
-not a production Lightning gateway. Remaining work includes:
+creation, settlement checking, gift-wrapped ecash delivery, and NIP-57 receipt
+publication. At startup it writes only its public hex key to the
+`provider_identity` table so web workers can advertise `nostrPubkey`; the
+private key remains within the singleton worker's service-Acorn state.
+
+Zap requests and receipt state are persisted separately in `provider_zap`.
+This is still not a production Lightning gateway. Remaining work includes:
 
 - invoice expiry and request throttling;
 - complete crash and settlement reconciliation;

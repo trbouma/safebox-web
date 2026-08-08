@@ -34,6 +34,44 @@ returns `callback`, `minSendable`, `maxSendable`, serialized `metadata`, and
 `tag=payRequest`; the callback accepts `amount` in millisatoshis and returns a
 BOLT11 invoice as `pr`. Comments are supported up to the advertised limit.
 
+When the singleton service Acorn has registered its public signing key in the
+shared database, discovery also advertises `allowsNostr=true` and
+`nostrPubkey`. This enables the
+[NIP-57 zap flow](https://github.com/nostr-protocol/nips/blob/master/57.md)
+without giving the web process access to the provider private key.
+
+## Incoming zaps
+
+The callback treats the `nostr` query parameter as a signed kind-9734 zap
+request, not as an ordinary comment. Before accepting a provider obligation it
+verifies:
+
+- the Nostr event signature and kind;
+- exactly one `p` tag matching the component behind the claimed handle;
+- the optional `amount`, `lnurl`, `P`, `e`, `a`, and `k` tag cardinality and
+  values required by NIP-57;
+- one bounded `relays` tag containing only public `wss://` receipt targets; and
+- a bounded zap comment and request size.
+
+The exact validated JSON is stored in a `provider_zap` row. Its event id is
+unique, so a repeated callback for the same signed zap returns the existing
+invoice instead of intentionally creating a second obligation.
+
+For a zap, the provider worker includes that exact JSON as the Cashu NUT-23
+mint-quote description. It decodes the returned BOLT11 invoice and refuses to
+continue unless the invoice's description hash equals
+`SHA256(zap_request_json)`. This is stricter than the historical Safebox 2
+implementation and is necessary for clients to validate the eventual receipt.
+The configured mint and its Lightning backend must therefore support a
+description-hash invoice for the supplied description. A mint that returns an
+ordinary description invoice is not NIP-57-compatible for this provider path.
+
+After settlement, the worker first delivers the value to the registered Acorn
+as gift-wrapped ecash. It then signs a kind-9735 receipt with the persistent
+service Acorn key and publishes it to the validated relays requested by the
+payer. The receipt includes the original `p` and optional target tags, the
+sender `P` tag, the BOLT11 invoice, and the exact zap request as `description`.
+
 ## Connected-wallet QR code
 
 When this provider path is enabled, the connected-wallet page presents a QR
@@ -78,7 +116,9 @@ QUOTE_PENDING
     -> INVOICE_PENDING
     -> SETTLED
     -> DELIVERING
-    -> DELIVERED
+    -> DELIVERED                         ordinary payment
+    -> RECEIPT_PENDING -> DELIVERED      zap
+                       -> RECEIPT_FAILED zap funds delivered; receipt needs review
 ```
 
 Invoice creation failures become `FAILED`. A delivery exception becomes
@@ -86,6 +126,11 @@ Invoice creation failures become `FAILED`. A delivery exception becomes
 an ambiguous relay publication, blindly issuing another ecash transfer could
 pay the recipient twice. Operator reconciliation and an idempotent delivery
 protocol are still required.
+
+`RECEIPT_FAILED` is deliberately distinct from `DELIVERY_FAILED`. The former
+means ecash was already delivered but the public NIP-57 receipt could not be
+published. The worker does not issue a second ecash transfer while resolving a
+receipt problem.
 
 The opaque development status endpoint is:
 
@@ -144,7 +189,11 @@ provider. Before accepting meaningful third-party funds, add:
 - PostgreSQL-backed atomic job claiming for production concurrency;
 - monitoring and alerting for stalled states;
 - worker-only storage for provider recovery material; and
-- Nostr zap validation and receipts if zap support is advertised later.
+- stronger DNS-resolution controls or a provider relay policy for untrusted
+  zap receipt destinations.
 
-The current callback rejects zaps and sub-satoshi amounts explicitly. Use small
-test payments only.
+The current callback accepts validated zaps but still rejects sub-satoshi
+amounts. Zap relay URLs are restricted to public-looking `wss://` hosts and a
+small maximum count, but DNS rebinding remains a residual outbound-network
+risk. Production deployments should apply egress controls. Use small test
+payments only until the complete release gates are addressed.

@@ -227,6 +227,12 @@ service. Inspect `docker compose logs --follow safebox-web`, identify the
 immediate proxy address, and allow only that address or a narrowly scoped
 private network.
 
+When the published port is handled by `docker-proxy`, the immediate peer seen
+inside the container may instead be the Docker network gateway. Follow
+[Docker Proxy and Forwarded HTTPS Trust](DOCKER-PROXY-FORWARDED-HEADER-TRUST.md)
+to identify that address, pass the allowlist explicitly to Uvicorn, and limit
+the upstream port to the Tailscale interface and designated proxy.
+
 ### Container remains in `health: starting`
 
 Wait through the configured health-check startup period and run:

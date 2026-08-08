@@ -115,6 +115,12 @@ between `3600` seconds (one hour) and `2592000` seconds (30 days).
 Use the actual proxy address for `FORWARDED_ALLOW_IPS` when TLS terminates on
 another machine. Never commit `.env`.
 
+Docker may present proxied connections to Uvicorn from the container network
+gateway instead of the reverse proxy's original address. See
+[Docker Proxy and Forwarded HTTPS Trust](DOCKER-PROXY-FORWARDED-HEADER-TRUST.md)
+for the diagnostic procedure, explicit Uvicorn configuration, and the required
+compensating network controls.
+
 If encrypted blob upload is enabled, configure the reverse proxy's request-body
 limit at or slightly above `SAFEBOX_MAX_BLOB_BYTES` plus multipart overhead. For
 the 10 MiB default, an Nginx HTTPS virtual host can use:

@@ -12,7 +12,7 @@ from acorn import Acorn
 
 from app.config import ServiceAcornSettings
 from app.database import create_database_engine, run_migrations
-from app.provider_payments import process_provider_payments_once
+from app.provider_payments import process_provider_payments_once, set_provider_identity
 from app.service_acorn import (
     ServiceAcornRuntime,
     service_acorn_state_path,
@@ -66,6 +66,7 @@ async def run_worker(
     engine = create_database_engine(settings.database_url)
     try:
         runtime = await start_service_acorn(settings)
+        set_provider_identity(engine, runtime.acorn.pubkey_hex)
         service_acorn_runtime = runtime
         service_acorn = runtime.acorn
         logger.info(

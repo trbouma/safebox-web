@@ -58,3 +58,32 @@ class ProviderPayment(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
     next_check_at: Optional[datetime] = Field(default=None, nullable=True, index=True)
+
+
+class ProviderIdentity(SQLModel, table=True):
+    """Public signing identity of the singleton provider Acorn."""
+
+    __tablename__ = "provider_identity"
+
+    name: str = Field(primary_key=True)
+    nostr_pubkey: str = Field(nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
+class ProviderZap(SQLModel, table=True):
+    """Validated NIP-57 context associated with one provider payment."""
+
+    __tablename__ = "provider_zap"
+    __table_args__ = (
+        UniqueConstraint("payment_id", name="uq_provider_zap_payment_id"),
+        UniqueConstraint("request_event_id", name="uq_provider_zap_request_event_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    payment_id: str = Field(nullable=False, index=True)
+    request_event_id: str = Field(nullable=False, index=True)
+    request_json: str = Field(nullable=False)
+    receipt_relays_json: str = Field(nullable=False)
+    receipt_event_id: Optional[str] = Field(default=None, nullable=True)
+    receipt_json: Optional[str] = Field(default=None, nullable=True)
+    receipt_error: Optional[str] = Field(default=None, nullable=True)

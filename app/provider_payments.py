@@ -4,14 +4,29 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
+import hashlib
+import hmac
+import json
 import logging
 from time import time
+from types import SimpleNamespace
 import uuid
 
+import bolt11
+import httpx
+from monstr.client.client import ClientPool
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
-from app.models import ClaimedHandle, ProviderPayment, utc_now
+from app.models import (
+    ClaimedHandle,
+    ProviderIdentity,
+    ProviderPayment,
+    ProviderZap,
+    utc_now,
+)
+from app.nip57 import ValidatedZapRequest, build_zap_receipt
+from app.security import normalize_home_mint
 
 
 logger = logging.getLogger("safebox_web.provider_payments")
@@ -25,24 +40,78 @@ def enqueue_provider_payment(
     comment: str | None,
     metadata: str,
     mint: str,
+    zap_request: ValidatedZapRequest | None = None,
 ) -> str:
     payment_id = uuid.uuid4().hex
     with Session(engine) as session:
-        session.add(
-            ProviderPayment(
-                payment_id=payment_id,
-                claimed_handle=registration.claimed_handle,
-                recipient_npub=registration.npub,
-                recipient_relay=registration.home_relay,
-                amount_msat=amount_msat,
-                amount_sat=amount_msat // 1000,
-                comment=comment,
-                lnurl_metadata=metadata,
-                mint=mint,
-            )
+        payment = ProviderPayment(
+            payment_id=payment_id,
+            claimed_handle=registration.claimed_handle,
+            recipient_npub=registration.npub,
+            recipient_relay=registration.home_relay,
+            amount_msat=amount_msat,
+            amount_sat=amount_msat // 1000,
+            comment=comment,
+            lnurl_metadata=metadata,
+            mint=mint,
         )
+        session.add(payment)
+        if zap_request is not None:
+            session.add(
+                ProviderZap(
+                    payment_id=payment_id,
+                    request_event_id=zap_request.event_id,
+                    request_json=zap_request.raw,
+                    receipt_relays_json=json.dumps(list(zap_request.relays)),
+                )
+            )
         session.commit()
     return payment_id
+
+
+def set_provider_identity(engine: Engine, nostr_pubkey: str) -> None:
+    with Session(engine) as session:
+        identity = session.get(ProviderIdentity, "service-acorn")
+        if identity is None:
+            identity = ProviderIdentity(
+                name="service-acorn",
+                nostr_pubkey=nostr_pubkey,
+            )
+        else:
+            identity.nostr_pubkey = nostr_pubkey
+            identity.updated_at = utc_now()
+        session.add(identity)
+        session.commit()
+
+
+def get_provider_identity(engine: Engine) -> ProviderIdentity | None:
+    with Session(engine) as session:
+        return session.get(ProviderIdentity, "service-acorn")
+
+
+def get_provider_zap(engine: Engine, payment_id: str) -> ProviderZap | None:
+    with Session(engine) as session:
+        return session.exec(
+            select(ProviderZap).where(ProviderZap.payment_id == payment_id)
+        ).first()
+
+
+def get_payment_for_zap_request(
+    engine: Engine, request_event_id: str
+) -> ProviderPayment | None:
+    with Session(engine) as session:
+        zap = session.exec(
+            select(ProviderZap).where(
+                ProviderZap.request_event_id == request_event_id
+            )
+        ).first()
+        if zap is None:
+            return None
+        return session.exec(
+            select(ProviderPayment).where(
+                ProviderPayment.payment_id == zap.payment_id
+            )
+        ).first()
 
 
 def get_provider_payment(engine: Engine, payment_id: str) -> ProviderPayment | None:
@@ -64,7 +133,15 @@ async def wait_for_provider_invoice(
         payment = get_provider_payment(engine, payment_id)
         if payment is None:
             raise RuntimeError("Provider payment disappeared from the durable queue")
-        if payment.status == "INVOICE_PENDING" and payment.invoice:
+        if payment.invoice and payment.status in {
+            "INVOICE_PENDING",
+            "SETTLED",
+            "DELIVERING",
+            "RECEIPT_PENDING",
+            "RECEIPT_FAILED",
+            "DELIVERED",
+            "DELIVERY_FAILED",
+        }:
             return payment
         if payment.status == "FAILED":
             raise RuntimeError(payment.error or "Provider invoice creation failed")
@@ -101,6 +178,56 @@ def update_provider_payment(engine: Engine, payment_id: str, **changes) -> None:
         session.commit()
 
 
+def update_provider_zap(engine: Engine, payment_id: str, **changes) -> None:
+    with Session(engine) as session:
+        zap = session.exec(
+            select(ProviderZap).where(ProviderZap.payment_id == payment_id)
+        ).first()
+        if zap is None:
+            raise RuntimeError(f"Provider zap not found: {payment_id}")
+        for name, value in changes.items():
+            setattr(zap, name, value)
+        session.add(zap)
+        session.commit()
+
+
+def _request_zap_mint_quote(payment: ProviderPayment, zap: ProviderZap):
+    mint = normalize_home_mint(payment.mint)
+    response = httpx.post(
+        f"{mint}/v1/mint/quote/bolt11",
+        json={
+            "amount": payment.amount_sat,
+            "unit": "sat",
+            "description": zap.request_json,
+        },
+        timeout=httpx.Timeout(10.0, connect=5.0),
+    )
+    response.raise_for_status()
+    payload = response.json()
+    quote = str(payload["quote"])
+    invoice = str(payload["request"])
+    decoded = bolt11.decode(invoice)
+    actual_hash = str(getattr(decoded, "description_hash", "") or "").lower()
+    expected_hash = hashlib.sha256(zap.request_json.encode("utf-8")).hexdigest()
+    if not actual_hash or not hmac.compare_digest(actual_hash, expected_hash):
+        raise RuntimeError(
+            "Mint invoice does not commit to the NIP-57 zap request description"
+        )
+    return SimpleNamespace(quote=quote, invoice=invoice)
+
+
+async def _publish_provider_zap_receipt(acorn, payment: ProviderPayment, zap: ProviderZap):
+    receipt = build_zap_receipt(
+        zap_request_json=zap.request_json,
+        invoice=str(payment.invoice),
+        acorn=acorn,
+    )
+    relays = json.loads(zap.receipt_relays_json)
+    async with ClientPool(relays) as clients:
+        clients.publish(receipt)
+    return receipt
+
+
 async def process_provider_payments_once(
     engine: Engine,
     acorn,
@@ -113,11 +240,19 @@ async def process_provider_payments_once(
     quote_request = next_provider_payment(engine, "QUOTE_PENDING")
     if quote_request is not None:
         try:
-            quote = await asyncio.to_thread(
-                acorn.deposit,
-                amount=quote_request.amount_sat,
-                mint=quote_request.mint,
-            )
+            zap = get_provider_zap(engine, quote_request.payment_id)
+            if zap is None:
+                quote = await asyncio.to_thread(
+                    acorn.deposit,
+                    amount=quote_request.amount_sat,
+                    mint=quote_request.mint,
+                )
+            else:
+                quote = await asyncio.to_thread(
+                    _request_zap_mint_quote,
+                    quote_request,
+                    zap,
+                )
             update_provider_payment(
                 engine,
                 quote_request.payment_id,
@@ -203,7 +338,11 @@ async def process_provider_payments_once(
             update_provider_payment(
                 engine,
                 settled.payment_id,
-                status="DELIVERED",
+                status=(
+                    "RECEIPT_PENDING"
+                    if get_provider_zap(engine, settled.payment_id) is not None
+                    else "DELIVERED"
+                ),
                 delivery_event_id=(
                     str(delivery.get("event_id") or delivery.get("event") or "")
                     or None
@@ -228,6 +367,60 @@ async def process_provider_payments_once(
                 status="DELIVERY_FAILED",
                 error=f"Delivery outcome requires review: {type(exc).__name__}",
             )
+        changed = True
+
+    receipt_pending = next_provider_payment(engine, "RECEIPT_PENDING")
+    if receipt_pending is not None:
+        zap = get_provider_zap(engine, receipt_pending.payment_id)
+        if zap is None:
+            update_provider_payment(
+                engine,
+                receipt_pending.payment_id,
+                status="DELIVERED",
+            )
+        else:
+            try:
+                receipt = await _publish_provider_zap_receipt(
+                    acorn,
+                    receipt_pending,
+                    zap,
+                )
+                update_provider_zap(
+                    engine,
+                    receipt_pending.payment_id,
+                    receipt_event_id=str(receipt.id),
+                    receipt_json=json.dumps(
+                        receipt.data(), separators=(",", ":"), sort_keys=True
+                    ),
+                    receipt_error=None,
+                )
+                update_provider_payment(
+                    engine,
+                    receipt_pending.payment_id,
+                    status="DELIVERED",
+                    error=None,
+                )
+                logger.info(
+                    "provider zap receipt published payment_id=%s event_id=%s",
+                    receipt_pending.payment_id,
+                    receipt.id,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "provider zap receipt publication failed payment_id=%s",
+                    receipt_pending.payment_id,
+                )
+                update_provider_zap(
+                    engine,
+                    receipt_pending.payment_id,
+                    receipt_error=f"Receipt publication failed: {type(exc).__name__}",
+                )
+                update_provider_payment(
+                    engine,
+                    receipt_pending.payment_id,
+                    status="RECEIPT_FAILED",
+                    error="Ecash delivered; NIP-57 receipt publication requires review",
+                )
         changed = True
 
     return changed
