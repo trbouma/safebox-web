@@ -47,11 +47,19 @@ request, not as an ordinary comment. Before accepting a provider obligation it
 verifies:
 
 - the Nostr event signature and kind;
-- exactly one `p` tag matching the component behind the claimed handle;
+- exactly one valid `p` tag representing the social recipient;
 - the optional `amount`, `lnurl`, `P`, `e`, `a`, and `k` tag cardinality and
   values required by NIP-57;
 - one bounded `relays` tag containing only public `wss://` receipt targets; and
 - a bounded zap comment and request size.
+
+The social recipient key and destination Acorn key are intentionally separate.
+For a post zap, the signed request's `p` tag identifies the social recipient
+derived by the client from the zapped post. Safebox Web does not require that
+key to equal the Acorn component key. The authenticated claimed-handle mapping
+selects the destination Acorn and home relay, while the original `p`, `e`, and
+`k` context is preserved in the zap receipt. This avoids an unnecessary NIP-05
+lookup and supports a social identity that uses a distinct Acorn for funds.
 
 The exact validated JSON is stored in a `provider_zap` row. Its event id is
 unique, so a repeated callback for the same signed zap returns the existing

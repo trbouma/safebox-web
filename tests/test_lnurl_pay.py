@@ -108,7 +108,6 @@ def validated_zap_request():
     return validate_zap_request(
         signed_zap_request(lnurl=lnurl),
         amount_msat=21_000,
-        recipient_pubkey=RECIPIENT_KEYS.public_key_hex(),
         provider_pubkey=PROVIDER_KEYS.public_key_hex(),
         expected_lnurl=lnurl,
     )
@@ -226,7 +225,7 @@ def test_lnurl_discovery_accepts_and_persists_valid_zap(tmp_path, monkeypatch) -
         ]
 
 
-def test_zap_validation_rejects_amount_and_recipient_mismatch() -> None:
+def test_zap_validation_rejects_amount_and_preserves_social_recipient() -> None:
     lnurl = lnurl_module.encode_lnurl(
         "https://pay.example/.well-known/lnurlp/alice"
     )
@@ -235,7 +234,6 @@ def test_zap_validation_rejects_amount_and_recipient_mismatch() -> None:
         validate_zap_request(
             zap_json,
             amount_msat=22_000,
-            recipient_pubkey=RECIPIENT_KEYS.public_key_hex(),
             provider_pubkey=PROVIDER_KEYS.public_key_hex(),
             expected_lnurl=lnurl,
         )
@@ -244,18 +242,13 @@ def test_zap_validation_rejects_amount_and_recipient_mismatch() -> None:
     else:
         raise AssertionError("mismatched zap amount was accepted")
 
-    try:
-        validate_zap_request(
-            zap_json,
-            amount_msat=21_000,
-            recipient_pubkey=PROVIDER_KEYS.public_key_hex(),
-            provider_pubkey=PROVIDER_KEYS.public_key_hex(),
-            expected_lnurl=lnurl,
-        )
-    except ValueError as exc:
-        assert "does not control" in str(exc)
-    else:
-        raise AssertionError("mismatched zap recipient was accepted")
+    validated = validate_zap_request(
+        zap_json,
+        amount_msat=21_000,
+        provider_pubkey=PROVIDER_KEYS.public_key_hex(),
+        expected_lnurl=lnurl,
+    )
+    assert validated.recipient_pubkey == RECIPIENT_KEYS.public_key_hex()
 
 
 class FakeProviderAcorn:

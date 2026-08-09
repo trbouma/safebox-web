@@ -77,7 +77,6 @@ def validate_zap_request(
     raw: str,
     *,
     amount_msat: int,
-    recipient_pubkey: str,
     provider_pubkey: str,
     expected_lnurl: str,
 ) -> ValidatedZapRequest:
@@ -110,9 +109,6 @@ def validate_zap_request(
     if len(p_tags) != 1 or len(p_tags[0]) < 2:
         raise ValueError("Zap request must contain exactly one p tag")
     requested_recipient = _hex_pubkey(p_tags[0][1], label="Zap recipient")
-    expected_recipient = _hex_pubkey(recipient_pubkey, label="Handle recipient")
-    if requested_recipient != expected_recipient:
-        raise ValueError("Zap request recipient does not control this Lightning address")
 
     amount_tags = _tag_values(tags, "amount")
     if len(amount_tags) > 1:

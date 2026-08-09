@@ -157,8 +157,6 @@ async def lnurl_pay_callback(
         if provider_identity is None:
             return _error("Nostr zap service is not ready")
         try:
-            from acorn.func_utils import npub_to_hex
-
             expected_lnurl = encode_lnurl(
                 str(
                     request.url_for(
@@ -170,7 +168,6 @@ async def lnurl_pay_callback(
             zap_request = validate_zap_request(
                 nostr,
                 amount_msat=amount_msat,
-                recipient_pubkey=npub_to_hex(registration.npub),
                 provider_pubkey=provider_identity.nostr_pubkey,
                 expected_lnurl=expected_lnurl,
             )
