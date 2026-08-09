@@ -2051,7 +2051,7 @@ def test_image_blob_uses_native_authenticated_inline_preview() -> None:
     assert "frame-ancestors 'self'" in preview.headers["content-security-policy"]
 
 
-def test_pdf_blob_uses_browser_native_object_with_download_fallback() -> None:
+def test_pdf_blob_uses_pdfjs_progressive_viewer_with_download_fallback() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn(
         existing_labels={"Report"},
@@ -2065,11 +2065,13 @@ def test_pdf_blob_uses_browser_native_object_with_download_fallback() -> None:
     response = client.get("/record", params={"label": "Report"})
 
     assert response.status_code == 200
-    assert '<object class="blob-preview blob-preview-pdf"' in response.text
-    assert 'type="application/pdf"' in response.text
+    assert 'class="blob-preview blob-preview-pdf" data-pdf-viewer' in response.text
+    assert 'src="/static/pdf-viewer.js"' in response.text
+    assert "data-pdf-previous" in response.text
+    assert "data-pdf-next" in response.text
     assert 'href="/record/blob?label=Report&amp;inline=1"' in response.text
     assert "Open PDF full screen" in response.text
-    assert "Embedded PDF support varies by browser" in response.text
+    assert "JavaScript is required for the inline PDF preview" in response.text
     assert "Download Original Record" in response.text
 
 

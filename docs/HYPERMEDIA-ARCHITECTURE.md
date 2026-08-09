@@ -155,14 +155,20 @@ use transient system temporary storage and therefore does not claim that
 plaintext exists only in RAM, only that Safebox Web retains no application or
 database copy.
 
-Safe raster images and PDFs use ordinary authenticated GET resources rendered
-with native HTML elements (`img` and `object`). PDF records also provide a
-normal same-origin link to the decrypted `application/pdf` response because
-embedded-object support varies across mobile browsers. That link lets a browser
-open its full-screen PDF viewer or hand the document to a reader app; the
-separate attachment response remains available for download. There is no Fetch
-API, object-URL lifecycle, PDF.js dependency, or client-side viewer state.
-Inline rendering is restricted to an explicit media-type allowlist.
+Safe raster images and PDFs use ordinary authenticated GET resources. Images
+are rendered with a native `img` element. PDFs are progressively enhanced with
+a pinned, locally served PDF.js renderer because Android Chrome does not
+reliably provide an embedded native PDF viewer. PDF.js receives the same-origin
+authenticated PDF response and renders one page at a time into a canvas; it
+does not receive Acorn keys or implement application workflow. Previous/next
+controls are local presentation state only.
+
+Every PDF retains normal same-origin open and download links. Those links are
+the no-JavaScript and rendering-failure fallback and allow a browser to open its
+full-screen viewer or hand the document to another reader. The application
+does not use JavaScript for authorization, decryption, record retrieval, or
+mutation. Inline rendering remains restricted to an explicit media-type
+allowlist, and decrypted responses remain non-cacheable.
 
 Record deletion is also a normal HTML form mutation. The record representation
 contains a CSRF-protected confirmation form, and the POST returns a complete

@@ -15,13 +15,19 @@
   </figure>
   {% elif blob_preview == "pdf" %}
   <p><a class="pdf-open-link" href="{{ blob_inline_url }}">Open PDF full screen</a></p>
-  <p class="muted">Embedded PDF support varies by browser. On Android, use
-  the full-screen link; older devices or Incognito mode may open the PDF in a
-  reader app or download it instead.</p>
-  <object class="blob-preview blob-preview-pdf" data="{{ blob_inline_url }}"
-    type="application/pdf" aria-label="PDF attached to {{ label }}">
-    <p>Your browser cannot display this PDF inline. <a href="{{ blob_url }}">Download it instead</a>.</p>
-  </object>
+  <div class="blob-preview blob-preview-pdf" data-pdf-viewer
+    data-pdf-url="{{ blob_inline_url }}" aria-label="PDF attached to {{ label }}">
+    <p data-pdf-status role="status">Loading PDF…</p>
+    <div class="pdf-controls" data-pdf-controls hidden>
+      <button type="button" data-pdf-previous>Previous</button>
+      <span data-pdf-page aria-live="polite"></span>
+      <button type="button" data-pdf-next>Next</button>
+    </div>
+    <canvas class="pdf-canvas" aria-label="Rendered PDF page" hidden></canvas>
+  </div>
+  <noscript><p>JavaScript is required for the inline PDF preview. Use the open
+  or download link instead.</p></noscript>
+  <script type="module" src="/static/pdf-viewer.js"></script>
   {% else %}
   <p>No inline preview is available{% if blob_type %} for <code>{{ blob_type }}</code>{% endif %}.</p>
   {% endif %}
