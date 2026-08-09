@@ -2462,6 +2462,8 @@ def test_nsec_login_uses_encrypted_secure_cookie_and_dependency() -> None:
     assert "HttpOnly" in set_cookie
     assert "Secure" in set_cookie
     assert "SameSite=strict" in set_cookie
+    assert f"Max-Age={TEST_SETTINGS.session_ttl_seconds}" in set_cookie
+    assert "expires=" in set_cookie.lower()
 
     token = client.cookies.get(SECURE_COOKIE_NAME)
     assert token is not None

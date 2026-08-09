@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta, timezone
 import ipaddress
 import json
 import os
@@ -18,6 +19,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from mnemonic import Mnemonic
 from monstr.encrypt import Keys
 from starlette.requests import Request
+from starlette.responses import Response
 
 from acorn import validate_record_protection_key
 from acorn.func_utils import recover_nsec_from_seed
@@ -445,3 +447,25 @@ def is_same_origin(request: Request, origin: str) -> bool:
 
 def cookie_name_for_request(request: Request) -> str:
     return LOOPBACK_COOKIE_NAME if is_loopback_http_request(request) else SECURE_COOKIE_NAME
+
+
+def set_session_cookie(
+    response: Response,
+    *,
+    request: Request,
+    settings: Settings,
+    credentials: SessionCredentials,
+) -> None:
+    """Issue a persistent browser cookie aligned with the encrypted session TTL."""
+
+    response.set_cookie(
+        key=cookie_name_for_request(request),
+        value=SessionCipher(settings).encode(credentials),
+        max_age=settings.session_ttl_seconds,
+        expires=datetime.now(timezone.utc)
+        + timedelta(seconds=settings.session_ttl_seconds),
+        httponly=True,
+        secure=not is_loopback_http_request(request),
+        samesite="strict",
+        path="/",
+    )

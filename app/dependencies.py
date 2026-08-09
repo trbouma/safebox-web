@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -13,6 +14,21 @@ from acorn import Acorn
 from app.config import Settings
 from app.database import get_database_session
 from app.security import SessionCipher, SessionCredentials, cookie_name_for_request
+
+
+logger = logging.getLogger("safebox_web.security")
+
+
+def _session_rejection_reason(exc: ValueError) -> str:
+    cause = exc.__cause__
+    if isinstance(cause, ValueError) and "expired" in str(cause).lower():
+        return "expired"
+    if cause is not None and cause.__class__.__name__ in {
+        "InvalidTag",
+        "InvalidToken",
+    }:
+        return "authentication_failed_or_expired"
+    return "malformed_or_invalid"
 
 
 def get_settings(request: Request) -> Settings:
@@ -26,8 +42,14 @@ DatabaseSessionDependency = Annotated[Session, Depends(get_database_session)]
 def get_session_credentials(
     request: Request, settings: SettingsDependency
 ) -> SessionCredentials:
-    token = request.cookies.get(cookie_name_for_request(request))
+    cookie_name = cookie_name_for_request(request)
+    token = request.cookies.get(cookie_name)
     if not token:
+        logger.info(
+            "session rejected reason=missing_cookie path=%s cookie=%s",
+            request.url.path,
+            cookie_name,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Acorn login required",
@@ -35,6 +57,12 @@ def get_session_credentials(
     try:
         return SessionCipher(settings).decode(token)
     except ValueError as exc:
+        logger.warning(
+            "session rejected reason=%s path=%s cookie=%s",
+            _session_rejection_reason(exc),
+            request.url.path,
+            cookie_name,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Acorn session is invalid or expired",

@@ -66,6 +66,7 @@ from app.security import (
     is_same_origin,
     normalize_bootstrap_relay,
     normalize_home_mint,
+    set_session_cookie,
 )
 from app.templating import render_template
 
@@ -960,14 +961,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             status_code=201,
         )
-        response.set_cookie(
-            key=cookie_name_for_request(request),
-            value=SessionCipher(settings).encode(credentials),
-            max_age=settings.session_ttl_seconds,
-            httponly=True,
-            secure=not is_loopback_http_request(request),
-            samesite="strict",
-            path="/",
+        set_session_cookie(
+            response,
+            request=request,
+            settings=settings,
+            credentials=credentials,
         )
         return response
 
@@ -1030,14 +1028,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         response = RedirectResponse("/wallet", status_code=303)
-        response.set_cookie(
-            key=cookie_name_for_request(request),
-            value=SessionCipher(settings).encode(credentials),
-            max_age=settings.session_ttl_seconds,
-            httponly=True,
-            secure=not is_loopback_http_request(request),
-            samesite="strict",
-            path="/",
+        set_session_cookie(
+            response,
+            request=request,
+            settings=settings,
+            credentials=credentials,
         )
         return response
 
@@ -1142,14 +1137,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             record_protection_backup_confirmed=True,
         )
         response = RedirectResponse("/wallet", status_code=303)
-        response.set_cookie(
-            key=cookie_name_for_request(request),
-            value=SessionCipher(settings).encode(updated_credentials),
-            max_age=settings.session_ttl_seconds,
-            httponly=True,
-            secure=not is_loopback_http_request(request),
-            samesite="strict",
-            path="/",
+        set_session_cookie(
+            response,
+            request=request,
+            settings=settings,
+            credentials=updated_credentials,
         )
         return response
 
