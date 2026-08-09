@@ -9,6 +9,16 @@ Application and wallet logic remains in FastAPI and Acorn; browser JavaScript
 is limited to progressive presentation behavior and narrowly scoped device
 input such as QR acquisition.
 
+A future OpenETR integration is intentionally scoped to issuing signed origin
+evidence for an existing Original Record and independently verifying its
+control graph. The component boundary, privacy implications, hypermedia flows,
+and staged implementation are described in the
+[OpenETR Issue and Verify Integration Design Note](docs/OPENETR-ISSUE-VERIFY-DESIGN-NOTE.md).
+The broader product rationale places Safebox at the conjunction of OpenETR's
+object control graph, viewpoint-dependent recognition through the social graph,
+and Acorn's spendable funds. Together these let users evaluate and act on
+portable evidence without making Safebox another system of record.
+
 An optional passkey-protected browser vault for reconnecting after session
 expiry is under evaluation and is not implemented. See the
 [Local Acorn Vault Design Note](docs/LOCAL-ACORN-VAULT-DESIGN-NOTE.md) for its
