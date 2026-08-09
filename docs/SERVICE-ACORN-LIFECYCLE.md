@@ -89,6 +89,44 @@ both containers. The web process does not load the recovery file, but this is
 not strict filesystem isolation. Moving the file to a worker-only volume is a
 production hardening item and requires a deliberate stopped-worker migration.
 
+## Secret ownership and isolation
+
+The service Acorn `nsec` is an operator-owned production secret. It is distinct
+from both an attached user's `nsec` and the `SAFEBOX_COOKIE_KEY`. Its stable
+public key identifies the provider component, while its private key authorizes
+provider-wallet events, controls any funds held by that wallet, delivers ecash,
+and signs provider receipts such as NIP-57 zap receipts. Persistence is required
+so restarts do not abandon proofs, outstanding invoices, delivery obligations,
+or the provider's public continuity.
+
+Compromise of this key can permit theft of service-wallet funds, provider
+impersonation, false receipts, unauthorized transfers, and mutation or deletion
+requests for provider events. The key must therefore never be placed in a
+browser session cookie, exposed by an HTTP route, written to logs, committed to
+the repository, or baked into a container image.
+
+The default recovery file, `data/service-acorn.json`, contains the `nsec` in
+plaintext and is created with owner-only permissions. File mode `0600` is a
+minimum safeguard, not a complete custody design. Protect the host, volume,
+backups, and runtime memory; keep exactly one worker process as the wallet owner;
+and rotate the key only through deliberate retirement and reconciliation.
+
+The preferred production boundary is:
+
+```text
+web process     -> SAFEBOX_COOKIE_KEY + required shared database access
+service worker  -> service Acorn nsec + private worker state + shared jobs
+```
+
+The current shared `/app/data` mount provides logical process separation only.
+It does not prevent the web container from reading the service recovery file.
+Enforceable isolation requires a worker-only volume or a secret service with
+separate workload identities and policies. If the `nsec` is moved to OpenBao or
+another secret manager, keep non-secret worker metadata and durable job state
+separate from the secret value. See the
+[OpenBao Integration Note](OPENBAO-INTEGRATION-NOTE.md) for the target custody
+model.
+
 ## Routine shutdown and restart
 
 `Ctrl-C`, `docker compose stop`, and routine deployments stop the worker but do

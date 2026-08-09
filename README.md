@@ -662,6 +662,43 @@ explicit retirement operation, not normal shutdown behavior. See
 [Standalone Service Acorn Worker](docs/SERVICE-ACORN-LIFECYCLE.md) for startup,
 recovery, retirement, the singleton restriction, and remaining gateway gates.
 
+### Secret inventory and ownership
+
+Safebox Web has four principal cryptographic secrets. They have different
+owners and must not be treated as one interchangeable pool of application
+configuration.
+
+| Secret | Owner | Where it is used | What compromise permits |
+| --- | --- | --- | --- |
+| Attached-user Acorn `nsec` | User | Encrypted session cookie and request-scoped web-process memory | Signing as that Acorn, reading ordinary private records, and controlling its funds and relay events |
+| Attached-user record protection key (RPK) | User | Optional encrypted session cookie; reserved for the proposed protected-record profile | Decrypting protected-record content if that profile is implemented and the corresponding encrypted record is available |
+| `SAFEBOX_COOKIE_KEY` | Safebox operator | Web-process secret used to authenticate and encrypt session cookies | Recovering user `nsec` and RPK values from captured cookies and forging sessions |
+| Service Acorn `nsec` | Safebox operator | Persistent worker state and worker-process memory | Controlling provider funds, signing as the provider Acorn, delivering ecash, and issuing provider receipts |
+
+Cookie encryption protects user secrets while the cookie is stored or in
+transit. An authenticated route must decrypt them to use Acorn, so they exist in
+plaintext in that request's web-process memory. The service Acorn `nsec` is a
+different operator-owned key: it must never be placed in a user's cookie,
+returned by a route, or loaded into ordinary FastAPI application state.
+The RPK generation and recovery ceremony is currently scaffolding; protected-
+record encryption is not yet implemented.
+
+The current Compose topology gives the web container and service worker the
+same `/app/data` volume. The processes have separate responsibilities, but the
+shared mount is not a filesystem security boundary: the web container can
+technically read the service recovery file. A hardened deployment should give
+the web process only its cookie key and required shared database access, while
+giving only the singleton worker access to the service Acorn secret and its
+private state volume. A secret manager such as OpenBao should use distinct
+workload identities and policies for those two roles.
+
+The bootstrap relay is operational configuration, not a secret. Database
+records and provider-payment metadata remain sensitive operational data, and
+TLS private keys are separate edge-operator secrets, but neither substitutes
+for protecting the four keys above. See
+[Standalone Service Acorn Worker](docs/SERVICE-ACORN-LIFECYCLE.md) and
+[OpenBao Integration Note](docs/OPENBAO-INTEGRATION-NOTE.md).
+
 The wallet route calls `Acorn.load_data()` through the loaded dependency with a
 bounded timeout. This reads and decrypts relay events and derives balance from
 proofs in memory. It does not refresh proofs at a mint or publish wallet state.
