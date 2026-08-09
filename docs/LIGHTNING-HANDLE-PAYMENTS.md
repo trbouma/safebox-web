@@ -89,6 +89,31 @@ service Acorn key and publishes it to the validated relays requested by the
 payer. The receipt includes the original `p` and optional target tags, the
 sender `P` tag, the BOLT11 invoice, and the exact zap request as `description`.
 
+## Verified post-zap interoperability
+
+On 2026-08-09, a live one-satoshi post zap was sent from the independently
+installed Acorn CLI to the Safebox Web address
+`trbouma@acorn.safebox.dev`. The target was event
+`e338282e2a2a8e029b4b5d1f2e1ce6ea5f8aba62cdd42f29bdd87017b4d840a4`.
+The event was not present on `wss://nos.lol` or `wss://relay.damus.io`, so
+those attempts stopped safely before requesting an invoice. The event was
+found on `wss://relay.primal.net`; Acorn then resolved the author payment
+metadata, submitted the signed kind-9734 request, received and paid the
+invoice, and the value arrived through the Safebox Web provider flow.
+
+This establishes that a Safebox Web Lightning address can receive a real
+NIP-57 post zap. It also separates recipient capability from client-specific
+failures: when another client reports an invoice-fetch error without any
+Safebox Web callback log, profile metadata, caching, or client discovery should
+be investigated before the provider payment path. Event relay availability is
+a separate prerequisite for senders that begin with an event id; a relay hint
+must identify a relay that actually stores the event.
+
+The test confirmed payment and recipient delivery. It did not independently
+audit the public kind-9735 receipt on every requested relay or upgrade a
+compatibility-mode invoice into a description-hash-bound invoice. Those remain
+separate receipt-verification concerns.
+
 ## Connected-wallet QR code
 
 When this provider path is enabled, the connected-wallet page presents a QR
