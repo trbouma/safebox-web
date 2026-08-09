@@ -92,6 +92,7 @@ SAFEBOX_SERVICE_ACORN_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_SERVICE_ACORN_STATE_FILE=data/service-acorn.json
 SAFEBOX_SERVICE_ACORN_POLL_SECONDS=0.5
 SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800
+SAFEBOX_NIP57_REQUIRE_DESCRIPTION_HASH=false
 ```
 
 Secure `wss://` relay URLs need no allowlist entry. To deliberately use one or

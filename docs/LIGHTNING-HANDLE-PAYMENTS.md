@@ -57,14 +57,23 @@ The exact validated JSON is stored in a `provider_zap` row. Its event id is
 unique, so a repeated callback for the same signed zap returns the existing
 invoice instead of intentionally creating a second obligation.
 
-For a zap, the provider worker includes that exact JSON as the Cashu NUT-23
-mint-quote description. It decodes the returned BOLT11 invoice and refuses to
-continue unless the invoice's description hash equals
-`SHA256(zap_request_json)`. This is stricter than the historical Safebox 2
-implementation and is necessary for clients to validate the eventual receipt.
-The configured mint and its Lightning backend must therefore support a
-description-hash invoice for the supplied description. A mint that returns an
-ordinary description invoice is not NIP-57-compatible for this provider path.
+Invoice binding has two operating modes. The default compatibility mode
+requests an ordinary Cashu mint quote after validating and storing the signed
+zap request. This permits Lightning payment through mint backends that cannot
+create a description-hash invoice for the exact kind-9734 JSON. The worker logs
+that the invoice is unbound and continues delivery.
+
+Set `SAFEBOX_NIP57_REQUIRE_DESCRIPTION_HASH=true` to enable strict mode. The
+worker then includes the exact JSON as the Cashu NUT-23 mint-quote description,
+decodes the returned BOLT11 invoice, and refuses to continue unless the
+invoice's description hash equals `SHA256(zap_request_json)`. The configured
+mint and Lightning backend must support that behavior.
+
+Compatibility mode is deliberately described as a payment interoperability
+measure, not as a fully verified NIP-57 receipt. The resulting kind-9735 receipt
+contains the request and invoice, but the invoice does not cryptographically
+commit to that request. Strict NIP-57 clients may therefore ignore or reject
+the receipt even when the Lightning payment and ecash delivery succeed.
 
 After settlement, the worker first delivers the value to the registered Acorn
 as gift-wrapped ecash. It then signs a kind-9735 receipt with the persistent

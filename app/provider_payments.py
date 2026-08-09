@@ -191,15 +191,22 @@ def update_provider_zap(engine: Engine, payment_id: str, **changes) -> None:
         session.commit()
 
 
-def _request_zap_mint_quote(payment: ProviderPayment, zap: ProviderZap):
+def _request_zap_mint_quote(
+    payment: ProviderPayment,
+    zap: ProviderZap,
+    *,
+    require_description_hash: bool = True,
+):
     mint = normalize_home_mint(payment.mint)
+    request_body: dict[str, object] = {
+        "amount": payment.amount_sat,
+        "unit": "sat",
+    }
+    if require_description_hash:
+        request_body["description"] = zap.request_json
     response = httpx.post(
         f"{mint}/v1/mint/quote/bolt11",
-        json={
-            "amount": payment.amount_sat,
-            "unit": "sat",
-            "description": zap.request_json,
-        },
+        json=request_body,
         timeout=httpx.Timeout(10.0, connect=5.0),
     )
     response.raise_for_status()
@@ -209,11 +216,26 @@ def _request_zap_mint_quote(payment: ProviderPayment, zap: ProviderZap):
     decoded = bolt11.decode(invoice)
     actual_hash = str(getattr(decoded, "description_hash", "") or "").lower()
     expected_hash = hashlib.sha256(zap.request_json.encode("utf-8")).hexdigest()
-    if not actual_hash or not hmac.compare_digest(actual_hash, expected_hash):
+    description_hash_bound = bool(
+        actual_hash and hmac.compare_digest(actual_hash, expected_hash)
+    )
+    if require_description_hash and not description_hash_bound:
         raise RuntimeError(
             "Mint invoice does not commit to the NIP-57 zap request description"
         )
-    return SimpleNamespace(quote=quote, invoice=invoice)
+    if not require_description_hash and not description_hash_bound:
+        logger.warning(
+            "provider zap invoice is not description-hash bound; "
+            "compatibility mode permits payment but strict NIP-57 clients may "
+            "reject the receipt payment_id=%s mint=%s",
+            payment.payment_id,
+            mint,
+        )
+    return SimpleNamespace(
+        quote=quote,
+        invoice=invoice,
+        description_hash_bound=description_hash_bound,
+    )
 
 
 async def _publish_provider_zap_receipt(acorn, payment: ProviderPayment, zap: ProviderZap):
@@ -233,6 +255,7 @@ async def process_provider_payments_once(
     acorn,
     *,
     gift_wrap_retention_seconds: int | None = None,
+    nip57_require_description_hash: bool = False,
 ) -> bool:
     """Process at most one item from each safe payment transition."""
 
@@ -252,6 +275,7 @@ async def process_provider_payments_once(
                     _request_zap_mint_quote,
                     quote_request,
                     zap,
+                    require_description_hash=nip57_require_description_hash,
                 )
             update_provider_payment(
                 engine,

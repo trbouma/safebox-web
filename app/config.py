@@ -109,6 +109,7 @@ class ServiceAcornSettings:
     service_acorn_gift_wrap_retention_seconds: int | None = (
         DEFAULT_GIFT_WRAP_RETENTION_SECONDS
     )
+    nip57_require_description_hash: bool = False
     service_acorn_shutdown_recipient: str | None = None
     service_acorn_shutdown_relay: str | None = None
 
@@ -172,6 +173,10 @@ class ServiceAcornSettings:
                 "data/service-acorn.json",
             ).strip(),
             service_acorn_gift_wrap_retention_seconds=retention_seconds,
+            nip57_require_description_hash=_env_bool(
+                "SAFEBOX_NIP57_REQUIRE_DESCRIPTION_HASH",
+                False,
+            ),
             service_acorn_shutdown_recipient=shutdown_recipient or None,
             service_acorn_shutdown_relay=shutdown_relay or None,
         )

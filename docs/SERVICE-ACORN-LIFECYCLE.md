@@ -33,7 +33,14 @@ SAFEBOX_SERVICE_ACORN_HOME_RELAY=wss://relay.getsafebox.app
 SAFEBOX_SERVICE_ACORN_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_SERVICE_ACORN_STATE_FILE=data/service-acorn.json
 SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800
+SAFEBOX_NIP57_REQUIRE_DESCRIPTION_HASH=false
 ```
+
+The NIP-57 setting defaults to compatibility mode so mints without support for
+exact zap-request description hashes can still create invoices. Set it to
+`true` only when the configured mint backend supports description-hash-bound
+invoices. Compatibility receipts are unbound and may be rejected by strict
+NIP-57 clients.
 
 Run it directly during development:
 

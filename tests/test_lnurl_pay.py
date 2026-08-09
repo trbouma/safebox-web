@@ -353,7 +353,7 @@ def test_zap_worker_delivers_ecash_then_publishes_receipt(
     monkeypatch.setattr(
         provider_module,
         "_request_zap_mint_quote",
-        lambda payment, zap: SimpleNamespace(
+        lambda payment, zap, **kwargs: SimpleNamespace(
             quote="quote-zap", invoice="lnbc21-zap"
         ),
     )
@@ -389,7 +389,7 @@ def test_zap_receipt_failure_does_not_reclassify_ecash_delivery(
     monkeypatch.setattr(
         provider_module,
         "_request_zap_mint_quote",
-        lambda payment, zap: SimpleNamespace(
+        lambda payment, zap, **kwargs: SimpleNamespace(
             quote="quote-zap", invoice="lnbc21-zap"
         ),
     )
@@ -455,6 +455,51 @@ def test_zap_mint_quote_requires_matching_description_hash(
         assert "does not commit" in str(exc)
     else:
         raise AssertionError("noncompliant zap invoice was accepted")
+    engine.dispose()
+
+
+def test_zap_mint_quote_compatibility_mode_accepts_unbound_invoice(
+    tmp_path, monkeypatch
+) -> None:
+    engine, payment_id = queued_payment(tmp_path, zap=True)
+    payment = get_provider_payment(engine, payment_id)
+    zap = get_provider_zap(engine, payment_id)
+    captured: dict = {}
+    warnings: list[str] = []
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"quote": "quote-compatible", "request": "lnbc21-compatible"}
+
+    def fake_post(url, *, json, timeout):
+        captured.update({"url": url, "payload": json})
+        return Response()
+
+    monkeypatch.setattr(provider_module.httpx, "post", fake_post)
+    monkeypatch.setattr(
+        provider_module.logger,
+        "warning",
+        lambda message, *args: warnings.append(message % args),
+    )
+    monkeypatch.setattr(
+        provider_module.bolt11,
+        "decode",
+        lambda invoice: SimpleNamespace(description_hash=None),
+    )
+
+    quote = provider_module._request_zap_mint_quote(
+        payment,
+        zap,
+        require_description_hash=False,
+    )
+
+    assert quote.quote == "quote-compatible"
+    assert quote.description_hash_bound is False
+    assert "description" not in captured["payload"]
+    assert "strict NIP-57 clients may reject" in warnings[0]
     engine.dispose()
 
 

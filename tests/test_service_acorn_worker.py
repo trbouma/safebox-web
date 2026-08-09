@@ -105,6 +105,19 @@ def test_worker_settings_do_not_require_web_cookie_key(tmp_path, monkeypatch) ->
 
     assert settings.service_acorn_enabled is True
     assert settings.service_acorn_gift_wrap_retention_seconds == 7 * 24 * 60 * 60
+    assert settings.nip57_require_description_hash is False
+
+
+def test_worker_can_require_strict_nip57_description_hash(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SAFEBOX_SERVICE_ACORN_ENABLED", "true")
+    monkeypatch.setenv("SAFEBOX_NIP57_REQUIRE_DESCRIPTION_HASH", "true")
+
+    settings = ServiceAcornSettings.from_env()
+
+    assert settings.nip57_require_description_hash is True
 
 
 def test_worker_gift_wrap_retention_can_be_disabled(tmp_path, monkeypatch) -> None:

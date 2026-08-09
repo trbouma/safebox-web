@@ -83,6 +83,9 @@ async def run_worker(
                         gift_wrap_retention_seconds=(
                             settings.service_acorn_gift_wrap_retention_seconds
                         ),
+                        nip57_require_description_hash=(
+                            settings.nip57_require_description_hash
+                        ),
                     )
                 except Exception:
                     logger.exception("service Acorn provider-payment cycle failed")
