@@ -5,6 +5,7 @@
 on the home relay, and start a user-controlled session.</p>
 <form method="post" action="/create" autocomplete="off">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="assign_default_handle" value="yes">
   <label for="home_relay">Home relay</label>
   <input id="home_relay" name="home_relay" type="text"
          value="{{ default_relay }}" required spellcheck="false">

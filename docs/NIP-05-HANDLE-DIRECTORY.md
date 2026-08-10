@@ -51,9 +51,10 @@ manually.
 
 Automatic assignment is an onboarding policy of Safebox Web, which owns the
 domain namespace and directory. It is not Acorn relay state and is not imposed
-by the Acorn component. The advanced creation form does not request automatic
-assignment. After onboarding, the authenticated Acorn can use the ordinary
-handle page to keep the generated name, rename it, or remove it.
+by the Acorn component. Both the one-click onboarding form and the ordinary
+new-Acorn creation form request automatic assignment. After creation, the
+authenticated Acorn can use the ordinary handle page to keep the generated
+name, rename it, or remove it.
 
 ## Claim authorization
 

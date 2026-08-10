@@ -560,7 +560,7 @@ def test_root_keeps_landing_page_for_invalid_session() -> None:
     assert "Connect an Acorn" in response.text
 
 
-def test_onboard_offers_new_and_existing_acorn_paths() -> None:
+def test_onboard_offers_single_confirmed_fast_creation_path() -> None:
     response = make_https_client().get("/onboard")
 
     assert response.status_code == 200
@@ -568,12 +568,14 @@ def test_onboard_offers_new_and_existing_acorn_paths() -> None:
     assert 'action="/create"' in response.text
     assert 'name="defer_recovery" value="yes"' in response.text
     assert 'name="assign_default_handle" value="yes"' in response.text
-    assert "Create a New Acorn" in response.text
-    assert 'href="/login"' in response.text
-    assert "Use an Existing Acorn" in response.text
-    assert "temporarily keeps the Safebox Acorn mnemonic" in response.text
-    assert "assigns a default public handle" in response.text
-    assert "Protected records can be enabled later" in response.text
+    assert 'name="mnemonic_words" value="12"' in response.text
+    assert 'name="confirmed" type="checkbox" value="yes" checked required' in response.text
+    assert "Create My Acorn" in response.text
+    assert 'href="/login"' not in response.text
+    assert "Use an Existing Acorn" not in response.text
+    assert "12-word recovery mnemonic" in response.text
+    assert "defers the backup ceremony" in response.text
+    assert "Protected Records can be enabled" in response.text
 
 
 def test_default_handle_uses_bip39_words_and_sub_1000_suffix() -> None:
@@ -629,7 +631,7 @@ def test_quick_onboarding_assigns_available_default_handle(
     )
 
 
-def test_advanced_creation_does_not_assign_default_handle(
+def test_ordinary_creation_assigns_default_handle(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -650,6 +652,7 @@ def test_advanced_creation_does_not_assign_default_handle(
                 "csrf_token": CsrfProtector(settings).issue(),
                 "home_relay": "relay.example.com",
                 "home_mint": "mint.example.com",
+                "assign_default_handle": "yes",
                 "confirmed": "yes",
             },
         )
@@ -659,7 +662,11 @@ def test_advanced_creation_does_not_assign_default_handle(
         count = connection.execute(
             "SELECT COUNT(*) FROM claimed_handle"
         ).fetchone()[0]
-    assert count == 0
+        handle = connection.execute(
+            "SELECT claimed_handle FROM claimed_handle"
+        ).fetchone()[0]
+    assert count == 1
+    assert handle == "abandonabandon0"
 
 
 def test_default_handle_collision_advances_numeric_suffix(
@@ -729,7 +736,7 @@ def test_onboard_redirects_valid_existing_session_to_wallet() -> None:
     assert response.headers["location"] == "/wallet"
 
 
-def test_onboard_ignores_invalid_session_and_offers_recovery_paths() -> None:
+def test_onboard_ignores_invalid_session_and_offers_fast_creation() -> None:
     client = make_https_client()
     client.cookies.set(
         SECURE_COOKIE_NAME,
@@ -741,8 +748,8 @@ def test_onboard_ignores_invalid_session_and_offers_recovery_paths() -> None:
     response = client.get("/onboard", follow_redirects=False)
 
     assert response.status_code == 200
-    assert "Create a New Acorn" in response.text
-    assert "Use an Existing Acorn" in response.text
+    assert "Create My Acorn" in response.text
+    assert "Use an Existing Acorn" not in response.text
 
 
 def test_connected_wallet_can_show_friend_onboarding_qr(monkeypatch) -> None:
@@ -902,13 +909,19 @@ def test_wallet_prominently_warns_while_recovery_backup_is_pending(tmp_path) -> 
 
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.get("/wallet")
+        fake.deferred_recovery_state = {"status": "COMPLETE", "pending": False}
+        completed_response = client.get("/wallet")
 
     assert response.status_code == 200
     assert "Recovery Backup Required" in response.text
     assert 'href="/recovery"' in response.text
+    assert "Copy Recovery Words" in response.text
     assert response.text.index("Recovery Backup Required") < response.text.index(
         "wallet-balance"
     )
+    assert completed_response.status_code == 200
+    assert "Recovery Backup Required" not in completed_response.text
+    assert "Copy Recovery Words" not in completed_response.text
 
 
 def test_wallet_shows_collapsible_silent_payment_address_and_qr(tmp_path) -> None:
@@ -1097,6 +1110,7 @@ def test_create_form_displays_default_relay_and_mint() -> None:
 
     assert response.status_code == 200
     assert 'name="home_relay"' in response.text
+    assert 'name="assign_default_handle" value="yes"' in response.text
     assert TEST_SETTINGS.default_bootstrap_relay in response.text
     assert 'name="home_mint"' in response.text
     assert TEST_SETTINGS.default_home_mint in response.text

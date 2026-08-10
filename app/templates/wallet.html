@@ -20,9 +20,17 @@
 {% if recovery_backup_pending %}
 <section class="recovery-warning" aria-labelledby="recovery-warning-heading">
   <h2 id="recovery-warning-heading">Recovery Backup Required</h2>
-  <p>This Acorn is ready to use, but its recovery backup has not been
-  completed. Finish it later from a private, quiet place.</p>
-  <a class="nav-button" href="/recovery">Complete Recovery Backup</a>
+  <p>This Acorn is ready to use, but its recovery words have not been copied
+  and acknowledged. Complete the backup later from a private, quiet place.</p>
+  <a class="nav-button" href="/recovery">Copy Recovery Words</a>
+</section>
+{% endif %}
+{% if handle_assignment_failed and not nip05_address %}
+<section class="recovery-warning" aria-labelledby="handle-warning-heading">
+  <h2 id="handle-warning-heading">Handle Setup Incomplete</h2>
+  <p>This Acorn was created successfully, but Safebox could not assign its
+  default handle.</p>
+  <a class="nav-button" href="/handle">Claim a Handle</a>
 </section>
 {% endif %}
 <section class="wallet-balance" aria-labelledby="wallet-balance-heading">

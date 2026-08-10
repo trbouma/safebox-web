@@ -1033,7 +1033,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 502,
             )
 
-        if assign_default_handle == "yes":
+        assigned_handle = None
+        handle_assignment_requested = assign_default_handle == "yes"
+        if handle_assignment_requested:
             try:
                 with Session(request.app.state.database_engine) as session:
                     assigned_handle = _assign_default_handle(
@@ -1044,14 +1046,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
             except Exception as exc:
                 logger.warning(
-                    "default handle assignment failed npub=%s error_type=%s",
+                    "default handle assignment failed npub=%s error_type=%s error=%s",
                     acorn.pubkey_bech32,
                     type(exc).__name__,
+                    exc,
                 )
             else:
                 if assigned_handle is None:
                     logger.warning(
                         "default handle namespace exhausted npub=%s",
+                        acorn.pubkey_bech32,
+                    )
+                else:
+                    logger.info(
+                        "default handle assigned handle=%s npub=%s",
+                        assigned_handle,
                         acorn.pubkey_bech32,
                     )
 
@@ -1096,7 +1105,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "material on this page before continuing."
                 )
             else:
-                response = RedirectResponse("/wallet", status_code=303)
+                wallet_location = (
+                    "/wallet"
+                    if not handle_assignment_requested or assigned_handle is not None
+                    else "/wallet?handle_assignment=failed"
+                )
+                response = RedirectResponse(wallet_location, status_code=303)
                 set_session_cookie(
                     response,
                     request=request,
@@ -1121,6 +1135,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 recovery_csrf_token=CsrfProtector(settings).issue(),
                 deferred_recovery=False,
+                assigned_handle=assigned_handle,
+                handle_assignment_failed=(
+                    handle_assignment_requested and assigned_handle is None
+                ),
                 error=deferred_recovery_error,
             ),
             status_code=201,
@@ -1713,6 +1731,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 and session_credentials.record_protection_backup_confirmed
             ),
             recovery_backup_pending=recovery_backup_pending,
+            handle_assignment_failed=(
+                request.query_params.get("handle_assignment") == "failed"
+            ),
             nip05_address=nip05_address,
             lightning_lnurl=lightning_lnurl,
             address_qr=address_qr,

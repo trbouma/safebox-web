@@ -58,8 +58,8 @@ security model, alternatives, compatibility gate, and decision criteria.
 
 This implementation intentionally provides:
 
-- a QR-friendly `/onboard` entry point that offers new-Acorn creation or
-  reconnection and redirects an already attached Acorn to its wallet;
+- a QR-friendly `/onboard` entry point optimized for one-confirmation creation
+  of a new Acorn and redirecting an already attached Acorn to its wallet;
 - creation of a new Acorn with a selected home relay and home mint;
 - login with an `nsec` or BIP39 Safebox Acorn mnemonic;
 - a bootstrap relay;
@@ -242,11 +242,17 @@ Protected Records are not enabled during creation. No RPK or Protected record
 mnemonic exists, which keeps quick onboarding focused on the Acorn itself.
 
 For rapid onboarding, `/onboard` provides a one-click **Create a New Acorn**
-action using the configured default relay and mint. It also assigns a default
-public handle derived deterministically from the first 32 bits of the Acorn
-public key: two BIP39 English words followed by a number from 0 through 999
-(for example, `abandonabandon0`). If that name is already claimed, Safebox
-advances the numeric suffix until it finds an available name. The authenticated
+action using the configured default relay and mint. The page presents only a
+pre-checked creation confirmation: recovery is fixed at 12 words, backup is
+deferred, and the wallet opens immediately after initialization and relay
+readback. Connecting an existing Acorn remains available at `/login`, but that
+alternative is deliberately omitted from the fast onboarding page.
+
+Onboarding also assigns a default public handle derived deterministically from
+the first 32 bits of the Acorn public key: two BIP39 English words followed by
+a number from 0 through 999 (for example, `abandonabandon0`). If that name is
+already claimed, Safebox advances the numeric suffix until it finds an
+available name. The authenticated
 Acorn can rename or remove the provider-held mapping later. Safebox places the Safebox
 Acorn mnemonic only in the encrypted browser cookie. Acorn writes a non-secret
 `deferred_recovery` pending marker with relay readback verification. The wallet

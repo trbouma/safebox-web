@@ -5,7 +5,7 @@
 <textarea id="safekeeping-message" class="safekeeping-message" rows="16"
           readonly spellcheck="false" autocapitalize="none">{{ safekeeping_message }}</textarea>
 <button type="button" data-copy-target="safekeeping-message"
-        data-copy-status="safekeeping-copy-status">Copy Safekeeping Message</button>
+        data-copy-status="safekeeping-copy-status">Copy Recovery Words and Settings</button>
 <p id="safekeeping-copy-status" class="progress" role="status"
    aria-live="polite"></p>
 <p class="muted">Clipboard managers, synchronized devices, browser extensions,
@@ -18,6 +18,6 @@ after saving it in the intended protected location.</p>
     I saved the Safebox Acorn mnemonic in a protected location. Remove its
     temporary copy from this browser session.
   </label>
-  <button type="submit">Confirm Backup and Remove Temporary Copy</button>
+  <button type="submit">Acknowledge Backup and Remove Temporary Copy</button>
 </form>
 {% endblock %}

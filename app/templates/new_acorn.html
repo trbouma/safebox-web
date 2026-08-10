@@ -6,6 +6,13 @@ obtains it can control this Acorn and its funds and records.</p>
 <p>The recovery message contains the Safebox Acorn mnemonic and infrastructure
 information needed for recovery. Store it offline or in a trusted
 password-manager vault. Protected records are not enabled yet.</p>
+{% if assigned_handle %}
+<p>Default handle: <strong>{{ assigned_handle }}</strong>. You can rename or
+remove it after entering the wallet.</p>
+{% elif handle_assignment_failed %}
+<p class="error"><strong>The Acorn was created, but Safebox could not assign a
+default handle.</strong> Continue to the wallet and claim one manually.</p>
+{% endif %}
 <label for="safekeeping-message">Safebox Acorn safekeeping message</label>
 <textarea id="safekeeping-message" class="safekeeping-message" rows="16"
           readonly spellcheck="false" autocapitalize="none">{{ safekeeping_message }}</textarea>
