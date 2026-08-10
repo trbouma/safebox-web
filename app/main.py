@@ -37,6 +37,12 @@ from acorn.func_utils import (
 )
 
 from app.config import Settings
+from app.bitcoin_silent_payments import (
+    BitcoinGatewayError,
+    broadcast_silent_payment_sweep,
+    create_silent_payment_sweep_preview,
+    detect_silent_payment_receipts,
+)
 from app.database import create_database_engine, run_migrations
 from app.dependencies import (
     AcornDependency,
@@ -73,6 +79,7 @@ from app.templating import render_template
 
 
 logger = logging.getLogger("safebox_web.security")
+BITCOIN_TXID_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
 
 
 def _humanize_retention(seconds: int) -> str:
@@ -1250,6 +1257,173 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
             csrf_token=csrf_token,
+        )
+
+    @app.post("/bitcoin/silent-payment/detect", response_class=HTMLResponse)
+    async def bitcoin_silent_payment_detect(
+        request: Request,
+        credentials: CredentialsDependency,
+        csrf_token: str = Form(...),
+        txid: str = Form(...),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            return HTMLResponse(
+                render_template(
+                    "silent_payment_receipts.html",
+                    title="Check incoming Bitcoin",
+                    error="The form token is invalid or expired. Return to the wallet and try again.",
+                    result=None,
+                    csrf_token=CsrfProtector(settings).issue(),
+                ),
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
+        normalized_txid = str(txid or "").strip().lower()
+        if BITCOIN_TXID_PATTERN.fullmatch(normalized_txid) is None:
+            return HTMLResponse(
+                render_template(
+                    "silent_payment_receipts.html",
+                    title="Check incoming Bitcoin",
+                    error="Enter a 64-character hexadecimal Bitcoin transaction id.",
+                    result=None,
+                    csrf_token=CsrfProtector(settings).issue(),
+                ),
+                status_code=400,
+                headers={"Cache-Control": "no-store"},
+            )
+        try:
+            result = await asyncio.to_thread(
+                detect_silent_payment_receipts,
+                nsec=credentials.nsec,
+                txid=normalized_txid,
+                api_base=settings.bitcoin_api_base,
+                timeout=settings.bitcoin_lookup_timeout_seconds,
+            )
+            error = None
+        except BitcoinGatewayError as exc:
+            result = None
+            error = str(exc)
+        return HTMLResponse(
+            render_template(
+                "silent_payment_receipts.html",
+                title="Incoming Silent Payment",
+                error=error,
+                result=result,
+                csrf_token=CsrfProtector(settings).issue(),
+            ),
+            status_code=200 if error is None else 502,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/bitcoin/silent-payment/sweep/preview", response_class=HTMLResponse)
+    async def bitcoin_silent_payment_sweep_preview(
+        request: Request,
+        credentials: CredentialsDependency,
+        csrf_token: str = Form(...),
+        txid: str = Form(...),
+        vout: int = Form(...),
+        destination_address: str = Form(...),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            return HTMLResponse(
+                render_template(
+                    "silent_payment_sweep_review.html",
+                    title="Review Silent Payment sweep",
+                    error="The form token is invalid or expired.",
+                    preview=None,
+                    csrf_token=CsrfProtector(settings).issue(),
+                ),
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
+        normalized_txid = str(txid or "").strip().lower()
+        destination = str(destination_address or "").strip()
+        if BITCOIN_TXID_PATTERN.fullmatch(normalized_txid) is None:
+            error = "The receipt transaction id is invalid."
+            preview = None
+        elif vout < 0:
+            error = "The receipt output index is invalid."
+            preview = None
+        elif not destination:
+            error = "Enter a Bitcoin destination address."
+            preview = None
+        else:
+            try:
+                preview = await asyncio.to_thread(
+                    create_silent_payment_sweep_preview,
+                    nsec=credentials.nsec,
+                    txid=normalized_txid,
+                    vout=vout,
+                    destination_address=destination,
+                    fee_rate=settings.bitcoin_sweep_fee_rate,
+                    api_base=settings.bitcoin_api_base,
+                    timeout=settings.bitcoin_lookup_timeout_seconds,
+                )
+                error = None
+            except BitcoinGatewayError as exc:
+                preview = None
+                error = str(exc)
+        return HTMLResponse(
+            render_template(
+                "silent_payment_sweep_review.html",
+                title="Review Silent Payment sweep",
+                error=error,
+                preview=preview,
+                csrf_token=CsrfProtector(settings).issue(),
+            ),
+            status_code=200 if error is None else 400,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/bitcoin/silent-payment/sweep", response_class=HTMLResponse)
+    async def bitcoin_silent_payment_sweep(
+        request: Request,
+        credentials: CredentialsDependency,
+        csrf_token: str = Form(...),
+        txid: str = Form(...),
+        vout: int = Form(...),
+        destination_address: str = Form(...),
+        confirmed: str = Form(""),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        error = None
+        result = None
+        if not CsrfProtector(settings).verify(csrf_token):
+            error = "The form token is invalid or expired."
+        elif confirmed != "yes":
+            error = "Confirm that the Bitcoin sweep is irreversible."
+        else:
+            normalized_txid = str(txid or "").strip().lower()
+            destination = str(destination_address or "").strip()
+            if BITCOIN_TXID_PATTERN.fullmatch(normalized_txid) is None or vout < 0:
+                error = "The receipt outpoint is invalid."
+            elif not destination:
+                error = "The Bitcoin destination address is required."
+            else:
+                try:
+                    result = await asyncio.to_thread(
+                        broadcast_silent_payment_sweep,
+                        nsec=credentials.nsec,
+                        txid=normalized_txid,
+                        vout=vout,
+                        destination_address=destination,
+                        fee_rate=settings.bitcoin_sweep_fee_rate,
+                        api_base=settings.bitcoin_api_base,
+                        timeout=settings.bitcoin_lookup_timeout_seconds,
+                    )
+                except BitcoinGatewayError as exc:
+                    error = str(exc)
+        return HTMLResponse(
+            render_template(
+                "silent_payment_sweep_result.html",
+                title="Silent Payment sweep",
+                error=error,
+                result=result,
+            ),
+            status_code=200 if error is None else 400,
+            headers={"Cache-Control": "no-store"},
         )
 
     @app.get("/handle", response_class=HTMLResponse)

@@ -28,6 +28,9 @@ MAX_GIFT_WRAP_RETENTION_SECONDS = 30 * 24 * 60 * 60
 DEFAULT_SESSION_TTL_HOURS = 30 * 24
 DEFAULT_SESSION_TTL_SECONDS = DEFAULT_SESSION_TTL_HOURS * 60 * 60
 DEFAULT_MAX_BLOB_BYTES = 10 * 1024 * 1024
+DEFAULT_BITCOIN_API_BASE = "https://blockstream.info/api"
+DEFAULT_BITCOIN_LOOKUP_TIMEOUT_SECONDS = 10.0
+DEFAULT_BITCOIN_SWEEP_FEE_RATE = 2.0
 
 
 def _allowed_ws_relays_from_env() -> tuple[str, ...]:
@@ -195,6 +198,9 @@ class Settings:
     default_home_mint: str = "https://mint.getsafebox.app"
     blossom_home_server: str = "https://blossom.getsafebox.app"
     max_blob_bytes: int = DEFAULT_MAX_BLOB_BYTES
+    bitcoin_api_base: str = DEFAULT_BITCOIN_API_BASE
+    bitcoin_lookup_timeout_seconds: float = DEFAULT_BITCOIN_LOOKUP_TIMEOUT_SECONDS
+    bitcoin_sweep_fee_rate: float = DEFAULT_BITCOIN_SWEEP_FEE_RATE
     database_url: str = "sqlite:///data/database.db"
     provider_invoice_wait_seconds: float = 10.0
     lnurl_min_sendable_msat: int = 1000
@@ -225,6 +231,12 @@ class Settings:
             raise ValueError("SAFEBOX_PAYMENT_TIMEOUT_SECONDS must be positive")
         if self.max_blob_bytes <= 0:
             raise ValueError("SAFEBOX_MAX_BLOB_BYTES must be positive")
+        if not self.bitcoin_api_base.strip():
+            raise ValueError("SAFEBOX_BITCOIN_API_BASE is required")
+        if self.bitcoin_lookup_timeout_seconds <= 0:
+            raise ValueError("SAFEBOX_BITCOIN_LOOKUP_TIMEOUT_SECONDS must be positive")
+        if self.bitcoin_sweep_fee_rate <= 0:
+            raise ValueError("SAFEBOX_BITCOIN_SWEEP_FEE_RATE must be positive")
         if not self.blossom_home_server.strip():
             raise ValueError("SAFEBOX_BLOSSOM_HOME_SERVER is required")
         if self.provider_invoice_wait_seconds <= 0:
@@ -279,6 +291,18 @@ class Settings:
             max_blob_bytes = int(
                 os.getenv("SAFEBOX_MAX_BLOB_BYTES", str(DEFAULT_MAX_BLOB_BYTES))
             )
+            bitcoin_lookup_timeout = float(
+                os.getenv(
+                    "SAFEBOX_BITCOIN_LOOKUP_TIMEOUT_SECONDS",
+                    str(DEFAULT_BITCOIN_LOOKUP_TIMEOUT_SECONDS),
+                )
+            )
+            bitcoin_sweep_fee_rate = float(
+                os.getenv(
+                    "SAFEBOX_BITCOIN_SWEEP_FEE_RATE",
+                    str(DEFAULT_BITCOIN_SWEEP_FEE_RATE),
+                )
+            )
         except ValueError as exc:
             raise RuntimeError("Safebox numeric application settings are invalid") from exc
         default_relay = os.getenv(
@@ -310,6 +334,12 @@ class Settings:
                 "https://blossom.getsafebox.app",
             ).strip(),
             max_blob_bytes=max_blob_bytes,
+            bitcoin_api_base=os.getenv(
+                "SAFEBOX_BITCOIN_API_BASE",
+                DEFAULT_BITCOIN_API_BASE,
+            ).strip(),
+            bitcoin_lookup_timeout_seconds=bitcoin_lookup_timeout,
+            bitcoin_sweep_fee_rate=bitcoin_sweep_fee_rate,
             database_url=os.getenv(
                 "SAFEBOX_DATABASE_URL",
                 "sqlite:///data/database.db",

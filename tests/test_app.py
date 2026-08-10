@@ -514,6 +514,140 @@ def test_wallet_shows_collapsible_silent_payment_address_and_qr(tmp_path) -> Non
     assert 'id="qr-background"' in response.text
     assert 'fill="#ffffff"' in response.text
     assert 'id="qr-path" fill="#000000"' in response.text
+    assert 'action="/bitcoin/silent-payment/detect"' in response.text
+    assert "Check incoming funds" in response.text
+
+
+def test_silent_payment_detection_shows_available_sweep_form(
+    tmp_path, monkeypatch
+) -> None:
+    txid = "ab" * 32
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+
+    def fake_detect(**kwargs):
+        assert kwargs["nsec"] == TEST_NSEC
+        assert kwargs["txid"] == txid
+        return {
+            "txid": txid,
+            "silent_payment_address": "sp1example",
+            "matches": [
+                {
+                    "txid": txid,
+                    "vout": 1,
+                    "value": 21_000,
+                    "source_address": "bc1psource",
+                    "confirmed": True,
+                    "block_height": 900_000,
+                    "availability": "available",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(main_module, "detect_silent_payment_receipts", fake_detect)
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/bitcoin/silent-payment/detect",
+            data={"csrf_token": valid_csrf_token(), "txid": txid},
+        )
+
+    assert response.status_code == 200
+    assert "21,000 sats" in response.text
+    assert "Confirmed and currently reported as unspent" in response.text
+    assert 'action="/bitcoin/silent-payment/sweep/preview"' in response.text
+    assert 'name="destination_address"' in response.text
+    assert TEST_NSEC not in response.text
+
+
+def test_silent_payment_sweep_requires_review_then_confirmation(
+    tmp_path, monkeypatch
+) -> None:
+    txid = "ab" * 32
+    signed_txid = "cd" * 32
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+    preview = {
+        "txid": signed_txid,
+        "receipt_txid": txid,
+        "vout": 1,
+        "source_address": "bc1psource",
+        "destination_address": "bc1pdestination",
+        "matched_value": 21_000,
+        "amount_sats": 20_800,
+        "fee_sats": 200,
+        "fee_rate": 2.0,
+        "vsize": 100,
+    }
+    calls = []
+
+    def fake_preview(**kwargs):
+        calls.append(("preview", kwargs))
+        return preview
+
+    def fake_broadcast(**kwargs):
+        calls.append(("broadcast", kwargs))
+        return {**preview, "broadcast_txid": signed_txid}
+
+    monkeypatch.setattr(
+        main_module,
+        "create_silent_payment_sweep_preview",
+        fake_preview,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "broadcast_silent_payment_sweep",
+        fake_broadcast,
+    )
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        review = client.post(
+            "/bitcoin/silent-payment/sweep/preview",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "txid": txid,
+                "vout": "1",
+                "destination_address": "bc1pdestination",
+            },
+        )
+        unconfirmed = client.post(
+            "/bitcoin/silent-payment/sweep",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "txid": txid,
+                "vout": "1",
+                "destination_address": "bc1pdestination",
+            },
+        )
+        broadcast = client.post(
+            "/bitcoin/silent-payment/sweep",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "txid": txid,
+                "vout": "1",
+                "destination_address": "bc1pdestination",
+                "confirmed": "yes",
+            },
+        )
+
+    assert review.status_code == 200
+    assert "20,800 sats" in review.text
+    assert "200 sats at 2.0 sat/vB" in review.text
+    assert "Broadcast sweep" in review.text
+    assert "signed-transaction" not in review.text
+    assert unconfirmed.status_code == 400
+    assert "Confirm that the Bitcoin sweep is irreversible" in unconfirmed.text
+    assert broadcast.status_code == 200
+    assert "sweep broadcast successfully" in broadcast.text
+    assert signed_txid in broadcast.text
+    assert [name for name, _ in calls] == ["preview", "broadcast"]
 
 
 def test_pages_use_external_jinja_layout_assets() -> None:

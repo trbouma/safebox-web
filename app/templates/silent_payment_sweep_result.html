@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/wallet">← Back to wallet</a></p>
+{% if error %}
+<p class="error">{{ error }}</p>
+<p>Do not retry automatically if the result is uncertain. Check the source
+outpoint and expected transaction id with a Bitcoin explorer or node first.</p>
+{% endif %}
+{% if result %}
+<p><strong>Silent Payment sweep broadcast successfully.</strong></p>
+<dl class="invoice-review">
+  <div><dt>Broadcast transaction id</dt><dd><code>{{ result.broadcast_txid }}</code></dd></div>
+  <div><dt>Destination</dt><dd><code>{{ result.destination_address }}</code></dd></div>
+  <div><dt>Amount</dt><dd>{{ "{:,}".format(result.amount_sats) }} sats</dd></div>
+  <div><dt>Miner fee</dt><dd>{{ "{:,}".format(result.fee_sats) }} sats</dd></div>
+</dl>
+{% endif %}
+{% endblock %}

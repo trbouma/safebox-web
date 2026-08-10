@@ -19,12 +19,18 @@ object control graph, viewpoint-dependent recognition through the social graph,
 and Acorn's spendable funds. Together these let users evaluate and act on
 portable evidence without making Safebox another system of record.
 
-A proposed Bitcoin gateway would derive an attached Acorn's OpenETR Nostr
-Silent Payments address from its `npub`, verify a received transaction locally,
-and let the user explicitly sweep the matched output to the persistent service
-worker for fee-disclosed ecash settlement. Its root-equivalent scan-key
-constraint, worker boundary, NSP-to-NSP forwarding requirement, durable job
-model, and staged rollout are specified in the
+A first experimental Bitcoin workflow derives an attached Acorn's OpenETR
+Nostr Silent Payments address from its `npub`, accepts a user-supplied txid,
+detects a matching confirmed output in request-scoped memory, and lets the user
+review and explicitly broadcast a sweep to a Bitcoin address. The configured
+Bitcoin backend sees the txid lookup, but never receives the Acorn key. The
+signed transaction is recomputed at broadcast time and is never rendered into
+the browser.
+
+This self-sweep workflow does not yet quote or settle a Bitcoin-to-Lightning or
+Bitcoin-to-ecash swap. The planned persistent-worker gateway, root-equivalent
+scan-key constraint, NSP-to-NSP forwarding requirement, durable job model, and
+staged rollout are specified in the
 [Bitcoin Silent Payment Gateway Design Note](docs/BITCOIN-SILENT-PAYMENT-GATEWAY-DESIGN-NOTE.md).
 The service Acorn's proposed role as a signed on-chain-to-Lightning swap agent
 is detailed in the
@@ -57,6 +63,8 @@ This implementation intentionally provides:
   from QR codes with a manual-entry fallback and server-side validation;
 - an initial LNURL-pay path for receiving Lightning at claimed handles and
   delivering the settled value as ecash;
+- experimental txid-targeted Silent Payment detection and explicitly confirmed
+  self-sweeps to a user-selected Bitcoin address;
 - a companion standalone service Acorn worker for Lightning settlement and
   ecash delivery;
 - a connected-wallet key-information page and redacted session API; and

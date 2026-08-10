@@ -2,8 +2,18 @@
 
 ## Status
 
-This note is a proposed design. Safebox Web does not currently receive, sweep,
-or settle Bitcoin Silent Payments.
+Safebox Web now implements the first user-controlled slice of this design. An
+authenticated user can submit a txid, detect an NSP output belonging to the
+attached Acorn, review the miner fee and destination, and explicitly broadcast
+a self-sweep to a conventional Bitcoin address. Detection and signing occur in
+request-scoped memory through the pinned OpenETR component. Private NSP material
+and signed transaction bytes are not rendered into the browser or persisted by
+Safebox Web.
+
+This implementation is experimental and has unit coverage but has not yet been
+validated end to end with small mainnet receipts. It does not create a provider
+quote, sweep to the service treasurer, deliver ecash, or settle Lightning. Those
+provider obligations remain proposed design work.
 
 The design assumes that the final user payout is sat-denominated Cashu ecash
 delivered to the attached Acorn, matching the existing service-worker delivery
@@ -72,6 +82,20 @@ Safebox Web must call the installable OpenETR component for this derivation,
 receipt detection, and transaction construction. It must not duplicate the
 domain tags, point arithmetic, BIP-352 transaction rules, address encoding, or
 private-output reconstruction in route functions.
+
+The initial implementation pins OpenETR to a reviewed Git revision whose
+Silent Payment operations match current OpenETR main while avoiding an
+unrelated QR-code dependency conflict with Safebox Acorn. OpenETR imports are
+lazy and boundary-wrapped because its Bitcoin dependency currently mutates the
+process-wide Python decimal context during import. Safebox restores that
+context immediately after loading the component. This containment should be
+removed when the upstream import side effect is corrected.
+
+The configured Bitcoin HTTP backend receives the submitted txid during
+transaction and UTXO lookup. It can therefore correlate the service address,
+request time, and txid. It receives neither the Acorn `nsec` nor derived private
+NSP material. Operators should disclose this metadata boundary and may replace
+the default public backend with a controlled compatible endpoint.
 
 ## Critical scan-key constraint
 

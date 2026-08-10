@@ -2,10 +2,12 @@
 
 ## Status
 
-This note is a proposed design. Safebox Web now derives and displays an
-attached Acorn's public Nostr Silent Payments (NSP) address, but it does not yet
-detect receipts, quote swaps, sweep Bitcoin, or make the corresponding
-Lightning payout.
+This note remains a proposed provider-swap design. Safebox Web now derives and
+displays an attached Acorn's public Nostr Silent Payments (NSP) address and
+implements experimental txid-targeted detection plus an explicitly confirmed
+self-sweep to a user-selected conventional Bitcoin address. It does not yet
+quote a provider swap, reserve liquidity, sweep to the treasurer, or make the
+corresponding Lightning payout.
 
 The proposal builds on the
 [Bitcoin Silent Payment Gateway Design Note](BITCOIN-SILENT-PAYMENT-GATEWAY-DESIGN-NOTE.md)
@@ -392,4 +394,3 @@ Do not accept meaningful swaps until:
 - treasury and Lightning balances reconcile against completed swaps; and
 - an independent security review covers key handling, transaction construction,
   fee calculation, quote signatures, and settlement idempotency.
-

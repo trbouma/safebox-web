@@ -40,6 +40,19 @@
       {{ silent_payment_qr | safe }}
     </div>
     <p>Scan or copy this address to send a compatible Bitcoin Silent Payment.</p>
+    <hr>
+    <form method="post" action="/bitcoin/silent-payment/detect" data-progress-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="silent-payment-txid">Incoming payment transaction id</label>
+      <input id="silent-payment-txid" name="txid" type="text"
+             inputmode="text" autocapitalize="none" autocomplete="off"
+             minlength="64" maxlength="64" pattern="[0-9a-fA-F]{64}" required>
+      <button type="submit" data-progress-label="Checking incoming Bitcoin…">Check incoming funds</button>
+      <p class="progress" data-progress-message hidden>Checking the transaction for this Acorn. Please wait…</p>
+    </form>
+    <p class="advisory">This targeted check sends the transaction id to the
+      Bitcoin backend configured by the Safebox operator. That backend can
+      observe the lookup, but it does not receive the Acorn private key.</p>
   </div>
 </details>
 {% endif %}

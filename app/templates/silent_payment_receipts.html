@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/wallet">← Back to wallet</a></p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if result %}
+<p>Transaction: <code>{{ result.txid }}</code></p>
+{% if result.matches %}
+<div class="transaction-list">
+  {% for receipt in result.matches %}
+  <section class="transaction-card credit">
+    <div class="transaction-header">
+      <span class="transaction-kind">Matched output {{ receipt.vout }}</span>
+      <span class="transaction-date">{{ receipt.availability | replace('_', ' ') }}</span>
+    </div>
+    <p class="transaction-amount">{{ "{:,}".format(receipt.value) }} sats</p>
+    <p>Outpoint: <code>{{ receipt.txid }}:{{ receipt.vout }}</code></p>
+    {% if receipt.availability == "available" %}
+    <p>Confirmed and currently reported as unspent.</p>
+    <form method="post" action="/bitcoin/silent-payment/sweep/preview" data-progress-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="txid" value="{{ receipt.txid }}">
+      <input type="hidden" name="vout" value="{{ receipt.vout }}">
+      <label for="destination-{{ receipt.vout }}">Bitcoin destination address</label>
+      <input id="destination-{{ receipt.vout }}" name="destination_address"
+             type="text" autocapitalize="none" autocomplete="off" required>
+      <button type="submit" data-progress-label="Building sweep preview…">Review sweep</button>
+      <p class="progress" data-progress-message hidden>Rechecking and preparing the sweep. Please wait…</p>
+    </form>
+    {% elif receipt.availability == "unconfirmed" %}
+    <p>This output is unspent but not yet confirmed. Wait for confirmation before sweeping.</p>
+    {% else %}
+    <p>This output is not currently available as an unspent output. It may already have been spent.</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+{% else %}
+<p>No Silent Payment output belonging to this Acorn was found in this transaction.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -81,6 +81,10 @@ SAFEBOX_ALLOWED_WS_RELAYS=
 SAFEBOX_BLOSSOM_HOME_SERVER=https://blossom.getsafebox.app
 SAFEBOX_MAX_BLOB_BYTES=10485760
 
+SAFEBOX_BITCOIN_API_BASE=https://blockstream.info/api
+SAFEBOX_BITCOIN_LOOKUP_TIMEOUT_SECONDS=10
+SAFEBOX_BITCOIN_SWEEP_FEE_RATE=2.0
+
 SAFEBOX_BIND_ADDRESS=127.0.0.1
 SAFEBOX_PORT=8000
 FORWARDED_ALLOW_IPS=127.0.0.1
@@ -115,6 +119,14 @@ between `3600` seconds (one hour) and `2592000` seconds (30 days).
 
 Use the actual proxy address for `FORWARDED_ALLOW_IPS` when TLS terminates on
 another machine. Never commit `.env`.
+
+The Bitcoin settings support the experimental txid-targeted Silent Payment
+detection and self-sweep workflow. `SAFEBOX_BITCOIN_API_BASE` must expose the
+Blockstream-compatible transaction, address-UTXO, and broadcast endpoints used
+by OpenETR. The backend can observe submitted txid lookups, although private
+Acorn and NSP key material remains inside the Safebox Web request. The fixed
+fee rate is shown to the user before the separately confirmed broadcast. Test
+with small controlled amounts before enabling this workflow for users.
 
 Docker may present proxied connections to Uvicorn from the container network
 gateway instead of the reverse proxy's original address. See

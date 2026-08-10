@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/wallet">← Back to wallet</a></p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if preview %}
+<p class="error"><strong>Review carefully.</strong> Broadcasting this transaction
+irreversibly transfers the detected Bitcoin to the destination below.</p>
+<dl class="invoice-review">
+  <div><dt>Source outpoint</dt><dd><code>{{ preview.receipt_txid }}:{{ preview.vout }}</code></dd></div>
+  <div><dt>Detected value</dt><dd>{{ "{:,}".format(preview.matched_value) }} sats</dd></div>
+  <div><dt>Destination</dt><dd><code>{{ preview.destination_address }}</code></dd></div>
+  <div><dt>Amount sent</dt><dd>{{ "{:,}".format(preview.amount_sats) }} sats</dd></div>
+  <div><dt>Miner fee</dt><dd>{{ "{:,}".format(preview.fee_sats) }} sats at {{ preview.fee_rate }} sat/vB</dd></div>
+  <div><dt>Expected transaction id</dt><dd><code>{{ preview.txid }}</code></dd></div>
+</dl>
+<form method="post" action="/bitcoin/silent-payment/sweep" data-progress-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="txid" value="{{ preview.receipt_txid }}">
+  <input type="hidden" name="vout" value="{{ preview.vout }}">
+  <input type="hidden" name="destination_address" value="{{ preview.destination_address }}">
+  <label><input type="checkbox" name="confirmed" value="yes" required>
+    I have verified the destination, amount and fee and understand this Bitcoin transaction cannot be reversed.
+  </label>
+  <button class="danger-button" type="submit" data-progress-label="Broadcasting sweep…">Broadcast sweep</button>
+  <p class="progress" data-progress-message hidden>Rechecking the output and broadcasting the sweep. Do not submit again…</p>
+</form>
+{% endif %}
+{% endblock %}
