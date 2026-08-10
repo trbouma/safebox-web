@@ -37,10 +37,11 @@ from acorn.func_utils import (
 )
 
 from app.config import Settings
-from app.bitcoin_silent_payments import (
-    BitcoinGatewayError,
+from acorn import (
+    BitcoinCapabilityError,
     broadcast_silent_payment_sweep,
     create_silent_payment_sweep_preview,
+    derive_nostr_silent_payment_address,
     detect_silent_payment_receipts,
 )
 from app.database import create_database_engine, run_migrations
@@ -74,7 +75,6 @@ from app.security import (
     normalize_home_mint,
     set_session_cookie,
 )
-from app.silent_payments import derive_nostr_silent_payment_address
 from app.templating import render_template
 
 
@@ -1301,7 +1301,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 timeout=settings.bitcoin_lookup_timeout_seconds,
             )
             error = None
-        except BitcoinGatewayError as exc:
+        except BitcoinCapabilityError as exc:
             result = None
             error = str(exc)
         return HTMLResponse(
@@ -1362,7 +1362,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     timeout=settings.bitcoin_lookup_timeout_seconds,
                 )
                 error = None
-            except BitcoinGatewayError as exc:
+            except BitcoinCapabilityError as exc:
                 preview = None
                 error = str(exc)
         return HTMLResponse(
@@ -1413,7 +1413,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         api_base=settings.bitcoin_api_base,
                         timeout=settings.bitcoin_lookup_timeout_seconds,
                     )
-                except BitcoinGatewayError as exc:
+                except BitcoinCapabilityError as exc:
                     error = str(exc)
         return HTMLResponse(
             render_template(

@@ -62,6 +62,20 @@ git diff poetry.lock
 Commit the intended lock-file change so the deployment does not silently
 follow a moving branch.
 
+Safebox Web requests Acorn's `bitcoin` extra. After publishing a new Acorn
+revision that introduces or changes this capability, update Acorn first and
+confirm that the resulting lock contains `btclib` but no `openetr` package:
+
+```sh
+poetry update safebox-acorn
+grep -E 'name = "(safebox-acorn|btclib|openetr)"' poetry.lock
+```
+
+Do not build the deployment image from a Safebox Web lock that predates the
+corresponding Acorn commit. The web source may import the new API successfully
+from an editable checkout while a clean Docker build still resolves the older
+Git revision.
+
 ## 2. Prepare runtime configuration
 
 Create the private environment file:
@@ -126,7 +140,10 @@ Blockstream-compatible transaction, address-UTXO, and broadcast endpoints used
 by OpenETR. The backend can observe submitted txid lookups, although private
 Acorn and NSP key material remains inside the Safebox Web request. The fixed
 fee rate is shown to the user before the separately confirmed broadcast. Test
-with small controlled amounts before enabling this workflow for users.
+with small controlled amounts before enabling this workflow for users. Receipt
+detection and sweep preview have been validated with a controlled mainnet
+payment; broadcast and destination settlement should still be treated as a
+separate operator validation gate.
 
 Docker may present proxied connections to Uvicorn from the container network
 gateway instead of the reverse proxy's original address. See

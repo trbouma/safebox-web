@@ -1,6 +1,6 @@
 import pytest
 
-from app.silent_payments import derive_nostr_silent_payment_address
+from acorn import BitcoinCapabilityError, derive_nostr_silent_payment_address
 
 
 OPENETR_SCALAR_ONE_NPUB = (
@@ -27,7 +27,7 @@ def test_public_nsp_derivation_is_deterministic() -> None:
     assert first.startswith("sp1")
 
 
-@pytest.mark.parametrize("value", ["", "npub1", "nsec1notaccepted", "hello"])
-def test_public_nsp_derivation_rejects_invalid_or_private_input(value: str) -> None:
-    with pytest.raises(ValueError, match="valid npub"):
+@pytest.mark.parametrize("value", ["", "npub1", "hello"])
+def test_public_nsp_derivation_rejects_invalid_input(value: str) -> None:
+    with pytest.raises(BitcoinCapabilityError, match="valid nsec or npub"):
         derive_nostr_silent_payment_address(value)

@@ -6,14 +6,35 @@ Safebox Web now implements the first user-controlled slice of this design. An
 authenticated user can submit a txid, detect an NSP output belonging to the
 attached Acorn, review the miner fee and destination, and explicitly broadcast
 a self-sweep to a conventional Bitcoin address. Detection and signing occur in
-request-scoped memory through the pinned OpenETR component. Private NSP material
+request-scoped memory through the Safebox Acorn component. Private NSP material
 and signed transaction bytes are not rendered into the browser or persisted by
 Safebox Web.
 
-This implementation is experimental and has unit coverage but has not yet been
-validated end to end with small mainnet receipts. It does not create a provider
-quote, sweep to the service treasurer, deliver ecash, or settle Lightning. Those
-provider obligations remain proposed design work.
+This implementation is experimental and has unit coverage. Mainnet receipt
+detection and sweep construction were successfully validated with a small
+confirmed payment on August 9, 2026. Final broadcast and destination settlement
+remain a separate validation gate. The implementation does not create a
+provider quote, sweep to the service treasurer, deliver ecash, or settle
+Lightning. Those provider obligations remain proposed design work.
+
+## Mainnet validation milestone
+
+The first controlled mainnet validation used
+[transaction `e0732d…b565`](https://blockstream.info/tx/e0732d243c7500c58188b0749fdcf97ca29e4c2bee70cfcf93a8b7aceb17b565).
+Safebox Web successfully:
+
+1. fetched the confirmed transaction from the configured Bitcoin backend;
+2. detected output `vout 0` as controlled by the attached Acorn's NSP keys;
+3. identified the output as confirmed and unspent;
+4. reported the original received value as 2,500 sats; and
+5. constructed a sweep preview sending 2,302 sats after a 198-sat miner fee at
+   the configured 2 sat/vB fee rate.
+
+This validates the public-address derivation, txid-targeted private detection,
+UTXO availability check, destination validation, transaction construction, and
+fee-preview path against an actual mainnet receipt. It does not by itself prove
+the subsequent broadcast, destination confirmation, or any provider-mediated
+Lightning or ecash settlement path.
 
 The design assumes that the final user payout is sat-denominated Cashu ecash
 delivered to the attached Acorn, matching the existing service-worker delivery
@@ -52,9 +73,10 @@ The design follows OpenETR's
 [Nostr Silent Payments specification](https://github.com/trbouma/openetr/blob/main/docs/specs/NOSTR_SILENT_PAYMENTS_SPEC.md),
 [derivation decision](https://github.com/trbouma/openetr/blob/main/docs/specs/SILENT_PAYMENTS_DERIVATION_DECISION_NOTE.md),
 and [Silent Payments design note](https://github.com/trbouma/openetr/blob/main/docs/specs/SILENT_PAYMENTS_DESIGN_NOTE.md).
-OpenETR supplies an identity-derived receiver-key contract on top of the
-transaction-level behavior specified by
+OpenETR supplied the experimental identity-derived receiver-key contract that
+gave genesis to this work on top of the transaction-level behavior specified by
 [BIP-352](https://github.com/bitcoin/bips/blob/master/bip-0352.mediawiki).
+Safebox Acorn is now the canonical implementation owner for that NSP contract.
 
 Under the OpenETR Nostr Silent Payments (NSP) contract, let:
 
@@ -78,18 +100,17 @@ from an `npub` without access to the matching `nsec`. Receipt detection and
 output-private-key reconstruction require the private material derived from the
 matching `nsec`.
 
-Safebox Web must call the installable OpenETR component for this derivation,
-receipt detection, and transaction construction. It must not duplicate the
+Safebox Web must call the installable Safebox Acorn component for this
+derivation, receipt detection, and transaction construction. It must not
+duplicate the
 domain tags, point arithmetic, BIP-352 transaction rules, address encoding, or
 private-output reconstruction in route functions.
 
-The initial implementation pins OpenETR to a reviewed Git revision whose
-Silent Payment operations match current OpenETR main while avoiding an
-unrelated QR-code dependency conflict with Safebox Acorn. OpenETR imports are
-lazy and boundary-wrapped because its Bitcoin dependency currently mutates the
-process-wide Python decimal context during import. Safebox restores that
-context immediately after loading the component. This containment should be
-removed when the upstream import side effect is corrected.
+Safebox Web requests Acorn's optional `bitcoin` dependency profile. Acorn owns
+the implementation and uses BTClib for transaction primitives without loading
+OpenETR at runtime. Acorn contains the BTClib process-wide Decimal-context side
+effect at its package boundary. This containment should be removed when the
+upstream import side effect is corrected.
 
 The configured Bitcoin HTTP backend receives the submitted txid during
 transaction and UTXO lookup. It can therefore correlate the service address,
@@ -125,7 +146,7 @@ third party still reveals which txid the Safebox operator is investigating.
 | --- | --- |
 | Browser | Display the derived address, submit a txid, review a quote, and explicitly authorize the sweep |
 | Safebox Web | Authenticate the attached Acorn, use its request-scoped `nsec`, validate the txid locally, request a worker quote/reservation, construct and broadcast the user-authorized sweep, and create a durable settlement job |
-| OpenETR component | Derive NSP material, inspect the source transaction, detect matched outputs, reconstruct the spend key, construct the BIP-352 payment output, and sign the sweep |
+| Safebox Acorn component | Derive NSP material, inspect the source transaction, detect matched outputs, reconstruct the spend key, construct the Bitcoin transaction, and sign the sweep |
 | Bitcoin/Esplora infrastructure | Return public transaction and UTXO data, fee estimates, confirmations, and broadcast responses |
 | Service Acorn worker | Control the persistent provider `nsec`, derive and scan its own NSP receiver, monitor the durable job, enforce confirmation policy, calculate final settlement, and deliver ecash |
 | Safebox database | Coordinate idempotent quotes and jobs without storing either party's private key |
@@ -285,10 +306,10 @@ still current, and asks OpenETR to construct a transaction that:
 - does not create an undisclosed change output; and
 - signs with the reconstructed private key for that matched user output.
 
-The current OpenETR `create_silent_payment_sweep_result` accepts an ordinary
+The current Acorn `create_silent_payment_sweep_preview` accepts an ordinary
 on-chain destination address. A Silent Payments address is not itself an
 on-chain script and cannot be passed through an ordinary address-to-script
-decoder. Before Safebox Web implements this design, OpenETR needs a component
+decoder. Before Safebox Web implements NSP-to-NSP forwarding, Acorn needs a component
 operation that constructs a BIP-352 destination output from the sweep input,
 for example:
 
@@ -468,7 +489,7 @@ than copying a complete confidential treasury `xpub` into every job.
 
 ## Confirmation, replacement, and reorganization policy
 
-The current OpenETR sweep requires the source output to be a confirmed UTXO.
+The current Acorn sweep requires the source output to be a confirmed UTXO.
 Safebox Web should retain that conservative rule initially.
 
 The worker should also wait for a configured confirmation depth on the sweep
@@ -584,10 +605,11 @@ The settlement page may be refreshed manually at first. WebSockets and browser
 polling are not required for correctness and should not be introduced merely
 to make the status page feel live.
 
-## Required OpenETR component work
+## Required Acorn component work
 
-Safebox Web should not start route implementation until the OpenETR component
-has stable typed operations for:
+Safebox Web already consumes Acorn's initial operations for items 1, 2, 3, 5,
+6, and 7 below. The provider gateway additionally needs stable Acorn operations
+for:
 
 1. NSP address derivation from `npub`;
 2. targeted receipt detection from `nsec` and txid;
@@ -598,12 +620,13 @@ has stable typed operations for:
 7. explicit broadcast with idempotent txid handling; and
 8. service-worker receipt detection for the resulting txid.
 
-The existing `create_silent_payment_sweep_result` is a useful foundation for
-source receipt detection and spending but does not yet satisfy item 4.
+The existing `create_silent_payment_sweep_preview` and
+`broadcast_silent_payment_sweep` operations provide source receipt detection
+and conventional-address spending but do not yet satisfy item 4.
 
 ## Testing strategy
 
-### OpenETR component tests
+### Safebox Acorn component tests
 
 - public `npub` and private `nsec` derivations produce the same NSP address;
 - known BIP-352 vectors and real wallet-produced transactions are detected;

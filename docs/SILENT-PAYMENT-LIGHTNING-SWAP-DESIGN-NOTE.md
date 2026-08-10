@@ -76,7 +76,7 @@ control remain private to the matching key holder.
 | Attached Acorn | Control the NSP receive keys and authorize spending a detected output |
 | Browser | Display the address and quote, submit the txid and payout request, and obtain explicit user confirmation |
 | Safebox Web | Perform request-scoped detection, verify the treasurer signature, and construct the authorized sweep |
-| OpenETR component | Implement private NSP detection, output-key reconstruction, and transaction construction |
+| Safebox Acorn component | Implement private NSP detection, output-key reconstruction, and transaction construction |
 | Service Acorn | Sign quotes and receipts and provide persistent treasurer authority |
 | Service worker | Reserve liquidity, allocate destinations, monitor settlement, and pay Lightning exactly once |
 | Bitcoin Core watch-only wallet | Allocate fresh descriptor-derived treasury addresses atomically |

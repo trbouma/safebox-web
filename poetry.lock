@@ -305,16 +305,16 @@ files = [
 [package.dependencies]
 cbor2 = {version = ">=5.5.0,<6.0.0", markers = "python_version >= \"3.9\""}
 coincurve = [
-    {version = ">=21.0.0", markers = "python_version >= \"3.13\""},
     {version = ">=18.0.0", markers = "python_version == \"3.11\""},
+    {version = ">=21.0.0", markers = "python_version >= \"3.13\""},
     {version = ">=19.0.1", markers = "python_version >= \"3.12\" and python_version < \"3.13\""},
 ]
 crcmod = ">=1.7,<2.0"
 ecdsa = ">=0.17,<1.0"
 ed25519-blake2b-fork = ">=1.4.2,<2.0.0"
 py-sr25519-bindings = [
-    {version = ">=0.2.2,<1.0.0", markers = "python_version >= \"3.13\""},
     {version = ">=0.2.0,<1.0.0", markers = "python_version >= \"3.11\" and python_version < \"3.13\""},
+    {version = ">=0.2.2,<1.0.0", markers = "python_version >= \"3.13\""},
 ]
 pycryptodome = ">=3.15,<4.0"
 pynacl = ">=1.5,<2.0"
@@ -568,8 +568,8 @@ files = [
 
 [package.dependencies]
 cffi = [
-    {version = ">=1.17", markers = "python_version == \"3.13\""},
     {version = ">=1.6", markers = "python_version < \"3.13\""},
+    {version = ">=1.17", markers = "python_version == \"3.13\""},
 ]
 
 [[package]]
@@ -1895,29 +1895,6 @@ files = [
 ]
 
 [[package]]
-name = "openetr"
-version = "0.1.0"
-description = "openetr - durable control portable records"
-optional = false
-python-versions = "^3.10"
-files = []
-develop = false
-
-[package.dependencies]
-btclib = "^2023.7.12"
-click = "^8.1.8"
-mnemonic = "^0.21"
-monstr = "^0.1.9"
-pydantic = "^2.11.7"
-pyyaml = "^6.0.2"
-
-[package.source]
-type = "git"
-url = "https://github.com/trbouma/openetr.git"
-reference = "3ad996aa5a3739afe493e10cbb92e01acc5e67df"
-resolved_reference = "3ad996aa5a3739afe493e10cbb92e01acc5e67df"
-
-[[package]]
 name = "packaging"
 version = "26.3"
 description = "Core utilities for Python packages"
@@ -2775,6 +2752,7 @@ aioconsole = "^0.8.1"
 bech32 = "^1.2.0"
 bip-utils = "^2.9.3"
 bolt11 = "^2.1.0"
+btclib = {version = "2023.7.12", optional = true}
 cbor2 = "^5.6.5"
 click = "^8.1.7"
 coincurve = ">=20.0.0,<22.0.0"
@@ -2794,13 +2772,14 @@ secp256k1 = ">=0.14.0"
 wheel = "^0.43.0"
 
 [package.extras]
+bitcoin = ["btclib (==2023.7.12)"]
 post-quantum = ["liboqs-python (>=0.14.1,<0.17.0)"]
 
 [package.source]
 type = "git"
 url = "https://github.com/trbouma/safebox-acorn.git"
 reference = "main"
-resolved_reference = "46eaeee6fbee112da5c0fae936ae5ec7d861c3aa"
+resolved_reference = "e802709fe1222048cc72bf3768c8dc77e452a73f"
 
 [[package]]
 name = "secp256k1"
@@ -3619,4 +3598,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.14"
-content-hash = "603c35b48c53ece297afbbd5f27ec21f751b28dac7d7831dc8a269c7a0b953ce"
+content-hash = "4d6bf20b9d486aa7da5cf43a1fd9eab788b9084aa36bbaaa574126d529752287"

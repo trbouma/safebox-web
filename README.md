@@ -19,8 +19,8 @@ object control graph, viewpoint-dependent recognition through the social graph,
 and Acorn's spendable funds. Together these let users evaluate and act on
 portable evidence without making Safebox another system of record.
 
-A first experimental Bitcoin workflow derives an attached Acorn's OpenETR
-Nostr Silent Payments address from its `npub`, accepts a user-supplied txid,
+A first experimental Bitcoin workflow uses Safebox Acorn's native Nostr Silent
+Payments capability to derive an address from its `npub`, accept a user-supplied txid,
 detects a matching confirmed output in request-scoped memory, and lets the user
 review and explicitly broadcast a sweep to a Bitcoin address. The configured
 Bitcoin backend sees the txid lookup, but never receives the Acorn key. The
@@ -32,6 +32,9 @@ Bitcoin-to-ecash swap. The planned persistent-worker gateway, root-equivalent
 scan-key constraint, NSP-to-NSP forwarding requirement, durable job model, and
 staged rollout are specified in the
 [Bitcoin Silent Payment Gateway Design Note](docs/BITCOIN-SILENT-PAYMENT-GATEWAY-DESIGN-NOTE.md).
+Confirmed mainnet receipt detection and sweep preview were first validated with
+a controlled 2,500-sat payment on August 9, 2026. Broadcast and destination
+settlement remain a separate live-validation gate.
 The service Acorn's proposed role as a signed on-chain-to-Lightning swap agent
 is detailed in the
 [Silent Payment to Lightning Swap Design Note](docs/SILENT-PAYMENT-LIGHTNING-SWAP-DESIGN-NOTE.md).
