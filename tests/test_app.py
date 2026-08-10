@@ -822,10 +822,16 @@ def test_create_form_displays_default_relay_and_mint() -> None:
     assert '<option value="12" selected>' in response.text
     assert '<option value="24">' in response.text
     assert "Bring your own entropy" in response.text
+    assert 'name="use_external_entropy" type="checkbox"' in response.text
     assert 'name="entropy_hex" type="password"' in response.text
     assert 'name="entropy_confirmation" type="password"' in response.text
-    assert 'pattern="[0-9A-Fa-f]{64}"' in response.text
+    assert 'autocomplete="new-password"' in response.text
+    assert 'pattern="[0-9A-Fa-f]{64}"' not in response.text
     assert "Bring your own record-protection entropy" in response.text
+    assert (
+        'name="use_external_record_protection_entropy" type="checkbox"'
+        in response.text
+    )
     assert 'name="record_protection_entropy_hex" type="password"' in response.text
     assert 'name="record_protection_entropy_confirmation" type="password"' in response.text
     assert 'name="confirmed"' in response.text
@@ -1051,6 +1057,7 @@ def test_create_acorn_uses_external_record_protection_entropy(monkeypatch) -> No
             "csrf_token": valid_csrf_token(),
             "home_relay": "relay.example.com",
             "home_mint": "mint.example.com",
+            "use_external_record_protection_entropy": "yes",
             "record_protection_entropy_hex": rpk_entropy,
             "record_protection_entropy_confirmation": rpk_entropy,
             "confirmed": "yes",
@@ -1077,6 +1084,7 @@ def test_create_acorn_rejects_mismatched_record_protection_entropy() -> None:
             "csrf_token": valid_csrf_token(),
             "home_relay": "relay.example.com",
             "home_mint": "mint.example.com",
+            "use_external_record_protection_entropy": "yes",
             "record_protection_entropy_hex": entropy,
             "record_protection_entropy_confirmation": "05" * 32,
             "confirmed": "yes",
@@ -1099,8 +1107,10 @@ def test_create_acorn_rejects_reused_wallet_and_record_protection_entropy() -> N
             "csrf_token": valid_csrf_token(),
             "home_relay": "relay.example.com",
             "home_mint": "mint.example.com",
+            "use_external_entropy": "yes",
             "entropy_hex": entropy,
             "entropy_confirmation": entropy,
+            "use_external_record_protection_entropy": "yes",
             "record_protection_entropy_hex": entropy.upper(),
             "record_protection_entropy_confirmation": entropy.upper(),
             "confirmed": "yes",
@@ -1164,6 +1174,55 @@ def test_create_acorn_uses_12_words_by_default(monkeypatch) -> None:
     assert generated_strengths == [128]
 
 
+def test_create_acorn_ignores_unselected_autofilled_entropy(monkeypatch) -> None:
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
+    )
+    monkeypatch.setattr(
+        main_module, "generate_record_protection_key", lambda: TEST_RPK
+    )
+    monkeypatch.setattr(
+        main_module,
+        "seed_phrase_and_nsec_from_entropy",
+        lambda supplied: (_ for _ in ()).throw(
+            AssertionError("unchecked wallet entropy must be ignored")
+        ),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "record_protection_key_from_entropy",
+        lambda supplied: (_ for _ in ()).throw(
+            AssertionError("unchecked record-protection entropy must be ignored")
+        ),
+    )
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+            "entropy_hex": "password-manager-wallet-value",
+            "entropy_confirmation": "different-wallet-value",
+            "record_protection_entropy_hex": "password-manager-rpk-value",
+            "record_protection_entropy_confirmation": "different-rpk-value",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 201
+    assert TEST_MNEMONIC in response.text
+    token = client.cookies.get(SECURE_COOKIE_NAME)
+    assert token is not None
+    credentials = SessionCipher(TEST_SETTINGS).decode(token)
+    assert credentials.record_protection_key == TEST_RPK
+
+
 def test_create_acorn_uses_confirmed_external_entropy(monkeypatch) -> None:
     FakeCreatedAcorn.instances.clear()
     entropy_hex = "02" * 32
@@ -1193,6 +1252,7 @@ def test_create_acorn_uses_confirmed_external_entropy(monkeypatch) -> None:
             "home_relay": "relay.example.com",
             "home_mint": "mint.example.com",
             "mnemonic_words": "12",
+            "use_external_entropy": "yes",
             "entropy_hex": entropy_hex,
             "entropy_confirmation": entropy_hex,
             "confirmed": "yes",
@@ -1223,6 +1283,7 @@ def test_create_acorn_rejects_mismatched_external_entropy(monkeypatch) -> None:
             "csrf_token": valid_csrf_token(),
             "home_relay": "relay.example.com",
             "home_mint": "mint.example.com",
+            "use_external_entropy": "yes",
             "entropy_hex": entropy_hex,
             "entropy_confirmation": "03" * 32,
             "confirmed": "yes",
@@ -1244,6 +1305,7 @@ def test_create_acorn_rejects_invalid_external_entropy() -> None:
             "csrf_token": valid_csrf_token(),
             "home_relay": "relay.example.com",
             "home_mint": "mint.example.com",
+            "use_external_entropy": "yes",
             "entropy_hex": invalid_entropy,
             "entropy_confirmation": invalid_entropy,
             "confirmed": "yes",

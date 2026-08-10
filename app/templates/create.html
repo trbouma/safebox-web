@@ -23,16 +23,22 @@ on the home relay, and start a user-controlled session.</p>
     <p id="entropy-help">Optionally supply exactly 32 bytes of externally
     generated entropy as 64 hexadecimal characters. This overrides the
     mnemonic-length choice and produces a 24-word Safebox Acorn mnemonic. Safebox
-    processes the value for this request but does not store it.</p>
+    processes the value for this request but does not store it. Values in the
+    fields below are ignored unless you explicitly select the checkbox.</p>
+    <label>
+      <input name="use_external_entropy" type="checkbox" value="yes"
+             {% if use_external_entropy %}checked{% endif %}>
+      Use externally supplied wallet entropy.
+    </label>
     <label for="entropy_hex">256-bit entropy</label>
     <input id="entropy_hex" name="entropy_hex" type="password"
-           minlength="64" maxlength="64" pattern="[0-9A-Fa-f]{64}"
-           aria-describedby="entropy-help" autocomplete="off"
+           maxlength="64" aria-describedby="entropy-help"
+           autocomplete="new-password"
            spellcheck="false" autocapitalize="none">
     <label for="entropy_confirmation">Repeat 256-bit entropy</label>
     <input id="entropy_confirmation" name="entropy_confirmation" type="password"
-           minlength="64" maxlength="64" pattern="[0-9A-Fa-f]{64}"
-           autocomplete="off" spellcheck="false" autocapitalize="none">
+           maxlength="64" autocomplete="new-password" spellcheck="false"
+           autocapitalize="none">
   </details>
   <details>
     <summary>Bring your own record-protection entropy</summary>
@@ -42,18 +48,25 @@ on the home relay, and start a user-controlled session.</p>
     Acorn derives the key using a record-protection-specific context. This
     value must not be reused as the wallet entropy. Protected records are not
     enabled yet; the resulting working key is held only in the protected,
-    authenticated session cookie.</p>
+    authenticated session cookie. Values in the fields below are ignored unless
+    you explicitly select the checkbox.</p>
+    <label>
+      <input name="use_external_record_protection_entropy" type="checkbox"
+             value="yes"
+             {% if use_external_record_protection_entropy %}checked{% endif %}>
+      Use externally supplied record-protection entropy.
+    </label>
     <label for="record_protection_entropy_hex">Record-protection entropy</label>
     <input id="record_protection_entropy_hex"
            name="record_protection_entropy_hex" type="password"
-           minlength="64" maxlength="64" pattern="[0-9A-Fa-f]{64}"
-           aria-describedby="record-protection-entropy-help" autocomplete="off"
+           maxlength="64" aria-describedby="record-protection-entropy-help"
+           autocomplete="new-password"
            spellcheck="false" autocapitalize="none">
     <label for="record_protection_entropy_confirmation">Repeat record-protection entropy</label>
     <input id="record_protection_entropy_confirmation"
            name="record_protection_entropy_confirmation" type="password"
-           minlength="64" maxlength="64" pattern="[0-9A-Fa-f]{64}"
-           autocomplete="off" spellcheck="false" autocapitalize="none">
+           maxlength="64" autocomplete="new-password" spellcheck="false"
+           autocapitalize="none">
   </details>
   <label>
     <input name="confirmed" type="checkbox" value="yes" required>

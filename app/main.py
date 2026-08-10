@@ -185,6 +185,8 @@ def _create_form(
     csrf_token: str,
     error: str | None = None,
     mnemonic_words: str = "12",
+    use_external_entropy: bool = False,
+    use_external_record_protection_entropy: bool = False,
 ) -> str:
     return render_template(
         "create.html",
@@ -194,6 +196,10 @@ def _create_form(
         csrf_token=csrf_token,
         error=error,
         mnemonic_words=mnemonic_words,
+        use_external_entropy=use_external_entropy,
+        use_external_record_protection_entropy=(
+            use_external_record_protection_entropy
+        ),
     )
 
 
@@ -826,8 +832,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         home_relay: str = Form(...),
         home_mint: str = Form(...),
         mnemonic_words: str = Form("12"),
+        use_external_entropy: str | None = Form(None),
         entropy_hex: str = Form(""),
         entropy_confirmation: str = Form(""),
+        use_external_record_protection_entropy: str | None = Form(None),
         record_protection_entropy_hex: str = Form(""),
         record_protection_entropy_confirmation: str = Form(""),
         confirmed: str | None = Form(None),
@@ -843,6 +851,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     form_token.issue(),
                     message,
                     mnemonic_words=mnemonic_words,
+                    use_external_entropy=(use_external_entropy == "yes"),
+                    use_external_record_protection_entropy=(
+                        use_external_record_protection_entropy == "yes"
+                    ),
                 ),
                 status_code=status_code,
             )
@@ -855,9 +867,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if confirmed != "yes":
             return creation_error("Explicit confirmation is required.")
 
-        supplied_entropy = str(entropy_hex).strip()
-        repeated_entropy = str(entropy_confirmation).strip()
-        uses_external_entropy = bool(supplied_entropy or repeated_entropy)
+        uses_external_entropy = use_external_entropy == "yes"
+        supplied_entropy = (
+            str(entropy_hex).strip() if uses_external_entropy else ""
+        )
+        repeated_entropy = (
+            str(entropy_confirmation).strip() if uses_external_entropy else ""
+        )
         if uses_external_entropy:
             if not supplied_entropy or not repeated_entropy:
                 return creation_error(
@@ -883,12 +899,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 strength=mnemonic_strength
             )
 
-        supplied_rpk_entropy = str(record_protection_entropy_hex).strip()
-        repeated_rpk_entropy = str(
-            record_protection_entropy_confirmation
-        ).strip()
-        uses_external_rpk_entropy = bool(
-            supplied_rpk_entropy or repeated_rpk_entropy
+        uses_external_rpk_entropy = (
+            use_external_record_protection_entropy == "yes"
+        )
+        supplied_rpk_entropy = (
+            str(record_protection_entropy_hex).strip()
+            if uses_external_rpk_entropy
+            else ""
+        )
+        repeated_rpk_entropy = (
+            str(record_protection_entropy_confirmation).strip()
+            if uses_external_rpk_entropy
+            else ""
         )
         if uses_external_rpk_entropy:
             if not supplied_rpk_entropy or not repeated_rpk_entropy:
