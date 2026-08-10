@@ -7,8 +7,8 @@ protected, authenticated browser cookie for this session.</p>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label for="secret_type">Recovery material</label>
   <select id="secret_type" name="secret_type">
-    <option value="nsec">nsec private key</option>
     <option value="mnemonic">Safebox Acorn mnemonic</option>
+    <option value="nsec">nsec private key</option>
   </select>
   <label for="secret">Secret</label>
   <textarea id="secret" name="secret" required spellcheck="false" autocapitalize="none"></textarea>

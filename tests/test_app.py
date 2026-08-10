@@ -663,6 +663,7 @@ def test_login_page_links_to_new_acorn_creation() -> None:
     response = make_https_client().get("/login")
 
     assert response.status_code == 200
+    assert response.text.index('value="mnemonic"') < response.text.index('value="nsec"')
     assert 'href="/create"' in response.text
     assert "Create a new Acorn" in response.text
     assert "Restore protected record access" in response.text
