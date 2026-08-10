@@ -58,6 +58,8 @@ security model, alternatives, compatibility gate, and decision criteria.
 
 This implementation intentionally provides:
 
+- a QR-friendly `/onboard` entry point that offers new-Acorn creation or
+  reconnection and redirects an already attached Acorn to its wallet;
 - creation of a new Acorn with a selected home relay and home mint;
 - login with an `nsec` or BIP39 Safebox Acorn mnemonic;
 - a bootstrap relay;
@@ -247,6 +249,24 @@ backup. Acorn encodes the exact RPK as the separately labelled, checksummed
 creation and requires the user to confirm an offline backup. No current record
 depends on the RPK, and the complete protected-record profile still requires
 implementation and review.
+
+For rapid onboarding, the creation form also offers an explicit **continue now
+and complete recovery later** choice. When selected, Safebox asks Acorn to put
+both mnemonics in its reserved, NIP-44 self-encrypted `deferred_recovery`
+system record and requires relay readback before opening the wallet. Safebox
+does not put the mnemonics in its database or browser cookie. The wallet shows
+a prominent **Recovery Backup Required** warning until the user opens the
+recovery page, displays and saves the safekeeping message, and explicitly
+confirms completion.
+
+Completion removes the generated mnemonic from current wallet metadata,
+requests NIP-09 deletion of the secret-bearing system record, replaces it with
+a non-secret completion marker, and updates the cookie's backup-confirmed flag.
+This is a temporary convenience mechanism, not a durable backup service. While
+it is pending, compromise of the Acorn `nsec` exposes both mnemonics; relay
+deletion is advisory and cannot prove that historical encrypted copies were
+physically erased. Deferral is therefore never selected implicitly and should
+be completed promptly in a quiet, trusted setting.
 
 The creation form offers either a 12-word or 24-word BIP39 Safebox Acorn mnemonic.
 The 12-word option is the default and uses 128 bits of generated entropy; the

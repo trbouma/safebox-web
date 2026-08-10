@@ -17,6 +17,14 @@
 <p id="wallet-address-copy-status" class="wallet-address-copy-status muted"
    role="status" aria-live="polite" hidden></p>
 {% endif %}
+{% if recovery_backup_pending %}
+<section class="recovery-warning" aria-labelledby="recovery-warning-heading">
+  <h2 id="recovery-warning-heading">Recovery Backup Required</h2>
+  <p>This Acorn is ready to use, but its recovery backup has not been
+  completed. Finish it later from a private, quiet place.</p>
+  <a class="nav-button" href="/recovery">Complete Recovery Backup</a>
+</section>
+{% endif %}
 <section class="wallet-balance" aria-labelledby="wallet-balance-heading">
   <h2 id="wallet-balance-heading">Balance</h2>
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
@@ -29,6 +37,7 @@
   <a href="/transactions">View transaction history</a>
   <a href="/records">Manage Records</a>
   <a href="/handle">Claim or view a NIP-05 handle</a>
+  <a href="/onboard/friend">Onboard a Friend</a>
 </nav>
 {% if silent_payment_address %}
 <details class="receive-payment-card silent-payment-card">

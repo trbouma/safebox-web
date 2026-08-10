@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="error"><strong>Your recovery backup is not complete.</strong></p>
+<p>Safebox temporarily stored both recovery mnemonics in an encrypted Acorn
+system record so you could begin using the wallet immediately. Display them
+only when you are in a private, quiet place and ready to save them.</p>
+<p>Until this process is completed, anyone who obtains the Acorn private key
+can retrieve both mnemonics. Deletion requests sent to relays are advisory and
+cannot guarantee erasure from every relay or replica.</p>
+<form method="post" action="/recovery/display">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I am in a private place and understand that sensitive recovery material
+    will be displayed.
+  </label>
+  <button type="submit">Display Recovery Material</button>
+</form>
+{% endblock %}

@@ -187,6 +187,7 @@ def _create_form(
     mnemonic_words: str = "12",
     use_external_entropy: bool = False,
     use_external_record_protection_entropy: bool = False,
+    defer_recovery: bool = False,
 ) -> str:
     return render_template(
         "create.html",
@@ -200,6 +201,7 @@ def _create_form(
         use_external_record_protection_entropy=(
             use_external_record_protection_entropy
         ),
+        defer_recovery=defer_recovery,
     )
 
 
@@ -650,6 +652,7 @@ def _qr_svg(payload: str, *, include_acorn: bool = False) -> str:
     qr.make(fit=True)
     image = qr.make_image(image_factory=qrcode.image.svg.SvgPathImage)
     svg = image.to_string(encoding="unicode")
+    svg = svg.replace("<svg ", '<svg class="qr-code" ', 1)
     svg = svg.replace(
         "><path",
         '><rect id="qr-background" width="100%" height="100%" fill="#ffffff" />'
@@ -814,6 +817,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return RedirectResponse("/wallet", status_code=303)
         return render_template("home.html", title="Safebox")
 
+    @app.get("/onboard", response_class=HTMLResponse)
+    async def onboard(request: Request):
+        """Provide a QR-friendly entry point for a new or existing Acorn."""
+
+        settings = request.app.state.settings
+        session_token = request.cookies.get(cookie_name_for_request(request))
+        if session_token:
+            try:
+                SessionCipher(settings).decode(session_token)
+            except ValueError:
+                pass
+            else:
+                return RedirectResponse("/wallet", status_code=303)
+        return render_template(
+            "onboard.html",
+            title="Welcome to Safebox",
+        )
+
+    @app.get("/onboard/friend", response_class=HTMLResponse)
+    async def onboard_friend(
+        request: Request,
+        credentials: CredentialsDependency,
+    ) -> HTMLResponse:
+        """Present the public onboarding entry point as a scannable QR code."""
+
+        _ = credentials
+        onboarding_url = str(request.url_for("onboard"))
+        return HTMLResponse(
+            render_template(
+                "onboard_friend.html",
+                title="Onboard a Friend",
+                onboarding_url=onboarding_url,
+                onboarding_qr=_qr_svg(onboarding_url, include_acorn=True),
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.get("/login", response_class=HTMLResponse)
     async def login_form(request: Request) -> str:
         settings = request.app.state.settings
@@ -844,6 +884,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         use_external_record_protection_entropy: str | None = Form(None),
         record_protection_entropy_hex: str = Form(""),
         record_protection_entropy_confirmation: str = Form(""),
+        defer_recovery: str | None = Form(None),
         confirmed: str | None = Form(None),
     ):
         settings = request.app.state.settings
@@ -861,6 +902,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     use_external_record_protection_entropy=(
                         use_external_record_protection_entropy == "yes"
                     ),
+                    defer_recovery=(defer_recovery == "yes"),
                 ),
                 status_code=status_code,
             )
@@ -994,6 +1036,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         protected_record_mnemonic = record_protection_recovery_phrase(
             record_protection_key
         )
+        deferred_recovery_error = None
+        if defer_recovery == "yes":
+            try:
+                deferred_state = await asyncio.wait_for(
+                    acorn.store_deferred_recovery(
+                        seed_phrase=seed_phrase,
+                        record_protection_key=record_protection_key,
+                    ),
+                    timeout=settings.wallet_load_timeout_seconds,
+                )
+                if not (
+                    deferred_state.get("pending")
+                    and deferred_state.get("verified")
+                ):
+                    raise RuntimeError("deferred recovery readback was not verified")
+            except TimeoutError:
+                logger.warning(
+                    "deferred recovery storage timed out relay=%s",
+                    normalized_relay,
+                )
+                deferred_recovery_error = (
+                    "Safebox could not verify temporary recovery storage. "
+                    "Save the recovery material on this page before continuing."
+                )
+            except Exception as exc:
+                logger.warning(
+                    "deferred recovery storage failed relay=%s error_type=%s",
+                    normalized_relay,
+                    type(exc).__name__,
+                )
+                deferred_recovery_error = (
+                    "Safebox could not safely defer recovery. Save the recovery "
+                    "material on this page before continuing."
+                )
+            else:
+                response = RedirectResponse("/wallet", status_code=303)
+                set_session_cookie(
+                    response,
+                    request=request,
+                    settings=settings,
+                    credentials=credentials,
+                )
+                return response
         response = HTMLResponse(
             render_template(
                 "new_acorn.html",
@@ -1012,6 +1097,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     home_mint=normalized_mint,
                 ),
                 record_protection_csrf_token=CsrfProtector(settings).issue(),
+                deferred_recovery=False,
+                error=deferred_recovery_error,
             ),
             status_code=201,
         )
@@ -1087,6 +1174,173 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             request=request,
             settings=settings,
             credentials=credentials,
+        )
+        return response
+
+    @app.get("/recovery", response_class=HTMLResponse)
+    async def deferred_recovery_warning(
+        request: Request,
+        acorn: LoadedAcornDependency,
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        try:
+            state = await asyncio.wait_for(
+                acorn.get_deferred_recovery_status(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "deferred recovery status failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Recovery status unavailable",
+                    "<p>Safebox could not read the deferred recovery state. "
+                    "Try again before disconnecting this Acorn.</p>"
+                    '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=502,
+                headers={"Cache-Control": "no-store"},
+            )
+        if not state.get("pending"):
+            return HTMLResponse(
+                _page(
+                    "Recovery backup is not pending",
+                    "<p>This Acorn does not have a pending temporary recovery bundle.</p>"
+                    '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
+                ),
+                headers={"Cache-Control": "no-store"},
+            )
+        return HTMLResponse(
+            render_template(
+                "deferred_recovery_warning.html",
+                title="Complete Recovery Backup",
+                csrf_token=CsrfProtector(settings).issue(),
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/recovery/display", response_class=HTMLResponse)
+    async def display_deferred_recovery(
+        request: Request,
+        acorn: LoadedAcornDependency,
+        csrf_token: str = Form(...),
+        confirmed: str | None = Form(None),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token) or confirmed != "yes":
+            return HTMLResponse(
+                _page(
+                    "Recovery material not displayed",
+                    "<p>Valid confirmation is required.</p>"
+                    '<p><a class="nav-button" href="/recovery">Return</a></p>',
+                ),
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
+        try:
+            recovery = await asyncio.wait_for(
+                acorn.get_deferred_recovery(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "deferred recovery display failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Recovery material unavailable",
+                    "<p>Safebox could not retrieve and validate the temporary "
+                    "recovery bundle.</p>"
+                    '<p><a class="nav-button" href="/recovery">Try again</a></p>',
+                ),
+                status_code=502,
+                headers={"Cache-Control": "no-store"},
+            )
+        if not recovery.get("pending"):
+            return RedirectResponse("/wallet", status_code=303)
+        return HTMLResponse(
+            render_template(
+                "deferred_recovery.html",
+                title="Recovery Material",
+                safekeeping_message=_safekeeping_message(
+                    acorn_mnemonic=recovery["acorn_mnemonic"],
+                    protected_record_mnemonic=recovery[
+                        "protected_record_mnemonic"
+                    ],
+                    npub=acorn.pubkey_bech32,
+                    home_relay=acorn.home_relay,
+                    home_mint=acorn.home_mint,
+                ),
+                csrf_token=CsrfProtector(settings).issue(),
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/recovery/confirm")
+    async def confirm_deferred_recovery(
+        request: Request,
+        credentials: CredentialsDependency,
+        acorn: LoadedAcornDependency,
+        csrf_token: str = Form(...),
+        confirmed: str | None = Form(None),
+    ):
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token) or confirmed != "yes":
+            return HTMLResponse(
+                _page(
+                    "Recovery backup not confirmed",
+                    "<p>Valid confirmation is required.</p>"
+                    '<p><a class="nav-button" href="/recovery">Return</a></p>',
+                ),
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
+        try:
+            recovery = await asyncio.wait_for(
+                acorn.get_deferred_recovery(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+            if not recovery.get("pending"):
+                raise ValueError("no deferred recovery backup is pending")
+            record_protection_key = record_protection_key_from_recovery_phrase(
+                recovery["protected_record_mnemonic"]
+            )
+            result = await asyncio.wait_for(
+                acorn.complete_deferred_recovery(),
+                timeout=settings.payment_timeout_seconds,
+            )
+            if not result.get("completed"):
+                raise RuntimeError("recovery cleanup was not completed")
+        except Exception as exc:
+            logger.warning(
+                "deferred recovery completion failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Recovery backup remains pending",
+                    "<p>Safebox could not verify removal of the current recovery "
+                    "material. The warning will remain; try again before "
+                    "disconnecting.</p>"
+                    '<p><a class="nav-button" href="/recovery">Return</a></p>',
+                ),
+                status_code=502,
+                headers={"Cache-Control": "no-store"},
+            )
+        updated_credentials = replace(
+            credentials,
+            record_protection_key=record_protection_key,
+            record_protection_backup_confirmed=True,
+        )
+        response = RedirectResponse("/wallet", status_code=303)
+        set_session_cookie(
+            response,
+            request=request,
+            settings=settings,
+            credentials=updated_credentials,
         )
         return response
 
@@ -1265,6 +1519,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "silent payment public derivation unavailable error_type=%s",
                 type(exc).__name__,
             )
+        recovery_backup_pending = False
+        try:
+            recovery_state = await asyncio.wait_for(
+                acorn.get_deferred_recovery_status(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+            recovery_backup_pending = bool(recovery_state.get("pending"))
+        except Exception as exc:
+            logger.warning(
+                "deferred recovery status unavailable error_type=%s",
+                type(exc).__name__,
+            )
         verification, verification_error = await _read_proof_verification(
             acorn,
             settings.wallet_load_timeout_seconds,
@@ -1293,6 +1559,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 session_credentials is not None
                 and session_credentials.record_protection_backup_confirmed
             ),
+            recovery_backup_pending=recovery_backup_pending,
             nip05_address=nip05_address,
             lightning_lnurl=lightning_lnurl,
             address_qr=address_qr,

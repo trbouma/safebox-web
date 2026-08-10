@@ -9,12 +9,15 @@ from fastapi.templating import Jinja2Templates
 TEMPLATE_DIRECTORY = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIRECTORY))
 
-_MAIN_TEMPLATES = {"home.html", "wallet.html"}
+_MAIN_TEMPLATES = {"home.html", "onboard.html", "wallet.html"}
 _PARENT_NAVIGATION = {
     "blob_upload.html": ("/records", "Back to Records"),
     "deposit.html": ("/wallet", "Back to Wallet"),
     "deposit_invoice.html": ("/deposit", "Back to Deposit"),
+    "deferred_recovery.html": ("/recovery", "Back to Recovery"),
+    "deferred_recovery_warning.html": ("/wallet", "Back to Wallet"),
     "handle.html": ("/wallet", "Back to Wallet"),
+    "onboard_friend.html": ("/wallet", "Back to Wallet"),
     "pay.html": ("/wallet", "Back to Wallet"),
     "pay_invoice.html": ("/scan/lightning", "Back to Scanner"),
     "payment_result.html": ("/wallet", "Back to Wallet"),

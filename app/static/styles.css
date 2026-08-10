@@ -44,6 +44,10 @@ a { color: var(--link); }
 .nav-button:hover, .nav-button:focus-visible { border-color: var(--link); color: var(--link); }
 .page-navigation { display: grid; gap: .65rem; margin: 0 0 1.5rem; }
 .page-navigation .nav-button { width: 100%; }
+.onboard-actions { display: grid; gap: .75rem; margin: 1.5rem 0; }
+.onboard-actions .nav-button { width: 100%; }
+.onboard-advisory { margin-top: 1.5rem; padding: 1rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface-soft); color: var(--muted); }
+.onboard-advisory p { margin: 0; }
 label { display: block; margin-top: 1rem; }
 input, select, textarea, button { box-sizing: border-box; font: inherit; min-height: 2.75rem; padding: .6rem; width: 100%; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); }
 input[type="checkbox"] { min-height: auto; width: auto; margin-right: .45rem; }
@@ -64,6 +68,10 @@ button:disabled { cursor: wait; opacity: .65; }
 .wallet-address-qr svg { width: min(100%, 20rem); height: auto; }
 .wallet-address-copy-status { margin: -.25rem 0 .75rem; text-align: center; }
 .wallet-balance { margin: 1rem 0 1.5rem; padding: 1.35rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); text-align: center; }
+.recovery-warning { margin: 1rem 0 1.5rem; padding: 1rem; border: 2px solid var(--error); border-radius: .8rem; background: var(--surface-soft); }
+.recovery-warning h2 { margin: 0 0 .4rem; color: var(--error); font-size: 1.1rem; }
+.recovery-warning p { margin: 0 0 .85rem; }
+.recovery-warning .nav-button { width: 100%; }
 .wallet-balance h2 { margin: 0; color: var(--muted); font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
 .wallet-balance-amount { margin: .3rem 0 0; color: var(--link); font-size: clamp(2.5rem, 10vw, 4.25rem); font-weight: 800; line-height: 1.05; }
 .wallet-balance-amount span { font-size: .32em; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
@@ -101,6 +109,7 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .openetr-warning { color: var(--advisory); }
 .invoice-qr { display: flex; justify-content: center; margin: 1.5rem 0; }
 .invoice-qr svg { width: min(100%, 22rem); height: auto; }
+.qr-code { display: block; overflow: hidden; border-radius: 1rem; background: #fff; }
 .receive-payment-card { margin: 1.25rem 0; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
 .receive-payment-card > summary { cursor: pointer; padding: 1rem; color: var(--text); font-weight: 700; }
 .receive-payment-card[open] > summary { border-bottom: 1px solid var(--note-border); }

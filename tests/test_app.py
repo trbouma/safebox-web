@@ -159,9 +159,24 @@ class FakeLoadedAcorn:
         self.record_transfer_inspect_calls: list[dict] = []
         self.record_transfer_accept_calls: list[dict] = []
         self.record_transfer_delete_calls: list[dict] = []
+        self.deferred_recovery_state = {"status": "ABSENT", "pending": False}
+        self.deferred_recovery = {"status": "ABSENT", "pending": False}
+        self.deferred_recovery_complete_calls = 0
 
     async def load_data(self) -> None:
         self.loaded = True
+
+    async def get_deferred_recovery_status(self) -> dict:
+        return self.deferred_recovery_state
+
+    async def get_deferred_recovery(self) -> dict:
+        return self.deferred_recovery
+
+    async def complete_deferred_recovery(self) -> dict:
+        self.deferred_recovery_complete_calls += 1
+        self.deferred_recovery_state = {"status": "COMPLETE", "pending": False}
+        self.deferred_recovery = {"status": "COMPLETE", "pending": False}
+        return {"status": "COMPLETE", "pending": False, "completed": True}
 
     async def check_proofs(self) -> dict:
         return {
@@ -275,6 +290,13 @@ class FakeLoadedAcorn:
         return self.receive_result
 
 
+def stub_deferred_recovery_status(acorn) -> None:
+    async def absent_status() -> dict:
+        return {"status": "ABSENT", "pending": False}
+
+    acorn.get_deferred_recovery_status = absent_status
+
+
 class FakeCreatedAcorn:
     instances: list["FakeCreatedAcorn"] = []
 
@@ -283,6 +305,7 @@ class FakeCreatedAcorn:
         self.pubkey_bech32 = "npub1newcomponent"
         self.created_seed_phrase: str | None = None
         self.loaded = False
+        self.deferred_recovery_store_calls: list[dict] = []
         self.__class__.instances.append(self)
 
     async def create_instance(self, seed_phrase: str) -> str:
@@ -291,6 +314,10 @@ class FakeCreatedAcorn:
 
     async def load_data(self) -> None:
         self.loaded = True
+
+    async def store_deferred_recovery(self, **kwargs) -> dict:
+        self.deferred_recovery_store_calls.append(kwargs)
+        return {"status": "PENDING", "pending": True, "verified": True}
 
 
 class FakeBlobAcorn(FakeLoadedAcorn):
@@ -521,6 +548,92 @@ def test_root_keeps_landing_page_for_invalid_session() -> None:
     assert "Connect an Acorn" in response.text
 
 
+def test_onboard_offers_new_and_existing_acorn_paths() -> None:
+    response = make_https_client().get("/onboard")
+
+    assert response.status_code == 200
+    assert "Welcome to Safebox" in response.text
+    assert 'href="/create"' in response.text
+    assert "Create a New Acorn" in response.text
+    assert 'href="/login"' in response.text
+    assert "Use an Existing Acorn" in response.text
+    assert "sensitive recovery material" in response.text
+
+
+def test_onboard_redirects_valid_existing_session_to_wallet() -> None:
+    client = make_https_client()
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        SessionCipher(TEST_SETTINGS).encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+            )
+        ),
+        domain="safebox.example",
+        path="/",
+    )
+
+    response = client.get("/onboard", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/wallet"
+
+
+def test_onboard_ignores_invalid_session_and_offers_recovery_paths() -> None:
+    client = make_https_client()
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        "invalid-session",
+        domain="safebox.example",
+        path="/",
+    )
+
+    response = client.get("/onboard", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "Create a New Acorn" in response.text
+    assert "Use an Existing Acorn" in response.text
+
+
+def test_connected_wallet_can_show_friend_onboarding_qr(monkeypatch) -> None:
+    qr_payloads: list[tuple[str, bool]] = []
+
+    def recording_qr_svg(payload: str, *, include_acorn: bool = False) -> str:
+        qr_payloads.append((payload, include_acorn))
+        return "<svg id=\"friend-onboarding-qr\"></svg>"
+
+    monkeypatch.setattr(main_module, "_qr_svg", recording_qr_svg)
+    client = make_https_client()
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        SessionCipher(TEST_SETTINGS).encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+            )
+        ),
+        domain="safebox.example",
+        path="/",
+    )
+
+    response = client.get("/onboard/friend")
+
+    assert response.status_code == 200
+    assert "Onboard a Friend" in response.text
+    assert 'id="friend-onboarding-qr"' in response.text
+    assert "https://safebox.example/onboard" in response.text
+    assert qr_payloads == [("https://safebox.example/onboard", True)]
+    assert "not included in" in response.text
+    assert "only the public Safebox onboarding link" in response.text
+
+
+def test_friend_onboarding_qr_requires_connected_acorn() -> None:
+    response = make_https_client().get("/onboard/friend")
+
+    assert response.status_code == 401
+
+
 def test_progress_script_is_served_from_same_origin() -> None:
     response = make_https_client().get("/static/forms.js")
 
@@ -623,10 +736,28 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert 'class="page-navigation"' not in response.text
     assert '<a href="/deposit">Deposit funds</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text
+    assert '<a href="/onboard/friend">Onboard a Friend</a>' in response.text
     assert '<section class="wallet-balance"' in response.text
     assert "321 <span>sats</span>" in response.text
     assert response.text.index("wallet-balance") < response.text.index("wallet-actions")
     assert response.text.index("wallet-actions") < response.text.index("Component public key")
+
+
+def test_wallet_prominently_warns_while_recovery_backup_is_pending(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    fake = FakeLoadedAcorn()
+    fake.deferred_recovery_state = {"status": "PENDING", "pending": True}
+    app.dependency_overrides[get_loaded_acorn] = lambda: fake
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "Recovery Backup Required" in response.text
+    assert 'href="/recovery"' in response.text
+    assert response.text.index("Recovery Backup Required") < response.text.index(
+        "wallet-balance"
+    )
 
 
 def test_wallet_shows_collapsible_silent_payment_address_and_qr(tmp_path) -> None:
@@ -834,6 +965,8 @@ def test_create_form_displays_default_relay_and_mint() -> None:
     )
     assert 'name="record_protection_entropy_hex" type="password"' in response.text
     assert 'name="record_protection_entropy_confirmation" type="password"' in response.text
+    assert 'name="defer_recovery" type="checkbox"' in response.text
+    assert "complete the recovery backup later" in response.text
     assert 'name="confirmed"' in response.text
 
 
@@ -886,6 +1019,7 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
     }
     assert created.created_seed_phrase == TEST_MNEMONIC
     assert created.loaded is True
+    assert created.deferred_recovery_store_calls == []
     assert generated_strengths == [256]
 
     token = client.cookies.get(SECURE_COOKIE_NAME)
@@ -898,6 +1032,94 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
     assert credentials.bootstrap_relay == "wss://relay.example.com"
     assert credentials.record_protection_key == TEST_RPK
     assert credentials.record_protection_backup_confirmed is False
+
+
+def test_create_acorn_can_defer_recovery_and_open_wallet(monkeypatch) -> None:
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
+    )
+    monkeypatch.setattr(
+        main_module, "generate_record_protection_key", lambda: TEST_RPK
+    )
+    client = make_https_client()
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "home_relay": "relay.example.com",
+            "home_mint": "mint.example.com",
+            "defer_recovery": "yes",
+            "confirmed": "yes",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/wallet"
+    assert TEST_MNEMONIC not in response.text
+    created = FakeCreatedAcorn.instances[0]
+    assert created.deferred_recovery_store_calls == [
+        {
+            "seed_phrase": TEST_MNEMONIC,
+            "record_protection_key": TEST_RPK,
+        }
+    ]
+    token = client.cookies.get(SECURE_COOKIE_NAME)
+    credentials = SessionCipher(TEST_SETTINGS).decode(token)
+    assert credentials.record_protection_backup_confirmed is False
+
+
+def test_deferred_recovery_display_and_completion_updates_session() -> None:
+    app = create_app(TEST_SETTINGS)
+    fake = FakeLoadedAcorn()
+    fake.deferred_recovery_state = {"status": "PENDING", "pending": True}
+    fake.deferred_recovery = {
+        "status": "PENDING",
+        "pending": True,
+        "acorn_mnemonic": TEST_MNEMONIC,
+        "protected_record_mnemonic": TEST_RPK_PHRASE,
+    }
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+        record_protection_key=None,
+        record_protection_backup_confirmed=False,
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: fake
+    app.dependency_overrides[get_session_credentials] = lambda: credentials
+    client = TestClient(app, base_url="https://safebox.example")
+
+    warning = client.get("/recovery")
+    assert warning.status_code == 200
+    assert "Your recovery backup is not complete" in warning.text
+    assert TEST_MNEMONIC not in warning.text
+
+    displayed = client.post(
+        "/recovery/display",
+        data={"csrf_token": valid_csrf_token(), "confirmed": "yes"},
+    )
+    assert displayed.status_code == 200
+    assert TEST_MNEMONIC in displayed.text
+    assert TEST_RPK_PHRASE in displayed.text
+    assert displayed.headers["cache-control"] == "no-store"
+
+    completed = client.post(
+        "/recovery/confirm",
+        data={"csrf_token": valid_csrf_token(), "confirmed": "yes"},
+        follow_redirects=False,
+    )
+    assert completed.status_code == 303
+    assert completed.headers["location"] == "/wallet"
+    assert fake.deferred_recovery_complete_calls == 1
+    token = client.cookies.get(SECURE_COOKIE_NAME)
+    updated = SessionCipher(TEST_SETTINGS).decode(token)
+    assert updated.record_protection_key == TEST_RPK
+    assert updated.record_protection_backup_confirmed is True
 
 
 def test_record_protection_recovery_display_requires_confirmation_and_marks_backup() -> None:
@@ -1507,6 +1729,7 @@ def test_connected_acorn_can_claim_and_resolve_a_nip05_handle(tmp_path) -> None:
         home_relay="wss://relay.one.example",
         relays=["wss://relay.one.example"],
     )
+    stub_deferred_recovery_status(acorn)
     app.dependency_overrides[get_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
@@ -1608,6 +1831,7 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
         home_relay="wss://relay.one.example",
         relays=["wss://relay.one.example"],
     )
+    stub_deferred_recovery_status(acorn)
     app.dependency_overrides[get_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
@@ -1655,6 +1879,7 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
 def test_invoice_qr_is_black_and_white_without_centre_mark() -> None:
     svg = main_module._invoice_svg("lnbc1pytest")
 
+    assert 'class="qr-code"' in svg
     assert 'id="qr-background"' in svg
     assert 'fill="#ffffff"' in svg
     assert 'id="qr-path" fill="#000000"' in svg
@@ -1669,6 +1894,7 @@ def test_wallet_hides_address_qr_when_payment_provider_is_disabled(tmp_path) -> 
         home_relay="wss://relay.one.example",
         relays=["wss://relay.one.example"],
     )
+    stub_deferred_recovery_status(acorn)
     app.dependency_overrides[get_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
@@ -2585,7 +2811,7 @@ def test_record_offers_on_demand_openetr_history_without_querying(monkeypatch) -
 
     assert response.status_code == 200
     assert 'id="openetr-history"' in response.text
-    assert "Load OpenETR History" in response.text
+    assert "Load Control History" in response.text
     assert "openetr=1#openetr-history" in response.text.replace("&amp;", "&")
     assert queried is False
 

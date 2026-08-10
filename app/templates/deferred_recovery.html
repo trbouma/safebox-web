@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="error"><strong>Save this recovery material in a protected location.</strong></p>
+<label for="safekeeping-message">Safebox Acorn safekeeping message</label>
+<textarea id="safekeeping-message" class="safekeeping-message" rows="16"
+          readonly spellcheck="false" autocapitalize="none">{{ safekeeping_message }}</textarea>
+<button type="button" data-copy-target="safekeeping-message"
+        data-copy-status="safekeeping-copy-status">Copy Safekeeping Message</button>
+<p id="safekeeping-copy-status" class="progress" role="status"
+   aria-live="polite"></p>
+<p class="muted">Clipboard managers, synchronized devices, browser extensions,
+and other applications may retain copied recovery material. Clear the clipboard
+after saving it in the intended protected location.</p>
+<form method="post" action="/recovery/confirm">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I saved both mnemonics in a protected location. Remove the temporary
+    recovery material from current Acorn state.
+  </label>
+  <button type="submit">Confirm Backup and Remove Temporary Copy</button>
+</form>
+{% endblock %}

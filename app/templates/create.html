@@ -69,9 +69,19 @@ on the home relay, and start a user-controlled session.</p>
            autocapitalize="none">
   </details>
   <label>
+    <input name="defer_recovery" type="checkbox" value="yes"
+           {% if defer_recovery %}checked{% endif %}>
+    Continue to the wallet now and complete the recovery backup later.
+  </label>
+  <p class="muted">When selected, Acorn temporarily stores both recovery
+  mnemonics in an encrypted reserved record on the home relay. Until you
+  complete the backup, anyone with the Acorn private key can retrieve both
+  mnemonics. Relay deletion is advisory and cannot guarantee erasure from
+  every replica.</p>
+  <label>
     <input name="confirmed" type="checkbox" value="yes" required>
-    I understand that Safebox will display sensitive recovery material once the
-    new Acorn has been verified, and I must save it securely.
+    I understand that this creates sensitive recovery material and that I must
+    save it securely now or complete the persistent recovery warning later.
   </label>
   <button type="submit">Create Acorn</button>
 </form>

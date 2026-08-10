@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Safebox lets you create a new Acorn or reconnect one you already control.
+An Acorn keeps its keys, funds, and records portable across applications and
+infrastructure.</p>
+
+<section class="onboard-actions" aria-label="Safebox onboarding choices">
+  <a class="nav-button" href="/create">Create a New Acorn</a>
+  <a class="nav-button" href="/login">Use an Existing Acorn</a>
+</section>
+
+<aside class="onboard-advisory">
+  <p>Creating an Acorn will display sensitive recovery material. Save both
+  mnemonics before leaving the recovery page. Safebox cannot recover them for
+  you.</p>
+</aside>
+{% endblock %}

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+{% if error %}<p class="error"><strong>{{ error }}</strong></p>{% endif %}
 <p class="error"><strong>Save this recovery material now.</strong> Anyone who
 obtains it can control this Acorn and its funds and records.</p>
 <p>The safekeeping message contains both independently labelled mnemonics and
