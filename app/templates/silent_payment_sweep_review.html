@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<p><a href="/wallet">← Back to wallet</a></p>
+<p><a class="nav-button" href="/wallet">← Back to wallet</a></p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 {% if preview %}
 <p class="error"><strong>Review carefully.</strong> Broadcasting this transaction

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<p><a href="/wallet">← Back to wallet</a></p>
+<p><a class="nav-button" href="/wallet">← Back to wallet</a></p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 {% if existing %}
 <p>This Acorn controls <strong>{{ existing.claimed_handle }}@{{ host }}</strong>.</p>
@@ -25,7 +25,7 @@ to this directory.</p>
   <button type="submit">{% if existing %}Update{% else %}Claim{% endif %} handle</button>
 </form>
 {% if existing %}
-<p><a href="/.well-known/nostr.json?name={{ existing.claimed_handle | urlencode }}">View public NIP-05 response</a></p>
+<p><a class="nav-button" href="/.well-known/nostr.json?name={{ existing.claimed_handle | urlencode }}">View public NIP-05 response</a></p>
 <hr>
 <form method="post" action="/handle/remove">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<p><a href="/wallet">← Back to wallet</a></p>
+<p><a class="nav-button" href="/wallet">← Back to wallet</a></p>
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
 <section aria-labelledby="receive-ecash-heading">
   <h2 id="receive-ecash-heading">Incoming ecash</h2>
@@ -36,5 +36,5 @@
 {% else %}
 <p>No transaction history was found.</p>
 {% endif %}
-<p><a href="/wallet">Return to wallet</a></p>
+<p><a class="nav-button" href="/wallet">Return to wallet</a></p>
 {% endblock %}

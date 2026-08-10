@@ -14,7 +14,7 @@
     <img src="{{ blob_inline_url }}" alt="Image attached to {{ label }}">
   </figure>
   {% elif blob_preview == "pdf" %}
-  <p><a class="pdf-open-link" href="{{ blob_inline_url }}">Open PDF full screen</a></p>
+  <p><a class="pdf-open-link nav-button" href="{{ blob_inline_url }}">Open PDF full screen</a></p>
   <div class="blob-preview blob-preview-pdf" data-pdf-viewer
     data-pdf-url="{{ blob_inline_url }}" aria-label="PDF attached to {{ label }}">
     <p data-pdf-status role="status">Loading PDF…</p>
@@ -31,10 +31,10 @@
   {% else %}
   <p>No inline preview is available{% if blob_type %} for <code>{{ blob_type }}</code>{% endif %}.</p>
   {% endif %}
-  <p><a href="{{ blob_url }}">Download Original Record</a></p>
+  <p><a class="nav-button" href="{{ blob_url }}">Download Original Record</a></p>
 </section>
 {% endif %}
-<p><a href="{{ edit_url }}">Edit this record</a></p>
+<p><a class="nav-button" href="{{ edit_url }}">Edit this record</a></p>
 <section class="danger-zone" aria-labelledby="delete-record-heading">
   <h2 id="delete-record-heading">Delete this record</h2>
   <p>This requests deletion of the private record{% if has_blob %} and its Original Record{% endif %}.</p>
@@ -47,5 +47,5 @@
     <button class="danger-button" type="submit">Delete this record{% if has_blob %} and Original Record{% endif %}</button>
   </form>
 </section>
-<p><a href="/records">Return to records</a></p>
+<p><a class="nav-button" href="/records">Return to records</a></p>
 {% endblock %}

@@ -13,7 +13,7 @@ available for one payment.</p>
   <input id="lightning_address" name="lightning_address" type="text"
          value="{{ lightning_address }}" placeholder="alice@example.com" required
          spellcheck="false" autocapitalize="none" autocomplete="off">
-  <p><a href="/scan/lightning">Scan a Lightning address or invoice QR code</a></p>
+  <p><a class="nav-button" href="/scan/lightning">Scan a Lightning address or invoice QR code</a></p>
   <label for="amount">Amount in sats</label>
   <input id="amount" name="amount" type="number" min="1" step="1" required>
   <label for="comment">Comment</label>
@@ -25,5 +25,5 @@ available for one payment.</p>
   </label>
   <button type="submit">Send payment</button>
 </form>
-<p><a href="/wallet">Cancel and return to wallet</a></p>
+<p><a class="nav-button" href="/wallet">Cancel and return to wallet</a></p>
 {% endblock %}

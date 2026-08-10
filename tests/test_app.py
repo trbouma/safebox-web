@@ -422,6 +422,7 @@ def test_page_displays_acorn_safebox_relationship_visual() -> None:
     response = make_https_client().get("/")
 
     assert response.status_code == 200
+    assert 'class="nav-button" href="/login"' in response.text
     assert 'aria-label="Acorn connected with Safebox"' in response.text
     assert 'role="img" aria-label="Acorn"' in response.text
     assert 'role="img" aria-label="Safebox"' in response.text
@@ -1463,14 +1464,15 @@ def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
     assert 'fill="#ffffff"' in wallet_page.text
     assert 'id="qr-path" fill="#000000"' in wallet_page.text
     assert 'id="acorn-qr-mark"' in wallet_page.text
-    assert "General advisory" in wallet_page.text
+    assert '<details class="general-advisories">' in wallet_page.text
+    assert "<summary>Advisories</summary>" in wallet_page.text
     assert "Ecash message retention" in wallet_page.text
     assert "for 1 week after publication" in wallet_page.text
     assert "Relay enforcement and physical deletion can vary" in wallet_page.text
     assert wallet_page.text.index("Receive Lightning") < wallet_page.text.index(
         "Receive Silent Payment"
     )
-    assert wallet_page.text.index("Disconnect") < wallet_page.text.index("General advisory")
+    assert wallet_page.text.index("Disconnect") < wallet_page.text.index("Advisories")
 
 
 def test_invoice_qr_is_black_and_white_without_centre_mark() -> None:
@@ -2089,9 +2091,9 @@ def test_record_index_links_encoded_labels() -> None:
     assert "/record?label=A+%26+B" in response.text
     assert 'href="/record/edit"' in response.text
     assert 'href="/blob/upload"' not in response.text
-    assert '<table class="record-table">' in response.text
-    assert '<th scope="col">Private Record</th>' in response.text
-    assert response.text.count('class="record-open"') == 3
+    assert '<nav class="record-list" aria-label="Private records">' in response.text
+    assert response.text.count('class="record-list-item"') == 3
+    assert ">Open</a>" not in response.text
 
 
 def test_legacy_blob_upload_page_redirects_to_unified_record_form() -> None:

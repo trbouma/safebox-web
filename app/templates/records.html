@@ -1,30 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
-<p><a href="/wallet">← Back to wallet</a></p>
+<p><a class="nav-button" href="/wallet">← Back to wallet</a></p>
 <div class="record-actions">
   <a class="record-add" href="/record/edit">Add a private record</a>
 </div>
 {% if labels %}
-<div class="record-table-wrap">
-  <table class="record-table">
-    <thead>
-      <tr>
-        <th scope="col">Private Record</th>
-        <th scope="col">Action</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for record in labels %}
-      <tr>
-        <th scope="row"><a href="{{ record.url }}">{{ record.label }}</a></th>
-        <td><a class="record-open" href="{{ record.url }}">Open</a></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<nav class="record-list" aria-label="Private records">
+  {% for record in labels %}
+  <a class="record-list-item" href="{{ record.url }}">{{ record.label }}</a>
+  {% endfor %}
+</nav>
 {% else %}
 <p>No private user records were found.</p>
 {% endif %}
-<p><a href="/wallet">Return to wallet</a></p>
+<p><a class="nav-button" href="/wallet">Return to wallet</a></p>
 {% endblock %}
