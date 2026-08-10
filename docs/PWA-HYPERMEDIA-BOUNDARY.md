@@ -143,8 +143,11 @@ next available action.
 
 ## Local vault boundary
 
-A future passkey-protected local Acorn vault would be a deliberate exception to
-the current rule against browser-held recovery material. Its purpose would be
+A future passkey-protected local Acorn vault would be a deliberate expansion of
+the current narrow browser-held recovery boundary. Quick onboarding may keep
+the Safebox Acorn mnemonic temporarily inside the authenticated encrypted,
+HTTP-only session cookie until backup confirmation. That copy expires with the
+session and is removed on confirmation. A vault would instead provide durable
 reconnection convenience after the HTTP-only session expires, not a local
 system of record or an offline Acorn implementation.
 

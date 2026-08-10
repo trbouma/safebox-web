@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <p class="error"><strong>Your recovery backup is not complete.</strong></p>
-<p>Safebox temporarily stored both recovery mnemonics in an encrypted Acorn
-system record so you could begin using the wallet immediately. Display them
-only when you are in a private, quiet place and ready to save them.</p>
-<p>Until this process is completed, anyone who obtains the Acorn private key
-can retrieve both mnemonics. Deletion requests sent to relays are advisory and
-cannot guarantee erasure from every relay or replica.</p>
+<p>The Safebox Acorn mnemonic is temporarily held only in this browser's
+encrypted session cookie so you could begin using the wallet immediately. The
+relay contains only a non-secret pending marker. Display the mnemonic only when
+you are in a private, quiet place and ready to save it.</p>
+<p>Complete this process before the session expires, you clear browser data, or
+you disconnect. Protected records are not enabled and no Protected record
+mnemonic exists yet.</p>
 <form method="post" action="/recovery/display">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>

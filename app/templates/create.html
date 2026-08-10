@@ -40,44 +40,15 @@ on the home relay, and start a user-controlled session.</p>
            maxlength="64" autocomplete="new-password" spellcheck="false"
            autocapitalize="none">
   </details>
-  <details>
-    <summary>Bring your own record-protection entropy</summary>
-    <p id="record-protection-entropy-help">Safebox normally asks Acorn to
-    generate an independent record protection key. Optionally supply a separate
-    32-byte, cryptographically random value as 64 hexadecimal characters.
-    Acorn derives the key using a record-protection-specific context. This
-    value must not be reused as the wallet entropy. Protected records are not
-    enabled yet; the resulting working key is held only in the protected,
-    authenticated session cookie. Values in the fields below are ignored unless
-    you explicitly select the checkbox.</p>
-    <label>
-      <input name="use_external_record_protection_entropy" type="checkbox"
-             value="yes"
-             {% if use_external_record_protection_entropy %}checked{% endif %}>
-      Use externally supplied record-protection entropy.
-    </label>
-    <label for="record_protection_entropy_hex">Record-protection entropy</label>
-    <input id="record_protection_entropy_hex"
-           name="record_protection_entropy_hex" type="password"
-           maxlength="64" aria-describedby="record-protection-entropy-help"
-           autocomplete="new-password"
-           spellcheck="false" autocapitalize="none">
-    <label for="record_protection_entropy_confirmation">Repeat record-protection entropy</label>
-    <input id="record_protection_entropy_confirmation"
-           name="record_protection_entropy_confirmation" type="password"
-           maxlength="64" autocomplete="new-password" spellcheck="false"
-           autocapitalize="none">
-  </details>
   <label>
     <input name="defer_recovery" type="checkbox" value="yes"
            {% if defer_recovery %}checked{% endif %}>
     Continue to the wallet now and complete the recovery backup later.
   </label>
-  <p class="muted">When selected, Acorn temporarily stores both recovery
-  mnemonics in an encrypted reserved record on the home relay. Until you
-  complete the backup, anyone with the Acorn private key can retrieve both
-  mnemonics. Relay deletion is advisory and cannot guarantee erasure from
-  every replica.</p>
+  <p class="muted">When selected, the Safebox Acorn mnemonic is held only in
+  this browser's encrypted session cookie. The relay stores a non-secret
+  pending marker. Complete the backup before the session expires, the browser
+  data is cleared, or you disconnect. Protected records can be enabled later.</p>
   <label>
     <input name="confirmed" type="checkbox" value="yes" required>
     I understand that this creates sensitive recovery material and that I must

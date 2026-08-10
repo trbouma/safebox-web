@@ -3,9 +3,9 @@
 {% if error %}<p class="error"><strong>{{ error }}</strong></p>{% endif %}
 <p class="error"><strong>Save this recovery material now.</strong> Anyone who
 obtains it can control this Acorn and its funds and records.</p>
-<p>The safekeeping message contains both independently labelled mnemonics and
-the infrastructure information needed for recovery. Store it offline or in a
-trusted password-manager vault.</p>
+<p>The recovery message contains the Safebox Acorn mnemonic and infrastructure
+information needed for recovery. Store it offline or in a trusted
+password-manager vault. Protected records are not enabled yet.</p>
 <label for="safekeeping-message">Safebox Acorn safekeeping message</label>
 <textarea id="safekeeping-message" class="safekeeping-message" rows="16"
           readonly spellcheck="false" autocapitalize="none">{{ safekeeping_message }}</textarea>
@@ -24,12 +24,11 @@ clipboard after placing the message in its intended protected location.</p>
 <p>This page is not server-side recovery storage. Save the material offline
 before leaving it. Do not refresh or resubmit this page; that would create a
 different Acorn.</p>
-<form method="post" action="/record-protection/confirm">
-  <input type="hidden" name="csrf_token" value="{{ record_protection_csrf_token }}">
+<form method="post" action="/recovery/confirm-created">
+  <input type="hidden" name="csrf_token" value="{{ recovery_csrf_token }}">
   <label>
     <input name="confirmed" type="checkbox" value="yes" required>
-    I saved the Safebox Acorn mnemonic and Protected record mnemonic in a
-    protected location.
+    I saved the Safebox Acorn mnemonic in a protected location.
   </label>
   <button type="submit">Confirm backup and continue</button>
 </form>

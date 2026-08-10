@@ -24,6 +24,7 @@ _PARENT_NAVIGATION = {
     "record.html": ("/records", "Back to Records"),
     "record_deleted.html": ("/records", "Back to Records"),
     "record_form.html": ("/records", "Back to Records"),
+    "record_protection_enable.html": ("/wallet", "Back to Wallet"),
     "record_protection_recovery.html": ("/wallet", "Back to Wallet"),
     "record_protection_warning.html": ("/wallet", "Back to Wallet"),
     "records.html": ("/wallet", "Back to Wallet"),

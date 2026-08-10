@@ -46,6 +46,8 @@ a { color: var(--link); }
 .page-navigation .nav-button { width: 100%; }
 .onboard-actions { display: grid; gap: .75rem; margin: 1.5rem 0; }
 .onboard-actions .nav-button { width: 100%; }
+.onboard-actions form { margin: 0; }
+.onboard-actions button { width: 100%; }
 .onboard-advisory { margin-top: 1.5rem; padding: 1rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface-soft); color: var(--muted); }
 .onboard-advisory p { margin: 0; }
 label { display: block; margin-top: 1rem; }

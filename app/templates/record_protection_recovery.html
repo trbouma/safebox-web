@@ -5,6 +5,10 @@
 <pre>{{ recovery_phrase }}</pre>
 <p>This mnemonic recovers the independent record protection key. It does not
 recover the Acorn signing key, wallet funds, or relay location.</p>
+{% if activation %}
+<p>Record protection is not ready for use in this browser until you confirm
+that this mnemonic has been backed up.</p>
+{% endif %}
 <form method="post" action="/record-protection/confirm">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label>

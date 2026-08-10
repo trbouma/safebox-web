@@ -162,6 +162,7 @@ class FakeLoadedAcorn:
         self.deferred_recovery_state = {"status": "ABSENT", "pending": False}
         self.deferred_recovery = {"status": "ABSENT", "pending": False}
         self.deferred_recovery_complete_calls = 0
+        self.record_protection_activation_calls: list[str] = []
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -177,6 +178,10 @@ class FakeLoadedAcorn:
         self.deferred_recovery_state = {"status": "COMPLETE", "pending": False}
         self.deferred_recovery = {"status": "COMPLETE", "pending": False}
         return {"status": "COMPLETE", "pending": False, "completed": True}
+
+    async def activate_record_protection(self, *, record_protection_key: str) -> dict:
+        self.record_protection_activation_calls.append(record_protection_key)
+        return {"status": "ACTIVE", "active": True, "verified": True}
 
     async def check_proofs(self) -> dict:
         return {
@@ -303,13 +308,20 @@ class FakeCreatedAcorn:
     def __init__(self, **kwargs) -> None:
         self.kwargs = kwargs
         self.pubkey_bech32 = "npub1newcomponent"
+        self.pubkey_hex = "00000000" + "11" * 28
         self.created_seed_phrase: str | None = None
+        self.retain_seed_phrase: bool | None = None
         self.loaded = False
         self.deferred_recovery_store_calls: list[dict] = []
         self.__class__.instances.append(self)
 
-    async def create_instance(self, seed_phrase: str) -> str:
+    async def create_instance(
+        self,
+        seed_phrase: str,
+        retain_seed_phrase: bool = True,
+    ) -> str:
         self.created_seed_phrase = seed_phrase
+        self.retain_seed_phrase = retain_seed_phrase
         return TEST_NSEC
 
     async def load_data(self) -> None:
@@ -553,11 +565,148 @@ def test_onboard_offers_new_and_existing_acorn_paths() -> None:
 
     assert response.status_code == 200
     assert "Welcome to Safebox" in response.text
-    assert 'href="/create"' in response.text
+    assert 'action="/create"' in response.text
+    assert 'name="defer_recovery" value="yes"' in response.text
+    assert 'name="assign_default_handle" value="yes"' in response.text
     assert "Create a New Acorn" in response.text
     assert 'href="/login"' in response.text
     assert "Use an Existing Acorn" in response.text
-    assert "sensitive recovery material" in response.text
+    assert "temporarily keeps the Safebox Acorn mnemonic" in response.text
+    assert "assigns a default public handle" in response.text
+    assert "Protected records can be enabled later" in response.text
+
+
+def test_default_handle_uses_bip39_words_and_sub_1000_suffix() -> None:
+    assert main_module.default_handle_from_pubkey("00000000" + "11" * 28) == (
+        "abandonabandon0"
+    )
+    assert main_module.default_handle_from_pubkey("ffffffff" + "11" * 28) == (
+        "zoozoo23"
+    )
+    assert main_module.default_handle_from_pubkey(
+        "00000000" + "11" * 28,
+        attempt=1,
+    ) == "abandonabandon1"
+
+
+def test_quick_onboarding_assigns_available_default_handle(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
+    )
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/create",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "home_relay": "relay.example.com",
+                "home_mint": "mint.example.com",
+                "defer_recovery": "yes",
+                "assign_default_handle": "yes",
+                "confirmed": "yes",
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    with sqlite3.connect(tmp_path / "database.db") as connection:
+        row = connection.execute(
+            "SELECT claimed_handle, npub, home_relay FROM claimed_handle"
+        ).fetchone()
+    assert row == (
+        "abandonabandon0",
+        "npub1newcomponent",
+        "wss://relay.example.com",
+    )
+
+
+def test_advanced_creation_does_not_assign_default_handle(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
+    )
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/create",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "home_relay": "relay.example.com",
+                "home_mint": "mint.example.com",
+                "confirmed": "yes",
+            },
+        )
+
+    assert response.status_code == 201
+    with sqlite3.connect(tmp_path / "database.db") as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM claimed_handle"
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_default_handle_collision_advances_numeric_suffix(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
+    )
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        with sqlite3.connect(tmp_path / "database.db") as connection:
+            connection.execute(
+                "INSERT INTO claimed_handle "
+                "(claimed_handle, npub, home_relay) VALUES (?, ?, ?)",
+                (
+                    "abandonabandon0",
+                    "npub1somebodyelse",
+                    "wss://relay.other.example",
+                ),
+            )
+            connection.commit()
+        response = client.post(
+            "/create",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "home_relay": "relay.example.com",
+                "home_mint": "mint.example.com",
+                "defer_recovery": "yes",
+                "assign_default_handle": "yes",
+                "confirmed": "yes",
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    with sqlite3.connect(tmp_path / "database.db") as connection:
+        handles = connection.execute(
+            "SELECT claimed_handle FROM claimed_handle ORDER BY id"
+        ).fetchall()
+    assert handles == [("abandonabandon0",), ("abandonabandon1",)]
 
 
 def test_onboard_redirects_valid_existing_session_to_wallet() -> None:
@@ -737,6 +886,8 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert '<a href="/deposit">Deposit funds</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text
     assert '<a href="/onboard/friend">Onboard a Friend</a>' in response.text
+    assert 'href="/record-protection/enable"' in response.text
+    assert "Protected Records" in response.text
     assert '<section class="wallet-balance"' in response.text
     assert "321 <span>sats</span>" in response.text
     assert response.text.index("wallet-balance") < response.text.index("wallet-actions")
@@ -958,13 +1109,7 @@ def test_create_form_displays_default_relay_and_mint() -> None:
     assert 'name="entropy_confirmation" type="password"' in response.text
     assert 'autocomplete="new-password"' in response.text
     assert 'pattern="[0-9A-Fa-f]{64}"' not in response.text
-    assert "Bring your own record-protection entropy" in response.text
-    assert (
-        'name="use_external_record_protection_entropy" type="checkbox"'
-        in response.text
-    )
-    assert 'name="record_protection_entropy_hex" type="password"' in response.text
-    assert 'name="record_protection_entropy_confirmation" type="password"' in response.text
+    assert "Bring your own record-protection entropy" not in response.text
     assert 'name="defer_recovery" type="checkbox"' in response.text
     assert "complete the recovery backup later" in response.text
     assert 'name="confirmed"' in response.text
@@ -981,9 +1126,6 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
             generated_strengths.append(strength) or TEST_MNEMONIC,
             TEST_NSEC,
         ),
-    )
-    monkeypatch.setattr(
-        main_module, "generate_record_protection_key", lambda: TEST_RPK
     )
     client = make_https_client()
 
@@ -1002,10 +1144,11 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
     assert "New Acorn created" in response.text
     assert TEST_MNEMONIC in response.text
     assert TEST_NSEC in response.text
-    assert TEST_RPK_PHRASE in response.text
+    assert TEST_RPK_PHRASE not in response.text
     assert "Safebox Acorn safekeeping message" in response.text
     assert "Safebox Acorn mnemonic:" in response.text
-    assert "Protected record mnemonic:" in response.text
+    assert "Protected record mnemonic:" not in response.text
+    assert "Protected records: not enabled" in response.text
     assert "Bootstrap relay: wss://relay.example.com" in response.text
     assert 'data-copy-target="safekeeping-message"' in response.text
     assert "wss://relay.example.com" in response.text
@@ -1018,6 +1161,7 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
         "mints": ["https://mint.example.com"],
     }
     assert created.created_seed_phrase == TEST_MNEMONIC
+    assert created.retain_seed_phrase is False
     assert created.loaded is True
     assert created.deferred_recovery_store_calls == []
     assert generated_strengths == [256]
@@ -1030,7 +1174,8 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
     credentials = SessionCipher(TEST_SETTINGS).decode(token)
     assert credentials.nsec == TEST_NSEC
     assert credentials.bootstrap_relay == "wss://relay.example.com"
-    assert credentials.record_protection_key == TEST_RPK
+    assert credentials.deferred_acorn_mnemonic is None
+    assert credentials.record_protection_key is None
     assert credentials.record_protection_backup_confirmed is False
 
 
@@ -1041,9 +1186,6 @@ def test_create_acorn_can_defer_recovery_and_open_wallet(monkeypatch) -> None:
         main_module,
         "generate_seed_phrase_and_nsec",
         lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
-    )
-    monkeypatch.setattr(
-        main_module, "generate_record_protection_key", lambda: TEST_RPK
     )
     client = make_https_client()
 
@@ -1063,30 +1205,22 @@ def test_create_acorn_can_defer_recovery_and_open_wallet(monkeypatch) -> None:
     assert response.headers["location"] == "/wallet"
     assert TEST_MNEMONIC not in response.text
     created = FakeCreatedAcorn.instances[0]
-    assert created.deferred_recovery_store_calls == [
-        {
-            "seed_phrase": TEST_MNEMONIC,
-            "record_protection_key": TEST_RPK,
-        }
-    ]
+    assert created.retain_seed_phrase is False
+    assert created.deferred_recovery_store_calls == [{}]
     token = client.cookies.get(SECURE_COOKIE_NAME)
     credentials = SessionCipher(TEST_SETTINGS).decode(token)
-    assert credentials.record_protection_backup_confirmed is False
+    assert credentials.deferred_acorn_mnemonic == TEST_MNEMONIC
+    assert credentials.record_protection_key is None
 
 
 def test_deferred_recovery_display_and_completion_updates_session() -> None:
     app = create_app(TEST_SETTINGS)
     fake = FakeLoadedAcorn()
     fake.deferred_recovery_state = {"status": "PENDING", "pending": True}
-    fake.deferred_recovery = {
-        "status": "PENDING",
-        "pending": True,
-        "acorn_mnemonic": TEST_MNEMONIC,
-        "protected_record_mnemonic": TEST_RPK_PHRASE,
-    }
     credentials = SessionCredentials(
         nsec=TEST_NSEC,
         bootstrap_relay="wss://relay.example.com",
+        deferred_acorn_mnemonic=TEST_MNEMONIC,
         record_protection_key=None,
         record_protection_backup_confirmed=False,
     )
@@ -1105,7 +1239,8 @@ def test_deferred_recovery_display_and_completion_updates_session() -> None:
     )
     assert displayed.status_code == 200
     assert TEST_MNEMONIC in displayed.text
-    assert TEST_RPK_PHRASE in displayed.text
+    assert TEST_RPK_PHRASE not in displayed.text
+    assert "Protected records: not enabled" in displayed.text
     assert displayed.headers["cache-control"] == "no-store"
 
     completed = client.post(
@@ -1118,8 +1253,8 @@ def test_deferred_recovery_display_and_completion_updates_session() -> None:
     assert fake.deferred_recovery_complete_calls == 1
     token = client.cookies.get(SECURE_COOKIE_NAME)
     updated = SessionCipher(TEST_SETTINGS).decode(token)
-    assert updated.record_protection_key == TEST_RPK
-    assert updated.record_protection_backup_confirmed is True
+    assert updated.deferred_acorn_mnemonic is None
+    assert updated.record_protection_key is None
 
 
 def test_record_protection_recovery_display_requires_confirmation_and_marks_backup() -> None:
@@ -1249,16 +1384,9 @@ def test_login_rejects_invalid_record_protection_phrase_without_echoing_it() -> 
     assert SECURE_COOKIE_NAME not in response.headers.get("set-cookie", "")
 
 
-def test_create_acorn_uses_external_record_protection_entropy(monkeypatch) -> None:
-    FakeCreatedAcorn.instances.clear()
+def test_record_protection_activation_uses_external_entropy(monkeypatch) -> None:
     rpk_entropy = "03" * 32
     calls = []
-    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
-    monkeypatch.setattr(
-        main_module,
-        "generate_seed_phrase_and_nsec",
-        lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
-    )
     monkeypatch.setattr(
         main_module,
         "record_protection_key_from_entropy",
@@ -1271,77 +1399,89 @@ def test_create_acorn_uses_external_record_protection_entropy(monkeypatch) -> No
             AssertionError("random RPK generation must not be used")
         ),
     )
-    client = make_https_client()
+    app = create_app(TEST_SETTINGS)
+    fake = FakeLoadedAcorn()
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: fake
+    app.dependency_overrides[get_session_credentials] = lambda: credentials
+    client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
-        "/create",
+        "/record-protection/enable",
         data={
             "csrf_token": valid_csrf_token(),
-            "home_relay": "relay.example.com",
-            "home_mint": "mint.example.com",
-            "use_external_record_protection_entropy": "yes",
-            "record_protection_entropy_hex": rpk_entropy,
-            "record_protection_entropy_confirmation": rpk_entropy,
+            "use_external_entropy": "yes",
+            "entropy_hex": rpk_entropy,
+            "entropy_confirmation": rpk_entropy,
             "confirmed": "yes",
         },
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 200
     assert calls == [rpk_entropy]
     assert rpk_entropy not in response.text
+    assert TEST_RPK_PHRASE in response.text
+    assert fake.record_protection_activation_calls == [TEST_RPK]
     token = client.cookies.get(SECURE_COOKIE_NAME)
     assert token is not None
     credentials = SessionCipher(TEST_SETTINGS).decode(token)
     assert credentials.record_protection_key == TEST_RPK
 
 
-def test_create_acorn_rejects_mismatched_record_protection_entropy() -> None:
-    FakeCreatedAcorn.instances.clear()
+def test_record_protection_activation_rejects_mismatched_entropy() -> None:
     entropy = "04" * 32
-    client = make_https_client()
-
-    response = client.post(
-        "/create",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "home_relay": "relay.example.com",
-            "home_mint": "mint.example.com",
-            "use_external_record_protection_entropy": "yes",
-            "record_protection_entropy_hex": entropy,
-            "record_protection_entropy_confirmation": "05" * 32,
-            "confirmed": "yes",
-        },
+    app = create_app(TEST_SETTINGS)
+    fake = FakeLoadedAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: fake
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
     )
-
-    assert response.status_code == 400
-    assert "record-protection entropy values do not match" in response.text
-    assert entropy not in response.text
-    assert FakeCreatedAcorn.instances == []
-
-
-def test_create_acorn_rejects_reused_wallet_and_record_protection_entropy() -> None:
-    entropy = "06" * 32
-    client = make_https_client()
+    client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
-        "/create",
+        "/record-protection/enable",
         data={
             "csrf_token": valid_csrf_token(),
-            "home_relay": "relay.example.com",
-            "home_mint": "mint.example.com",
             "use_external_entropy": "yes",
             "entropy_hex": entropy,
-            "entropy_confirmation": entropy,
-            "use_external_record_protection_entropy": "yes",
-            "record_protection_entropy_hex": entropy.upper(),
-            "record_protection_entropy_confirmation": entropy.upper(),
+            "entropy_confirmation": "05" * 32,
             "confirmed": "yes",
         },
     )
 
     assert response.status_code == 400
-    assert "must be independent" in response.text
+    assert "external entropy values do not match" in response.text
     assert entropy not in response.text
+    assert fake.record_protection_activation_calls == []
+
+
+def test_record_protection_activation_generates_independent_key(monkeypatch) -> None:
+    monkeypatch.setattr(main_module, "generate_record_protection_key", lambda: TEST_RPK)
+    app = create_app(TEST_SETTINGS)
+    fake = FakeLoadedAcorn()
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: fake
+    app.dependency_overrides[get_session_credentials] = lambda: credentials
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record-protection/enable",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert TEST_RPK_PHRASE in response.text
+    assert fake.record_protection_activation_calls == [TEST_RPK]
 
 
 def test_create_acorn_requires_confirmation_before_generating(monkeypatch) -> None:
@@ -1405,20 +1545,10 @@ def test_create_acorn_ignores_unselected_autofilled_entropy(monkeypatch) -> None
         lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
     )
     monkeypatch.setattr(
-        main_module, "generate_record_protection_key", lambda: TEST_RPK
-    )
-    monkeypatch.setattr(
         main_module,
         "seed_phrase_and_nsec_from_entropy",
         lambda supplied: (_ for _ in ()).throw(
             AssertionError("unchecked wallet entropy must be ignored")
-        ),
-    )
-    monkeypatch.setattr(
-        main_module,
-        "record_protection_key_from_entropy",
-        lambda supplied: (_ for _ in ()).throw(
-            AssertionError("unchecked record-protection entropy must be ignored")
         ),
     )
     client = make_https_client()
@@ -1431,8 +1561,6 @@ def test_create_acorn_ignores_unselected_autofilled_entropy(monkeypatch) -> None
             "home_mint": "mint.example.com",
             "entropy_hex": "password-manager-wallet-value",
             "entropy_confirmation": "different-wallet-value",
-            "record_protection_entropy_hex": "password-manager-rpk-value",
-            "record_protection_entropy_confirmation": "different-rpk-value",
             "confirmed": "yes",
         },
     )
@@ -1442,7 +1570,7 @@ def test_create_acorn_ignores_unselected_autofilled_entropy(monkeypatch) -> None
     token = client.cookies.get(SECURE_COOKIE_NAME)
     assert token is not None
     credentials = SessionCipher(TEST_SETTINGS).decode(token)
-    assert credentials.record_protection_key == TEST_RPK
+    assert credentials.record_protection_key is None
 
 
 def test_create_acorn_uses_confirmed_external_entropy(monkeypatch) -> None:
@@ -3336,6 +3464,7 @@ def test_nsec_login_uses_encrypted_secure_cookie_and_dependency() -> None:
     assert payload["bootstrap_relay"] == "wss://relay.example.com"
     assert payload["npub"].startswith(TEST_NPUB)
     assert "nsec" not in payload
+    assert "deferred_acorn_mnemonic" not in payload
     assert "record_protection_key" not in payload
 
 
@@ -3355,6 +3484,33 @@ def test_session_cipher_uses_randomized_aes_256_gcm_tokens() -> None:
     assert first != second
     assert cipher.decode(first) == credentials
     assert cipher.decode(second) == credentials
+
+
+def test_session_cipher_protects_and_validates_deferred_acorn_mnemonic() -> None:
+    cipher = SessionCipher(TEST_SETTINGS)
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+        deferred_acorn_mnemonic=TEST_MNEMONIC,
+    )
+
+    token = cipher.encode(credentials)
+
+    assert TEST_MNEMONIC not in token
+    assert cipher.decode(token) == credentials
+
+
+def test_session_cipher_rejects_deferred_mnemonic_for_another_key() -> None:
+    other_mnemonic, _other_nsec = main_module.generate_seed_phrase_and_nsec()
+
+    with pytest.raises(ValueError, match="does not match the Acorn key"):
+        SessionCipher(TEST_SETTINGS).encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+                deferred_acorn_mnemonic=other_mnemonic,
+            )
+        )
 
 
 def test_aes_256_gcm_session_rejects_tampering() -> None:

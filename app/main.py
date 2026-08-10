@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 import qrcode
 import qrcode.image.svg
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
+from sqlmodel import Session, select
 
 from acorn import (
     Acorn,
@@ -59,6 +59,7 @@ from app.dependencies import (
     RecordAcornDependency,
 )
 from app.models import ClaimedHandle
+from app.handles import default_handle_from_pubkey
 from app.openetr import query_openetr_history
 from app.lnurl_pay import encode_lnurl, router as lnurl_pay_router
 from app.security import (
@@ -133,30 +134,28 @@ def _ecash_retention_notice(settings: Settings) -> str:
     )
 
 
-def _safekeeping_message(
+def _acorn_safekeeping_message(
     *,
     acorn_mnemonic: str,
-    protected_record_mnemonic: str,
     npub: str,
     home_relay: str,
     home_mint: str,
 ) -> str:
-    """Build the complete, portable creation-time recovery message."""
+    """Build the recovery message for an Acorn without record protection."""
 
     return "\n".join(
         (
-            "SAFEBOX ACORN SAFEKEEPING MESSAGE",
+            "SAFEBOX ACORN RECOVERY MESSAGE",
             "Keep this message private and offline.",
             "",
             "Safebox Acorn mnemonic:",
             acorn_mnemonic,
             "",
-            "Protected record mnemonic:",
-            protected_record_mnemonic,
-            "",
             f"Bootstrap relay: {home_relay}",
             f"Home mint: {home_mint}",
             f"Component public key: {npub}",
+            "",
+            "Protected records: not enabled",
         )
     )
 
@@ -186,7 +185,6 @@ def _create_form(
     error: str | None = None,
     mnemonic_words: str = "12",
     use_external_entropy: bool = False,
-    use_external_record_protection_entropy: bool = False,
     defer_recovery: bool = False,
 ) -> str:
     return render_template(
@@ -198,9 +196,6 @@ def _create_form(
         error=error,
         mnemonic_words=mnemonic_words,
         use_external_entropy=use_external_entropy,
-        use_external_record_protection_entropy=(
-            use_external_record_protection_entropy
-        ),
         defer_recovery=defer_recovery,
     )
 
@@ -597,6 +592,54 @@ def _normalize_handle(value: str) -> str:
     return handle
 
 
+def _assign_default_handle(
+    session,
+    *,
+    npub: str,
+    pubkey_hex: str,
+    home_relay: str,
+) -> str | None:
+    """Claim a deterministic onboarding handle without replacing another user."""
+
+    existing = session.exec(
+        select(ClaimedHandle).where(ClaimedHandle.npub == npub)
+    ).first()
+    if existing is not None:
+        existing.home_relay = home_relay
+        session.add(existing)
+        session.commit()
+        return existing.claimed_handle
+
+    for attempt in range(1000):
+        candidate = default_handle_from_pubkey(pubkey_hex, attempt=attempt)
+        claimed = session.exec(
+            select(ClaimedHandle).where(
+                ClaimedHandle.claimed_handle == candidate
+            )
+        ).first()
+        if claimed is not None:
+            continue
+        registration = ClaimedHandle(
+            claimed_handle=candidate,
+            npub=npub,
+            home_relay=home_relay,
+        )
+        try:
+            session.add(registration)
+            session.commit()
+        except IntegrityError:
+            # A concurrent onboarding request may have claimed this candidate.
+            session.rollback()
+            concurrent = session.exec(
+                select(ClaimedHandle).where(ClaimedHandle.npub == npub)
+            ).first()
+            if concurrent is not None:
+                return concurrent.claimed_handle
+            continue
+        return candidate
+    return None
+
+
 def _handle_form(
     csrf_token: str,
     existing: ClaimedHandle | None = None,
@@ -833,6 +876,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return render_template(
             "onboard.html",
             title="Welcome to Safebox",
+            csrf_token=CsrfProtector(settings).issue(),
+            default_relay=settings.default_bootstrap_relay,
+            default_mint=settings.default_home_mint,
         )
 
     @app.get("/onboard/friend", response_class=HTMLResponse)
@@ -881,10 +927,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         use_external_entropy: str | None = Form(None),
         entropy_hex: str = Form(""),
         entropy_confirmation: str = Form(""),
-        use_external_record_protection_entropy: str | None = Form(None),
-        record_protection_entropy_hex: str = Form(""),
-        record_protection_entropy_confirmation: str = Form(""),
         defer_recovery: str | None = Form(None),
+        assign_default_handle: str | None = Form(None),
         confirmed: str | None = Form(None),
     ):
         settings = request.app.state.settings
@@ -899,9 +943,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     message,
                     mnemonic_words=mnemonic_words,
                     use_external_entropy=(use_external_entropy == "yes"),
-                    use_external_record_protection_entropy=(
-                        use_external_record_protection_entropy == "yes"
-                    ),
                     defer_recovery=(defer_recovery == "yes"),
                 ),
                 status_code=status_code,
@@ -947,43 +988,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 strength=mnemonic_strength
             )
 
-        uses_external_rpk_entropy = (
-            use_external_record_protection_entropy == "yes"
-        )
-        supplied_rpk_entropy = (
-            str(record_protection_entropy_hex).strip()
-            if uses_external_rpk_entropy
-            else ""
-        )
-        repeated_rpk_entropy = (
-            str(record_protection_entropy_confirmation).strip()
-            if uses_external_rpk_entropy
-            else ""
-        )
-        if uses_external_rpk_entropy:
-            if not supplied_rpk_entropy or not repeated_rpk_entropy:
-                return creation_error(
-                    "Enter the record-protection entropy in both fields."
-                )
-            if supplied_rpk_entropy != repeated_rpk_entropy:
-                return creation_error(
-                    "The record-protection entropy values do not match."
-                )
-            if supplied_entropy and supplied_rpk_entropy.lower() == supplied_entropy.lower():
-                return creation_error(
-                    "Wallet entropy and record-protection entropy must be independent."
-                )
-            try:
-                record_protection_key = record_protection_key_from_entropy(
-                    supplied_rpk_entropy
-                )
-            except ValueError as exc:
-                return creation_error(
-                    f"Invalid record-protection entropy: {exc}"
-                )
-        else:
-            record_protection_key = generate_record_protection_key()
-
         try:
             normalized_relay = normalize_bootstrap_relay(
                 home_relay,
@@ -1000,7 +1004,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         try:
             await asyncio.wait_for(
-                acorn.create_instance(seed_phrase=seed_phrase),
+                acorn.create_instance(
+                    seed_phrase=seed_phrase,
+                    retain_seed_phrase=False,
+                ),
                 timeout=settings.wallet_load_timeout_seconds,
             )
             await asyncio.wait_for(
@@ -1026,24 +1033,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 502,
             )
 
+        if assign_default_handle == "yes":
+            try:
+                with Session(request.app.state.database_engine) as session:
+                    assigned_handle = _assign_default_handle(
+                        session,
+                        npub=acorn.pubkey_bech32,
+                        pubkey_hex=acorn.pubkey_hex,
+                        home_relay=normalized_relay,
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "default handle assignment failed npub=%s error_type=%s",
+                    acorn.pubkey_bech32,
+                    type(exc).__name__,
+                )
+            else:
+                if assigned_handle is None:
+                    logger.warning(
+                        "default handle namespace exhausted npub=%s",
+                        acorn.pubkey_bech32,
+                    )
+
         credentials = credentials_from_login(
             secret_type="nsec",
             secret=generated_nsec,
             bootstrap_relay=normalized_relay,
-            record_protection_key=record_protection_key,
+            deferred_acorn_mnemonic=(
+                seed_phrase if defer_recovery == "yes" else None
+            ),
             allowed_ws_relays=settings.allowed_ws_relays,
-        )
-        protected_record_mnemonic = record_protection_recovery_phrase(
-            record_protection_key
         )
         deferred_recovery_error = None
         if defer_recovery == "yes":
             try:
                 deferred_state = await asyncio.wait_for(
-                    acorn.store_deferred_recovery(
-                        seed_phrase=seed_phrase,
-                        record_protection_key=record_protection_key,
-                    ),
+                    acorn.store_deferred_recovery(),
                     timeout=settings.wallet_load_timeout_seconds,
                 )
                 if not (
@@ -1088,15 +1113,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 npub=acorn.pubkey_bech32,
                 home_relay=normalized_relay,
                 home_mint=normalized_mint,
-                protected_record_mnemonic=protected_record_mnemonic,
-                safekeeping_message=_safekeeping_message(
+                safekeeping_message=_acorn_safekeeping_message(
                     acorn_mnemonic=seed_phrase,
-                    protected_record_mnemonic=protected_record_mnemonic,
                     npub=acorn.pubkey_bech32,
                     home_relay=normalized_relay,
                     home_mint=normalized_mint,
                 ),
-                record_protection_csrf_token=CsrfProtector(settings).issue(),
+                recovery_csrf_token=CsrfProtector(settings).issue(),
                 deferred_recovery=False,
                 error=deferred_recovery_error,
             ),
@@ -1180,6 +1203,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/recovery", response_class=HTMLResponse)
     async def deferred_recovery_warning(
         request: Request,
+        credentials: CredentialsDependency,
         acorn: LoadedAcornDependency,
     ) -> HTMLResponse:
         settings = request.app.state.settings
@@ -1212,6 +1236,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 headers={"Cache-Control": "no-store"},
             )
+        if credentials.deferred_acorn_mnemonic is None:
+            return HTMLResponse(
+                _page(
+                    "Recovery material unavailable",
+                    "<p>The relay reports a pending backup, but this browser no "
+                    "longer has the temporary Acorn mnemonic. Do not disconnect; "
+                    "export and protect the current nsec from a trusted interface.</p>"
+                    '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=409,
+                headers={"Cache-Control": "no-store"},
+            )
         return HTMLResponse(
             render_template(
                 "deferred_recovery_warning.html",
@@ -1224,6 +1260,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/recovery/display", response_class=HTMLResponse)
     async def display_deferred_recovery(
         request: Request,
+        credentials: CredentialsDependency,
         acorn: LoadedAcornDependency,
         csrf_token: str = Form(...),
         confirmed: str | None = Form(None),
@@ -1239,37 +1276,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=403,
                 headers={"Cache-Control": "no-store"},
             )
-        try:
-            recovery = await asyncio.wait_for(
-                acorn.get_deferred_recovery(),
-                timeout=settings.wallet_load_timeout_seconds,
-            )
-        except Exception as exc:
-            logger.warning(
-                "deferred recovery display failed error_type=%s",
-                type(exc).__name__,
-            )
+        if credentials.deferred_acorn_mnemonic is None:
             return HTMLResponse(
                 _page(
                     "Recovery material unavailable",
-                    "<p>Safebox could not retrieve and validate the temporary "
-                    "recovery bundle.</p>"
-                    '<p><a class="nav-button" href="/recovery">Try again</a></p>',
+                    "<p>This browser session no longer contains the temporary "
+                    "Safebox Acorn mnemonic.</p>"
+                    '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
                 ),
-                status_code=502,
+                status_code=409,
                 headers={"Cache-Control": "no-store"},
             )
-        if not recovery.get("pending"):
-            return RedirectResponse("/wallet", status_code=303)
         return HTMLResponse(
             render_template(
                 "deferred_recovery.html",
                 title="Recovery Material",
-                safekeeping_message=_safekeeping_message(
-                    acorn_mnemonic=recovery["acorn_mnemonic"],
-                    protected_record_mnemonic=recovery[
-                        "protected_record_mnemonic"
-                    ],
+                safekeeping_message=_acorn_safekeeping_message(
+                    acorn_mnemonic=credentials.deferred_acorn_mnemonic,
                     npub=acorn.pubkey_bech32,
                     home_relay=acorn.home_relay,
                     home_mint=acorn.home_mint,
@@ -1299,15 +1322,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Cache-Control": "no-store"},
             )
         try:
-            recovery = await asyncio.wait_for(
-                acorn.get_deferred_recovery(),
-                timeout=settings.wallet_load_timeout_seconds,
-            )
-            if not recovery.get("pending"):
-                raise ValueError("no deferred recovery backup is pending")
-            record_protection_key = record_protection_key_from_recovery_phrase(
-                recovery["protected_record_mnemonic"]
-            )
+            if credentials.deferred_acorn_mnemonic is None:
+                raise ValueError("the deferred Acorn mnemonic is unavailable")
             result = await asyncio.wait_for(
                 acorn.complete_deferred_recovery(),
                 timeout=settings.payment_timeout_seconds,
@@ -1332,8 +1348,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         updated_credentials = replace(
             credentials,
-            record_protection_key=record_protection_key,
-            record_protection_backup_confirmed=True,
+            deferred_acorn_mnemonic=None,
         )
         response = RedirectResponse("/wallet", status_code=303)
         set_session_cookie(
@@ -1341,6 +1356,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             request=request,
             settings=settings,
             credentials=updated_credentials,
+        )
+        return response
+
+    @app.post("/recovery/confirm-created")
+    async def confirm_creation_recovery_backup(
+        request: Request,
+        credentials: CredentialsDependency,
+        csrf_token: str = Form(...),
+        confirmed: str | None = Form(None),
+    ):
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token) or confirmed != "yes":
+            return HTMLResponse(
+                _page(
+                    "Recovery backup not confirmed",
+                    "<p>Valid confirmation is required.</p>",
+                ),
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
+        response = RedirectResponse("/wallet", status_code=303)
+        set_session_cookie(
+            response,
+            request=request,
+            settings=settings,
+            credentials=replace(credentials, deferred_acorn_mnemonic=None),
         )
         return response
 
@@ -1370,6 +1411,118 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.get("/record-protection/enable", response_class=HTMLResponse)
+    async def enable_record_protection_form(
+        request: Request,
+        credentials: CredentialsDependency,
+    ) -> HTMLResponse:
+        if credentials.record_protection_key is not None:
+            return RedirectResponse("/record-protection/recovery", status_code=303)
+        return HTMLResponse(
+            render_template(
+                "record_protection_enable.html",
+                title="Enable Protected Records",
+                csrf_token=CsrfProtector(request.app.state.settings).issue(),
+                error=None,
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/record-protection/enable", response_class=HTMLResponse)
+    async def enable_record_protection(
+        request: Request,
+        credentials: CredentialsDependency,
+        acorn: LoadedAcornDependency,
+        csrf_token: str = Form(...),
+        use_external_entropy: str | None = Form(None),
+        entropy_hex: str = Form(""),
+        entropy_confirmation: str = Form(""),
+        confirmed: str | None = Form(None),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+
+        def activation_error(message: str, status_code: int = 400) -> HTMLResponse:
+            return HTMLResponse(
+                render_template(
+                    "record_protection_enable.html",
+                    title="Enable Protected Records",
+                    csrf_token=CsrfProtector(settings).issue(),
+                    error=message,
+                ),
+                status_code=status_code,
+                headers={"Cache-Control": "no-store"},
+            )
+
+        if credentials.record_protection_key is not None:
+            return RedirectResponse("/record-protection/recovery", status_code=303)
+        if not CsrfProtector(settings).verify(csrf_token):
+            return activation_error("The form token is invalid or expired.", 403)
+        if confirmed != "yes":
+            return activation_error("Explicit confirmation is required.")
+
+        if use_external_entropy == "yes":
+            supplied = str(entropy_hex).strip()
+            repeated = str(entropy_confirmation).strip()
+            if not supplied or not repeated:
+                return activation_error("Enter the external entropy in both fields.")
+            if supplied != repeated:
+                return activation_error("The external entropy values do not match.")
+            try:
+                record_protection_key = record_protection_key_from_entropy(supplied)
+            except ValueError as exc:
+                return activation_error(f"Invalid record-protection entropy: {exc}")
+        else:
+            record_protection_key = generate_record_protection_key()
+
+        try:
+            activation = await asyncio.wait_for(
+                acorn.activate_record_protection(
+                    record_protection_key=record_protection_key,
+                ),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+            if not activation.get("active") or not activation.get("verified"):
+                raise RuntimeError("record protection activation was not verified")
+        except TimeoutError:
+            logger.warning("record protection activation timed out")
+            return activation_error(
+                "Safebox could not verify record-protection activation on the relay.",
+                504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "record protection activation failed error_type=%s",
+                type(exc).__name__,
+            )
+            return activation_error(
+                "Safebox could not activate record protection. No recovery key "
+                "was attached to this session.",
+                502,
+            )
+
+        recovery_phrase = record_protection_recovery_phrase(record_protection_key)
+        response = HTMLResponse(
+            render_template(
+                "record_protection_recovery.html",
+                title="Protected record mnemonic",
+                recovery_phrase=recovery_phrase,
+                csrf_token=CsrfProtector(settings).issue(),
+                activation=True,
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+        set_session_cookie(
+            response,
+            request=request,
+            settings=settings,
+            credentials=replace(
+                credentials,
+                record_protection_key=record_protection_key,
+                record_protection_backup_confirmed=False,
+            ),
+        )
+        return response
 
     @app.post("/record-protection/recovery", response_class=HTMLResponse)
     async def display_record_protection_recovery(

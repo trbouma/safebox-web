@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<p>Protected Records are optional. Enabling them creates an independent Record
+Protection Key and a separately labelled 24-word mnemonic. Neither the key nor
+its mnemonic is stored on a relay.</p>
+<p>Records created before activation remain ordinary Acorn records. A future
+explicit migration will be required to protect an existing record.</p>
+
+<form method="post" action="/record-protection/enable" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <details>
+    <summary>Bring your own record-protection entropy</summary>
+    <p class="muted">Optionally supply exactly 32 bytes of independently
+    generated entropy as 64 hexadecimal characters. Do not reuse wallet
+    entropy, a password, or other guessable material.</p>
+    <label>
+      <input name="use_external_entropy" type="checkbox" value="yes">
+      Use externally supplied record-protection entropy.
+    </label>
+    <label for="record-protection-entropy">Record-protection entropy</label>
+    <input id="record-protection-entropy" name="entropy_hex" type="password"
+           maxlength="64" autocomplete="new-password" spellcheck="false"
+           autocapitalize="none">
+    <label for="record-protection-entropy-confirmation">Repeat entropy</label>
+    <input id="record-protection-entropy-confirmation"
+           name="entropy_confirmation" type="password" maxlength="64"
+           autocomplete="new-password" spellcheck="false"
+           autocapitalize="none">
+  </details>
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I understand that losing the Protected record mnemonic will make protected
+    records permanently unreadable.
+  </label>
+  <button type="submit">Generate Protected Record Key</button>
+</form>
+{% endblock %}

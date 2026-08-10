@@ -37,6 +37,7 @@ class SessionCredentials:
 
     nsec: str
     bootstrap_relay: str
+    deferred_acorn_mnemonic: str | None = None
     record_protection_key: str | None = None
     record_protection_backup_confirmed: bool = False
     version: int = 1
@@ -172,6 +173,14 @@ class SessionCipher:
     def _validate_credentials(credentials: SessionCredentials) -> SessionCredentials:
         if credentials.version != 1:
             raise ValueError("session cookie version is unsupported")
+        if credentials.deferred_acorn_mnemonic is not None:
+            phrase = " ".join(credentials.deferred_acorn_mnemonic.strip().split())
+            if not Mnemonic("english").check(phrase):
+                raise ValueError("session cookie deferred mnemonic is invalid")
+            if recover_nsec_from_seed(phrase) != credentials.nsec:
+                raise ValueError(
+                    "session cookie deferred mnemonic does not match the Acorn key"
+                )
         if credentials.record_protection_key is not None:
             try:
                 validate_record_protection_key(credentials.record_protection_key)
@@ -379,6 +388,7 @@ def credentials_from_login(
     secret_type: str,
     secret: str,
     bootstrap_relay: str,
+    deferred_acorn_mnemonic: str | None = None,
     record_protection_key: str | None = None,
     record_protection_backup_confirmed: bool = False,
     allowed_ws_relays: tuple[str, ...] | list[str] = (),
@@ -399,6 +409,7 @@ def credentials_from_login(
             bootstrap_relay,
             allowed_ws_relays,
         ),
+        deferred_acorn_mnemonic=deferred_acorn_mnemonic,
         record_protection_key=record_protection_key,
         record_protection_backup_confirmed=record_protection_backup_confirmed,
     )

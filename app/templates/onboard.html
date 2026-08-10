@@ -5,13 +5,25 @@ An Acorn keeps its keys, funds, and records portable across applications and
 infrastructure.</p>
 
 <section class="onboard-actions" aria-label="Safebox onboarding choices">
-  <a class="nav-button" href="/create">Create a New Acorn</a>
+  <form method="post" action="/create">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="home_relay" value="{{ default_relay }}">
+    <input type="hidden" name="home_mint" value="{{ default_mint }}">
+    <input type="hidden" name="mnemonic_words" value="12">
+    <input type="hidden" name="defer_recovery" value="yes">
+    <input type="hidden" name="assign_default_handle" value="yes">
+    <input type="hidden" name="confirmed" value="yes">
+    <button type="submit">Create a New Acorn</button>
+  </form>
   <a class="nav-button" href="/login">Use an Existing Acorn</a>
 </section>
 
 <aside class="onboard-advisory">
-  <p>Creating an Acorn will display sensitive recovery material. Save both
-  mnemonics before leaving the recovery page. Safebox cannot recover them for
-  you.</p>
+  <p>One-click creation temporarily keeps the Safebox Acorn mnemonic in this
+  browser's encrypted session instead of displaying it immediately. The new
+  wallet opens at once, but the recovery backup must be completed before the
+  session expires or is cleared. Safebox also assigns a default public handle
+  derived from the Acorn public key; it can be changed or removed later.
+  Protected records can be enabled later.</p>
 </aside>
 {% endblock %}

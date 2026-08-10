@@ -28,6 +28,33 @@ Handles are normalized to lowercase. Safebox accepts 1–64 letters, numbers,
 dots, underscores, and hyphens, with a letter or number at each end. Consecutive
 dots and the reserved `_` name are rejected.
 
+## First-time onboarding name
+
+The one-click `/onboard` flow assigns the new Acorn a default handle so it is
+immediately reachable through the provider directory. Safebox follows the
+mnemonic-name pattern introduced in Safebox-2: it splits the first 32 bits of
+the Acorn public key into two 11-bit indexes into the BIP39 English word list
+and a numeric suffix. Safebox Web constrains the suffix to `0` through `999`,
+producing names such as:
+
+```text
+abandonabandon0
+```
+
+The public key makes this name deterministic and predictable; the name is not
+a secret, authentication factor, or proof of a person's identity. If the
+preferred name is already claimed, Safebox advances the numeric suffix until
+it atomically claims an available candidate. A database uniqueness conflict
+caused by a concurrent request is retried. If allocation cannot be completed,
+wallet creation still succeeds and the authenticated Acorn can claim a name
+manually.
+
+Automatic assignment is an onboarding policy of Safebox Web, which owns the
+domain namespace and directory. It is not Acorn relay state and is not imposed
+by the Acorn component. The advanced creation form does not request automatic
+assignment. After onboarding, the authenticated Acorn can use the ordinary
+handle page to keep the generated name, rename it, or remove it.
+
 ## Claim authorization
 
 The claim route requires an authenticated Acorn session and a valid form token.
