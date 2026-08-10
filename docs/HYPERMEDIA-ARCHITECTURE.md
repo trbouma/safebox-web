@@ -126,6 +126,22 @@ submission. Acorn stores the received record before requesting deletion of the
 temporary transfer blob; JavaScript performs camera acquisition only and does
 not implement transfer cryptography or persistence.
 
+The sender's QR representation also contains a CSRF-protected **Stop Sharing**
+form. After explicit confirmation, Safebox delegates deletion to Acorn using
+the transfer-scoped authority contained in the descriptor and returns a new
+result representation. This cannot revoke a record that was already imported,
+and deletion remains subject to the Blossom operator's retention behavior. No
+client-side revocation state or deletion API is used.
+
+The active QR representation uses one additional bounded progressive
+enhancement: a `beforeunload` listener warns if the sender navigates away while
+sharing is still active. Submitting **Stop Sharing** disarms the warning before
+the normal form navigation. The listener does not delete anything, retain the
+descriptor, or replace the confirmed server operation. Browser lifecycle
+events are not reliable enough to guarantee cleanup, particularly on mobile,
+so the visible warning, explicit deletion form, recipient cleanup, descriptor
+expiry, and storage-operator retention remain separate safeguards.
+
 Safebox Web does not put an Acorn object, proof state, private records, or
 workflow state into JavaScript, `localStorage`, or `sessionStorage`. The
 encrypted session cookie contains the minimum material required to reconstruct

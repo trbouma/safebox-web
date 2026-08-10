@@ -158,6 +158,7 @@ class FakeLoadedAcorn:
         self.record_transfer_create_calls: list[dict] = []
         self.record_transfer_inspect_calls: list[dict] = []
         self.record_transfer_accept_calls: list[dict] = []
+        self.record_transfer_delete_calls: list[dict] = []
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -217,6 +218,10 @@ class FakeLoadedAcorn:
             "transfer_deleted": True,
             "cleanup_error": None,
         }
+
+    async def delete_record_transfer(self, descriptor: str, **kwargs) -> dict:
+        self.record_transfer_delete_calls.append({"descriptor": descriptor, **kwargs})
+        return {"status": "DELETED", "transfer_deleted": True}
 
     async def put_record(self, **kwargs):
         self.record_put_calls.append(kwargs)
@@ -2193,6 +2198,10 @@ def test_record_share_creates_base64url_qr_after_confirmation() -> None:
     assert 'aria-label="Record sharing QR code"' in created.text
     assert TEST_TRANSFER_DESCRIPTOR in created.text
     assert "Expires:" in created.text
+    assert 'action="/record/share/stop"' in created.text
+    assert "Stop Sharing" in created.text
+    assert "Keep this page open while sharing" in created.text
+    assert 'src="/static/record-share.js"' in created.text
     assert acorn.record_transfer_create_calls == [
         {
             "record_name": "Field Notes",
@@ -2200,6 +2209,63 @@ def test_record_share_creates_base64url_qr_after_confirmation() -> None:
             "blossom_transfer_server": TEST_SETTINGS.blossom_home_server,
         }
     ]
+
+
+def test_record_share_page_serves_scoped_navigation_warning() -> None:
+    script = make_https_client().get("/static/record-share.js")
+
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith("text/javascript")
+    assert 'window.addEventListener("beforeunload"' in script.text
+    assert 'stopForm.addEventListener("submit"' in script.text
+    assert 'window.removeEventListener("beforeunload"' in script.text
+
+
+def test_originator_can_stop_record_sharing_after_confirmation() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/share/stop",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "descriptor": TEST_TRANSFER_DESCRIPTOR,
+            "label": "Field Notes",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Sharing of Field Notes has stopped" in response.text
+    assert "original Acorn record was not" in response.text
+    assert acorn.record_transfer_delete_calls == [
+        {
+            "descriptor": TEST_TRANSFER_DESCRIPTOR,
+            "allowed_servers": [TEST_SETTINGS.blossom_home_server],
+        }
+    ]
+
+
+def test_stop_record_sharing_requires_confirmation() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/share/stop",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "descriptor": TEST_TRANSFER_DESCRIPTOR,
+            "label": "Field Notes",
+        },
+    )
+
+    assert response.status_code == 403
+    assert "Confirm before deleting" in response.text
+    assert acorn.record_transfer_delete_calls == []
 
 
 def test_confirmed_record_transfer_import_stores_then_deletes_transfer() -> None:

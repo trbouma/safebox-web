@@ -63,7 +63,8 @@ This implementation intentionally provides:
 - authenticated NIP-05 handle claiming and public resolution;
 - record label listing, retrieval, creation, and user-confirmed update;
 - QR-mediated Base64URL record sharing with sender and receiver confirmation,
-  receiver-side storage, and post-import temporary-blob cleanup;
+  receiver-side storage, sender-initiated Stop Sharing, and post-import
+  temporary-blob cleanup;
 - an on-demand, server-rendered OpenETR origin and control-history projection
   for Original Records;
 - user-confirmed Lightning deposits through the Acorn home mint;

@@ -2433,6 +2433,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     record_url=record_url,
                     descriptor=descriptor,
                     transfer_qr=_qr_svg(descriptor),
+                    csrf_token=form_token.issue(),
                     expires_at=datetime.fromtimestamp(
                         int(transfer["expires_at"]),
                         tz=timezone.utc,
@@ -2452,6 +2453,77 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             status_code=502,
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.post("/record/share/stop", response_class=HTMLResponse)
+    async def stop_record_share(
+        request: Request,
+        acorn: RecordAcornDependency,
+        csrf_token: str = Form(...),
+        descriptor: str = Form(...),
+        label: str = Form(...),
+        confirmed: str = Form(""),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+        try:
+            record_label = _validate_record_label(label)
+        except ValueError as exc:
+            return HTMLResponse(
+                _page("Stop Sharing", f'<p class="error">{escape(str(exc))}</p>'),
+                status_code=400,
+            )
+        record_url = f'/record?{urlencode({"label": record_label})}'
+
+        def stop_result(error: str | None, status_code: int = 200) -> HTMLResponse:
+            return HTMLResponse(
+                render_template(
+                    "record_share_stopped.html",
+                    title="Sharing Stopped" if error is None else "Stop Sharing",
+                    label=record_label,
+                    record_url=record_url,
+                    error=error,
+                ),
+                status_code=status_code,
+                headers={"Cache-Control": "no-store"},
+            )
+
+        if not form_token.verify(csrf_token) or confirmed != "yes":
+            return stop_result(
+                "Confirm before deleting the temporary sharing copy.",
+                403,
+            )
+        try:
+            result = await asyncio.wait_for(
+                acorn.delete_record_transfer(
+                    str(descriptor).strip(),
+                    allowed_servers=[settings.blossom_home_server],
+                ),
+                timeout=settings.payment_timeout_seconds,
+            )
+            if not result.get("transfer_deleted"):
+                return stop_result(
+                    "Deletion of the temporary sharing copy could not be confirmed.",
+                    502,
+                )
+        except TimeoutError:
+            return stop_result(
+                "The deletion request timed out and its outcome is uncertain.",
+                504,
+            )
+        except RecordTransferError as exc:
+            message = str(exc)
+            status_code = 502 if "could not be confirmed" in message else 400
+            return stop_result(message, status_code)
+        except Exception as exc:
+            logger.warning(
+                "record transfer sender cleanup failed error_type=%s",
+                type(exc).__name__,
+            )
+            return stop_result(
+                "Safebox could not confirm deletion of the temporary sharing copy.",
+                502,
+            )
+        return stop_result(None)
 
     @app.post("/record/import", response_class=HTMLResponse)
     async def import_record_transfer(

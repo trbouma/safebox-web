@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}
+<p class="error">{{ error }}</p>
+<p class="advisory">The sharing code remains protected by its bearer secret and
+configured expiry, but the storage operator may retain data according to its
+own policy.</p>
+{% else %}
+<p role="status"><strong>Sharing of {{ label }} has stopped.</strong></p>
+<p>The temporary sharing copy was deleted. The original Acorn record was not
+changed.</p>
+<p class="advisory">Deletion prevents a future retrieval from this storage
+server, but it cannot revoke a copy that another recipient has already
+imported. Storage operators may also retain backups according to their policy.</p>
+{% endif %}
+<p><a class="nav-button" href="{{ record_url }}">Return to Record</a></p>
+{% endblock %}
