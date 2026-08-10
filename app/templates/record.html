@@ -7,7 +7,18 @@
   <h2 id="blob-heading">Original Record</h2>
   <p>The Original Record is protected by Acorn and stored separately from its record metadata.</p>
   {% if blob_fingerprint %}
-  <p>Original Record fingerprint: <code>{{ blob_fingerprint }}</code></p>
+  <p class="record-fingerprint">
+    <svg class="inline-icon" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+      stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 11a2 2 0 0 1 2 2c0 3-.7 5.7-2 8"></path>
+      <path d="M8.2 20c1.2-2.2 1.8-4.5 1.8-7a2 2 0 0 1 4 0c0 2.6-.4 5-1.2 7.2"></path>
+      <path d="M5.5 18.5A15 15 0 0 0 7 12.8a5 5 0 0 1 10 0c0 2.2-.2 4.4-.8 6.5"></path>
+      <path d="M4 14v-1.2a8 8 0 0 1 16 0c0 1.2 0 2.4-.2 3.6"></path>
+      <path d="M7 6.2A8 8 0 0 1 18.5 8"></path>
+    </svg>
+    <span>Fingerprint:</span> <code>{{ blob_fingerprint }}</code>
+  </p>
   {% endif %}
   {% if blob_preview == "image" %}
   <figure class="blob-preview">
@@ -39,10 +50,62 @@
   {% else %}
   <button class="record-capability" type="button" disabled>Original</button>
   {% endif %}
-  <button class="record-capability" type="button" disabled title="Sharing is planned">Share</button>
+  <a class="record-capability" href="{{ share_url }}">Share</a>
   <button class="record-capability" type="button" disabled title="Issuance support is planned">Issue</button>
   <button class="record-capability" type="button" disabled title="Verification support is planned">Verify</button>
 </nav>
+<details class="openetr-history" id="openetr-history"{% if openetr_requested %} open{% endif %}>
+  <summary>OpenETR Control History</summary>
+  <div class="openetr-history-content">
+    {% if not has_blob %}
+    <p>An Original Record is required before its OpenETR history can be queried.</p>
+    {% elif not blob_fingerprint %}
+    <p>This Original Record does not contain a valid SHA-256 object digest.</p>
+    {% elif not openetr_requested %}
+    <p>Look up the signed origin and control events for this exact Original Record.</p>
+    <p class="openetr-evidence-note">This sends the record's complete object digest—not its contents or decryption key—to the configured OpenETR relays.</p>
+    <p><a class="nav-button" href="{{ openetr_url }}">Load OpenETR History</a></p>
+    {% elif openetr_history.error %}
+    <p class="error">{{ openetr_history.error }}</p>
+    {% elif not openetr_history.origin %}
+    <p>No OpenETR origin event was found for this Original Record.</p>
+    {% else %}
+    <p class="openetr-evidence-note">These are cryptographically valid signed events returned by the configured OpenETR relay infrastructure. Recognition of the signer and the effect of an event remain separate questions.</p>
+    <section class="openetr-event" aria-labelledby="openetr-origin-heading">
+      <h3 id="openetr-origin-heading">Origin Event</h3>
+      <dl class="openetr-event-fields">
+        <dt>Object digest</dt><dd><code>{{ openetr_history.digest }}</code></dd>
+        <dt>Event</dt><dd><code>{{ openetr_history.origin.id }}</code></dd>
+        <dt>Kind</dt><dd>{{ openetr_history.origin.kind }}</dd>
+        <dt>Issuer</dt><dd><code>{{ openetr_history.origin.author }}</code></dd>
+        <dt>Created</dt><dd>{{ openetr_history.origin.created_at }}</dd>
+        {% if openetr_history.origin.content %}<dt>Statement</dt><dd>{{ openetr_history.origin.content }}</dd>{% endif %}
+      </dl>
+    </section>
+    <h3>Control Events</h3>
+    {% for event in openetr_history.controls %}
+    <article class="openetr-event">
+      <h4>{{ event.action_label }}</h4>
+      <dl class="openetr-event-fields">
+        <dt>Event</dt><dd><code>{{ event.id }}</code></dd>
+        <dt>Kind</dt><dd>{{ event.kind }}</dd>
+        <dt>Signer</dt><dd><code>{{ event.author }}</code></dd>
+        <dt>Created</dt><dd>{{ event.created_at }}</dd>
+        <dt>Prior event</dt><dd><code>{{ event.prior_event_id }}</code></dd>
+        {% if event.participant %}<dt>Participant</dt><dd><code>{{ event.participant }}</code></dd>{% endif %}
+        {% if event.content %}<dt>Statement</dt><dd>{{ event.content }}</dd>{% endif %}
+      </dl>
+    </article>
+    {% else %}
+    <p>No related control events were found.</p>
+    {% endfor %}
+    {% for warning in openetr_history.warnings %}
+    <p class="openetr-warning"><strong>Note:</strong> {{ warning }}</p>
+    {% endfor %}
+    <p class="openetr-source">Queried {% for relay in openetr_history.relays %}<code>{{ relay }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+  </div>
+</details>
 <p><a class="nav-button" href="{{ edit_url }}">Edit this record</a></p>
 <section class="danger-zone" aria-labelledby="delete-record-heading">
   <h2 id="delete-record-heading">Delete this record</h2>

@@ -31,6 +31,9 @@ DEFAULT_MAX_BLOB_BYTES = 10 * 1024 * 1024
 DEFAULT_BITCOIN_API_BASE = "https://blockstream.info/api"
 DEFAULT_BITCOIN_LOOKUP_TIMEOUT_SECONDS = 10.0
 DEFAULT_BITCOIN_SWEEP_FEE_RATE = 2.0
+DEFAULT_OPENETR_RELAYS = ("wss://relay.openetr.org",)
+DEFAULT_OPENETR_QUERY_TIMEOUT_SECONDS = 5.0
+DEFAULT_OPENETR_QUERY_LIMIT = 100
 
 
 def _allowed_ws_relays_from_env() -> tuple[str, ...]:
@@ -41,6 +44,18 @@ def _allowed_ws_relays_from_env() -> tuple[str, ...]:
         for relay in os.getenv("SAFEBOX_ALLOWED_WS_RELAYS", "").split(",")
         if relay.strip()
     )
+
+
+def _openetr_relays_from_env() -> tuple[str, ...]:
+    relays = tuple(
+        relay.strip()
+        for relay in os.getenv(
+            "SAFEBOX_OPENETR_RELAYS",
+            ",".join(DEFAULT_OPENETR_RELAYS),
+        ).split(",")
+        if relay.strip()
+    )
+    return relays or DEFAULT_OPENETR_RELAYS
 
 
 def _session_ttl_seconds_from_env() -> int:
@@ -201,6 +216,9 @@ class Settings:
     bitcoin_api_base: str = DEFAULT_BITCOIN_API_BASE
     bitcoin_lookup_timeout_seconds: float = DEFAULT_BITCOIN_LOOKUP_TIMEOUT_SECONDS
     bitcoin_sweep_fee_rate: float = DEFAULT_BITCOIN_SWEEP_FEE_RATE
+    openetr_relays: tuple[str, ...] = DEFAULT_OPENETR_RELAYS
+    openetr_query_timeout_seconds: float = DEFAULT_OPENETR_QUERY_TIMEOUT_SECONDS
+    openetr_query_limit: int = DEFAULT_OPENETR_QUERY_LIMIT
     database_url: str = "sqlite:///data/database.db"
     provider_invoice_wait_seconds: float = 10.0
     lnurl_min_sendable_msat: int = 1000
@@ -237,6 +255,12 @@ class Settings:
             raise ValueError("SAFEBOX_BITCOIN_LOOKUP_TIMEOUT_SECONDS must be positive")
         if self.bitcoin_sweep_fee_rate <= 0:
             raise ValueError("SAFEBOX_BITCOIN_SWEEP_FEE_RATE must be positive")
+        if not self.openetr_relays:
+            raise ValueError("SAFEBOX_OPENETR_RELAYS must contain at least one relay")
+        if self.openetr_query_timeout_seconds <= 0:
+            raise ValueError("SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS must be positive")
+        if self.openetr_query_limit < 1:
+            raise ValueError("SAFEBOX_OPENETR_QUERY_LIMIT must be at least 1")
         if not self.blossom_home_server.strip():
             raise ValueError("SAFEBOX_BLOSSOM_HOME_SERVER is required")
         if self.provider_invoice_wait_seconds <= 0:
@@ -303,6 +327,18 @@ class Settings:
                     str(DEFAULT_BITCOIN_SWEEP_FEE_RATE),
                 )
             )
+            openetr_query_timeout = float(
+                os.getenv(
+                    "SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS",
+                    str(DEFAULT_OPENETR_QUERY_TIMEOUT_SECONDS),
+                )
+            )
+            openetr_query_limit = int(
+                os.getenv(
+                    "SAFEBOX_OPENETR_QUERY_LIMIT",
+                    str(DEFAULT_OPENETR_QUERY_LIMIT),
+                )
+            )
         except ValueError as exc:
             raise RuntimeError("Safebox numeric application settings are invalid") from exc
         default_relay = os.getenv(
@@ -340,6 +376,9 @@ class Settings:
             ).strip(),
             bitcoin_lookup_timeout_seconds=bitcoin_lookup_timeout,
             bitcoin_sweep_fee_rate=bitcoin_sweep_fee_rate,
+            openetr_relays=_openetr_relays_from_env(),
+            openetr_query_timeout_seconds=openetr_query_timeout,
+            openetr_query_limit=openetr_query_limit,
             database_url=os.getenv(
                 "SAFEBOX_DATABASE_URL",
                 "sqlite:///data/database.db",

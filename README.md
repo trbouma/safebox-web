@@ -9,10 +9,12 @@ Application and wallet logic remains in FastAPI and Acorn; browser JavaScript
 is limited to progressive presentation behavior and narrowly scoped device
 input such as QR acquisition.
 
-A future OpenETR integration is intentionally scoped to issuing signed origin
-evidence for an existing Original Record and independently verifying its
-control graph. The component boundary, privacy implications, hypermedia flows,
-and staged implementation are described in the
+A first read-only OpenETR integration now projects the signed origin and linked
+control-event history for an existing Original Record. The initial adapter
+implements only kinds `1415` and `1416`, the object-wide `o` query, exact
+prior-event `e` traversal, and signature validation; it does not import OpenETR
+or publish events. Future issuance and fuller independent verification remain
+scoped by the
 [OpenETR Issue and Verify Integration Design Note](docs/OPENETR-ISSUE-VERIFY-DESIGN-NOTE.md).
 The broader product rationale places Safebox at the conjunction of OpenETR's
 object control graph, viewpoint-dependent recognition through the social graph,
@@ -59,7 +61,11 @@ This implementation intentionally provides:
 - relay-backed wallet loading and balance display;
 - a responsive transaction-history view with explicit incoming-ecash receipt;
 - authenticated NIP-05 handle claiming and public resolution;
-- private-record label listing, retrieval, creation, and user-confirmed update;
+- record label listing, retrieval, creation, and user-confirmed update;
+- QR-mediated Base64URL record sharing with sender and receiver confirmation,
+  receiver-side storage, and post-import temporary-blob cleanup;
+- an on-demand, server-rendered OpenETR origin and control-history projection
+  for Original Records;
 - user-confirmed Lightning deposits through the Acorn home mint;
 - confirmed Lightning-address payments through Acorn;
 - camera acquisition of Lightning addresses and fixed-amount BOLT11 invoices
@@ -569,6 +575,9 @@ SAFEBOX_COOKIE_KEY=<generated URL-safe 32-byte application key>
 SAFEBOX_ALLOWED_WS_RELAYS=
 SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
 SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app
+SAFEBOX_OPENETR_RELAYS=wss://relay.openetr.org
+SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS=5
+SAFEBOX_OPENETR_QUERY_LIMIT=100
 SAFEBOX_WEB_WORKERS=1
 SAFEBOX_SERVICE_ACORN_ENABLED=true
 SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800

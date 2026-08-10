@@ -24,8 +24,11 @@ if (
     (result) => {
       if (accepted) return;
       accepted = true;
-      resultInput.value = String(result.data || "").trim();
-      status.textContent = "QR code acquired. Review the Lightning payment below.";
+      const scannedValue = String(result.data || "").trim();
+      resultInput.value = scannedValue;
+      status.textContent = scannedValue.toLowerCase().startsWith("acorn:record-transfer:")
+        ? "Record-sharing code acquired. Review the transfer below."
+        : "Payment code acquired. Review the payment below.";
       scanner.stop();
       startButton.hidden = false;
       startButton.disabled = false;

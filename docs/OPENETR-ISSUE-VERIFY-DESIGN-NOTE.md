@@ -79,11 +79,14 @@ private records, and spendable funds can be used together.
 | Nostr relays | Carry signed OpenETR events; they are transport and availability infrastructure, not recognition authorities |
 | Recognition layer | Decide what effect to give the signed evidence under a community, institutional, contractual, or legal rule book |
 
-Safebox Web must consume OpenETR through an installable Python component API.
-It should not reimplement event kinds, tag construction, graph traversal, or
-verifier rules in route functions. The OpenETR CLI `--json` contract is useful
-for prototyping and interoperability tests, but spawning the CLI is not the
-preferred production boundary.
+The mature Safebox Web integration should consume OpenETR through an installable
+Python component API. Event kinds, tag construction, graph traversal, and
+verifier rules must not accumulate in route functions. The initial read-only
+experiment described below is a bounded exception: it keeps the minimum wire
+contract in one lightweight adapter so that the user experience can be tested
+before the final packaging boundary is selected. The OpenETR CLI `--json`
+contract remains useful for interoperability tests, but spawning the CLI is not
+the preferred production boundary.
 
 The current OpenETR working registry assigns regular event kind `1415` to the
 origin event and kind `1416` to the control-event family. Safebox Web should
@@ -388,6 +391,49 @@ other personal artifact digest.
    without changing the underlying signed evidence.
 6. **Later lifecycle work:** consider attestation, transfer, encumbrance,
    discharge, redemption, and termination as separate reviewed capabilities.
+
+### Initial read-only projection implemented
+
+Safebox Web now contains a deliberately small `app.openetr` adapter as an
+intermediate integration step. It does not depend on the OpenETR Python package
+and it does not sign or publish anything. For an Acorn Original Record, the
+record page uses the complete plaintext SHA-256 value already authenticated by
+Acorn as the object-wide `o` identifier. An on-demand hypermedia link then
+queries the operator-configured relays for current origin kind `1415` and
+control kind `1416` events.
+
+The projection:
+
+- validates every returned Nostr event signature before displaying it;
+- selects the earliest signed origin when more than one origin exists;
+- follows exact prior-event `e` links from that origin;
+- requires an explicit `origin` tag, when present, to agree with the selected
+  origin;
+- displays the origin and related control events without making a recognition
+  or legal-effect claim; and
+- reports competing origins, broken or orphaned chains, invalid signatures,
+  and relay failures as distinct cautions.
+
+The lookup is intentionally on demand so merely opening a private record does
+not contact public OpenETR infrastructure. Expanding the pane presents a normal
+server-rendered link; following it reloads the record with the history pane
+open. No client-side graph logic or OpenETR key material is introduced.
+
+Operators configure the experimental query boundary with:
+
+```dotenv
+SAFEBOX_OPENETR_RELAYS=wss://relay.openetr.org
+SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS=5
+SAFEBOX_OPENETR_QUERY_LIMIT=100
+```
+
+This implementation is a proving surface, not the final OpenETR component
+boundary described above. In particular it does not yet apply full structural
+or recognition policy, resolve participant profiles, derive an authoritative
+current controller across ambiguous branches, support legacy kinds, or issue
+events. Experience with this projection should determine whether the mature
+query implementation is imported as a package or retained behind a small,
+versioned compatibility module.
 
 WebSockets, record transmission, live subscriptions, and peer-to-peer workflow
 coordination should receive their own design decisions. Issue and verify remain

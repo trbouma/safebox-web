@@ -20,6 +20,8 @@ os.environ.setdefault("SAFEBOX_COOKIE_KEY", Fernet.generate_key().decode("ascii"
 from fastapi.testclient import TestClient
 
 from acorn import (
+    RecordTransferDescriptor,
+    encode_record_transfer_descriptor,
     record_protection_key_from_entropy,
     record_protection_recovery_phrase,
 )
@@ -35,6 +37,7 @@ from app.dependencies import (
     get_deposit_acorn,
     get_loaded_acorn,
     get_payment_acorn,
+    get_record_acorn,
     get_receive_acorn,
     get_session_credentials,
 )
@@ -63,6 +66,14 @@ TEST_NSEC = "nsec1yddnfntunakhu3v4ll56ujcuk4sxm79v526j05s2qly026ergt6q682r8v"
 TEST_NPUB = "npub1"
 TEST_RPK = "a5" * 32
 TEST_RPK_PHRASE = record_protection_recovery_phrase(TEST_RPK)
+TEST_TRANSFER_DESCRIPTOR = encode_record_transfer_descriptor(
+    RecordTransferDescriptor(
+        blob_url="https://blossom.getsafebox.app/" + "ab" * 32,
+        ciphertext_sha256="ab" * 32,
+        secret=b"s" * 32,
+        expires_at=2_000_000_000,
+    )
+)
 
 
 def make_https_client() -> TestClient:
@@ -144,6 +155,9 @@ class FakeLoadedAcorn:
             "accepted_amount": 0,
         }
         self.receive_calls = 0
+        self.record_transfer_create_calls: list[dict] = []
+        self.record_transfer_inspect_calls: list[dict] = []
+        self.record_transfer_accept_calls: list[dict] = []
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -173,6 +187,36 @@ class FakeLoadedAcorn:
             }
 
         return Record()
+
+    async def create_record_transfer(self, record_name: str, **kwargs) -> dict:
+        self.record_transfer_create_calls.append({"record_name": record_name, **kwargs})
+        return {
+            "descriptor": TEST_TRANSFER_DESCRIPTOR,
+            "expires_at": 2_000_000_000,
+            "label": record_name,
+            "has_original": False,
+        }
+
+    async def inspect_record_transfer(self, descriptor: str, **kwargs) -> dict:
+        self.record_transfer_inspect_calls.append({"descriptor": descriptor, **kwargs})
+        return {
+            "label": "Shared Notes",
+            "record_type": "generic",
+            "has_original": True,
+            "blob_type": "application/pdf",
+            "expires_at": 2_000_000_000,
+            "server": "https://blossom.getsafebox.app",
+        }
+
+    async def accept_record_transfer(self, descriptor: str, **kwargs) -> dict:
+        self.record_transfer_accept_calls.append({"descriptor": descriptor, **kwargs})
+        return {
+            "status": "OK",
+            "label": kwargs["record_name"],
+            "has_original": True,
+            "transfer_deleted": True,
+            "cleanup_error": None,
+        }
 
     async def put_record(self, **kwargs):
         self.record_put_calls.append(kwargs)
@@ -483,7 +527,10 @@ def test_theme_defaults_to_dark_and_script_is_served() -> None:
 
     assert page.status_code == 200
     assert '<html lang="en" data-theme="dark">' in page.text
-    assert 'data-theme-toggle aria-label="Switch colour theme"' in page.text
+    assert 'data-theme-toggle' in page.text
+    assert 'aria-label="Use light mode"' in page.text
+    assert 'data-theme-icon="sun"' in page.text
+    assert 'data-theme-icon="moon"' in page.text
     assert 'src="/static/theme.js"' in page.text
     assert script.status_code == 200
     assert script.headers["content-type"].startswith("text/javascript")
@@ -1750,6 +1797,33 @@ def test_scanned_lightning_address_prefills_payment_review() -> None:
     assert response.status_code == 200
     assert "Pay a Lightning address" in response.text
     assert 'value="alice@example.com"' in response.text
+
+
+def test_scanner_recognizes_record_transfer_descriptor() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/scan/lightning",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_payment": TEST_TRANSFER_DESCRIPTOR,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "A valid Acorn record-sharing code was recognized" in response.text
+    assert "Shared Notes" in response.text
+    assert 'action="/record/import"' in response.text
+    assert TEST_TRANSFER_DESCRIPTOR in response.text
+    assert acorn.record_transfer_inspect_calls == [
+        {
+            "descriptor": TEST_TRANSFER_DESCRIPTOR,
+            "allowed_servers": [TEST_SETTINGS.blossom_home_server],
+        }
+    ]
     assert acorn.payments == []
 
 
@@ -2097,6 +2171,66 @@ def test_record_index_links_encoded_labels() -> None:
     assert ">Open</a>" not in response.text
 
 
+def test_record_share_creates_base64url_qr_after_confirmation() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    warning = client.get("/record/share", params={"label": "Field Notes"})
+    created = client.post(
+        "/record/share",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Field Notes",
+            "confirmed": "yes",
+        },
+    )
+
+    assert warning.status_code == 200
+    assert "Create Sharing Code" in warning.text
+    assert created.status_code == 200
+    assert 'aria-label="Record sharing QR code"' in created.text
+    assert TEST_TRANSFER_DESCRIPTOR in created.text
+    assert "Expires:" in created.text
+    assert acorn.record_transfer_create_calls == [
+        {
+            "record_name": "Field Notes",
+            "expires_in": 3600,
+            "blossom_transfer_server": TEST_SETTINGS.blossom_home_server,
+        }
+    ]
+
+
+def test_confirmed_record_transfer_import_stores_then_deletes_transfer() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/import",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "descriptor": TEST_TRANSFER_DESCRIPTOR,
+            "label": "Imported Notes",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Imported Notes was imported and stored" in response.text
+    assert "temporary sharing copy was deleted" in response.text
+    assert acorn.record_transfer_accept_calls == [
+        {
+            "descriptor": TEST_TRANSFER_DESCRIPTOR,
+            "record_name": "Imported Notes",
+            "allowed_servers": [TEST_SETTINGS.blossom_home_server],
+            "delete_transfer": True,
+        }
+    ]
+
+
 def test_legacy_blob_upload_page_redirects_to_unified_record_form() -> None:
     app = create_app(TEST_SETTINGS)
     app.dependency_overrides[get_loaded_acorn] = lambda: FakeBlobAcorn()
@@ -2220,10 +2354,11 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
     response = client.get("/record/blob", params={"label": "Private Notes"})
 
     assert detail.status_code == 200
-    assert "Original Record fingerprint: <code>1EA23F2B</code>" in detail.text
+    assert 'class="record-fingerprint"' in detail.text
+    assert "Fingerprint:</span> <code>1EA23F2B</code>" in detail.text
     assert '<nav class="record-capabilities" aria-label="Record actions">' in detail.text
     assert 'href="/record/blob?label=Private+Notes">Original</a>' in detail.text
-    assert ">Share</button>" in detail.text
+    assert 'href="/record/share?label=Private+Notes">Share</a>' in detail.text
     assert ">Issue</button>" in detail.text
     assert ">Verify</button>" in detail.text
     assert "/record/blob?label=Private+Notes" in detail.text
@@ -2232,6 +2367,91 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
     assert response.headers["content-type"].startswith("text/plain")
     assert "attachment" in response.headers["content-disposition"]
     assert acorn.blob_reads == ["Private Notes"]
+
+
+def test_record_offers_on_demand_openetr_history_without_querying(monkeypatch) -> None:
+    queried = False
+
+    async def fake_query(*args, **kwargs):
+        nonlocal queried
+        queried = True
+        return {}
+
+    monkeypatch.setattr(main_module, "query_openetr_history", fake_query)
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeBlobAcorn(
+        existing_labels={"Receipt"}
+    )
+    response = TestClient(app, base_url="https://safebox.example").get(
+        "/record", params={"label": "Receipt"}
+    )
+
+    assert response.status_code == 200
+    assert 'id="openetr-history"' in response.text
+    assert "Load OpenETR History" in response.text
+    assert "openetr=1#openetr-history" in response.text.replace("&amp;", "&")
+    assert queried is False
+
+
+def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
+    digest = "1ea23f2b" + "0" * 56
+    query_args = {}
+
+    async def fake_query(the_digest, relays, **kwargs):
+        query_args.update(digest=the_digest, relays=relays, kwargs=kwargs)
+        return {
+            "digest": the_digest,
+            "relays": tuple(relays),
+            "origin": {
+                "id": "01" * 32,
+                "author": "npub1issuer",
+                "created_at": "2026-08-10 12:00 UTC",
+                "content": "Issued warehouse receipt",
+                "kind": 1415,
+            },
+            "controls": [
+                {
+                    "id": "02" * 32,
+                    "author": "npub1controller",
+                    "created_at": "2026-08-10 13:00 UTC",
+                    "action_label": "Transfer initiated",
+                    "prior_event_id": "01" * 32,
+                    "participant": "npub1recipient",
+                    "content": "Transfer to recipient",
+                    "kind": 1416,
+                }
+            ],
+            "warnings": [],
+            "error": None,
+        }
+
+    monkeypatch.setattr(main_module, "query_openetr_history", fake_query)
+    settings = replace(
+        TEST_SETTINGS,
+        openetr_relays=("wss://relay.openetr.example",),
+        openetr_query_timeout_seconds=2,
+        openetr_query_limit=25,
+    )
+    app = create_app(settings)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeBlobAcorn(
+        existing_labels={"Receipt"}, orig_sha256=digest
+    )
+    response = TestClient(app, base_url="https://safebox.example").get(
+        "/record", params={"label": "Receipt", "openetr": "1"}
+    )
+
+    assert response.status_code == 200
+    assert '<details class="openetr-history" id="openetr-history" open>' in response.text
+    assert "Origin Event" in response.text
+    assert digest in response.text
+    assert "Issued warehouse receipt" in response.text
+    assert "Transfer initiated" in response.text
+    assert "npub1recipient" in response.text
+    assert query_args == {
+        "digest": digest,
+        "relays": ("wss://relay.openetr.example",),
+        "kwargs": {"timeout": 2, "limit": 25},
+    }
 
 
 def test_image_blob_uses_native_authenticated_inline_preview() -> None:

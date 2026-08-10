@@ -25,6 +25,9 @@ from sqlmodel import select
 
 from acorn import (
     Acorn,
+    RECORD_TRANSFER_PREFIX,
+    RecordTransferError,
+    decode_record_transfer_descriptor,
     generate_record_protection_key,
     record_protection_key_from_entropy,
     record_protection_key_from_recovery_phrase,
@@ -56,6 +59,7 @@ from app.dependencies import (
     RecordAcornDependency,
 )
 from app.models import ClaimedHandle
+from app.openetr import query_openetr_history
 from app.lnurl_pay import encode_lnurl, router as lnurl_pay_router
 from app.security import (
     LOOPBACK_COOKIE_NAME,
@@ -221,7 +225,7 @@ def _lightning_scan_form(
 ) -> str:
     return render_template(
         "scan_lightning_address.html",
-        title="Scan a Lightning payment",
+        title="Scan a Code",
         csrf_token=csrf_token,
         error=error,
         lightning_address=lightning_address,
@@ -1837,6 +1841,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not form_token.verify(csrf_token):
             return scan_error("The form token is invalid or expired. Scan again.", 403)
 
+        scanned_value = str(lightning_payment).strip()
+        if scanned_value.lower().startswith(RECORD_TRANSFER_PREFIX):
+            try:
+                decode_record_transfer_descriptor(scanned_value)
+                transfer = await asyncio.wait_for(
+                    acorn.inspect_record_transfer(
+                        scanned_value,
+                        allowed_servers=[settings.blossom_home_server],
+                    ),
+                    timeout=settings.wallet_load_timeout_seconds,
+                )
+            except RecordTransferError as exc:
+                return scan_error(str(exc))
+            except TimeoutError:
+                return scan_error("The record transfer lookup timed out.", 504)
+            except Exception as exc:
+                logger.warning(
+                    "record transfer inspection failed error_type=%s",
+                    type(exc).__name__,
+                )
+                return scan_error("The temporary record transfer could not be loaded.", 502)
+            return HTMLResponse(
+                render_template(
+                    "record_transfer_review.html",
+                    title="Import Record",
+                    error=None,
+                    transfer=transfer,
+                    descriptor=scanned_value,
+                    expires_at=datetime.fromtimestamp(
+                        int(transfer["expires_at"]),
+                        tz=timezone.utc,
+                    ).strftime("%Y-%m-%d %H:%M UTC"),
+                    csrf_token=form_token.issue(),
+                ),
+                headers={"Cache-Control": "no-store"},
+            )
+
         recipient = _normalize_lightning_address(lightning_payment)
         invoice = _decode_lightning_invoice(lightning_payment)
         if recipient is None and invoice is None:
@@ -2301,6 +2342,188 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CsrfProtector(settings).issue(),
             notice=notice,
             retention_notice=_ecash_retention_notice(settings),
+        )
+
+    @app.get("/record/share", response_class=HTMLResponse)
+    async def share_record_form(
+        request: Request,
+        acorn: RecordAcornDependency,
+        label: str,
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        try:
+            record_label = _validate_record_label(label)
+            await asyncio.wait_for(
+                acorn.get_record_safebox(record_name=record_label),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except (ValueError, TimeoutError):
+            return HTMLResponse(
+                _page(
+                    "Share Record",
+                    '<p class="error">The requested record could not be loaded.</p>'
+                    '<p><a class="nav-button" href="/records">Return to records</a></p>',
+                ),
+                status_code=404,
+            )
+        return HTMLResponse(
+            render_template(
+                "record_share.html",
+                title="Share Record",
+                label=record_label,
+                record_url=f'/record?{urlencode({"label": record_label})}',
+                csrf_token=CsrfProtector(settings).issue(),
+                error=None,
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/record/share", response_class=HTMLResponse)
+    async def create_record_share(
+        request: Request,
+        acorn: RecordAcornDependency,
+        csrf_token: str = Form(...),
+        label: str = Form(...),
+        confirmed: str = Form(""),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+        try:
+            record_label = _validate_record_label(label)
+        except ValueError as exc:
+            return HTMLResponse(_page("Share Record", f'<p class="error">{escape(str(exc))}</p>'), status_code=400)
+        record_url = f'/record?{urlencode({"label": record_label})}'
+        if not form_token.verify(csrf_token) or confirmed != "yes":
+            return HTMLResponse(
+                render_template(
+                    "record_share.html",
+                    title="Share Record",
+                    label=record_label,
+                    record_url=record_url,
+                    csrf_token=form_token.issue(),
+                    error="Confirm before creating a temporary sharing copy.",
+                ),
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
+        try:
+            transfer = await asyncio.wait_for(
+                acorn.create_record_transfer(
+                    record_label,
+                    expires_in=3600,
+                    blossom_transfer_server=settings.blossom_home_server,
+                ),
+                timeout=settings.payment_timeout_seconds,
+            )
+        except TimeoutError:
+            error = "Creating the temporary record transfer timed out. Its outcome may be uncertain."
+        except Exception as exc:
+            logger.warning(
+                "record transfer creation failed error_type=%s",
+                type(exc).__name__,
+            )
+            error = "Safebox could not create the temporary record transfer."
+        else:
+            descriptor = str(transfer["descriptor"])
+            return HTMLResponse(
+                render_template(
+                    "record_share_qr.html",
+                    title="Share Record",
+                    label=record_label,
+                    record_url=record_url,
+                    descriptor=descriptor,
+                    transfer_qr=_qr_svg(descriptor),
+                    expires_at=datetime.fromtimestamp(
+                        int(transfer["expires_at"]),
+                        tz=timezone.utc,
+                    ).strftime("%Y-%m-%d %H:%M UTC"),
+                ),
+                headers={"Cache-Control": "no-store"},
+            )
+        return HTMLResponse(
+            render_template(
+                "record_share.html",
+                title="Share Record",
+                label=record_label,
+                record_url=record_url,
+                csrf_token=form_token.issue(),
+                error=error,
+            ),
+            status_code=502,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/record/import", response_class=HTMLResponse)
+    async def import_record_transfer(
+        request: Request,
+        acorn: RecordAcornDependency,
+        csrf_token: str = Form(...),
+        descriptor: str = Form(...),
+        label: str = Form(...),
+        confirmed: str = Form(""),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+
+        def import_error(message: str, status_code: int) -> HTMLResponse:
+            return HTMLResponse(
+                render_template(
+                    "record_transfer_result.html",
+                    title="Import Record",
+                    error=message,
+                    label=None,
+                    transfer_deleted=False,
+                    record_url=None,
+                ),
+                status_code=status_code,
+                headers={"Cache-Control": "no-store"},
+            )
+
+        if not form_token.verify(csrf_token) or confirmed != "yes":
+            return import_error("Confirm before importing the record.", 403)
+        try:
+            record_label = _validate_record_label(label)
+            existing_labels = await asyncio.wait_for(
+                acorn.get_user_record_labels(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+            if record_label in {str(item) for item in existing_labels}:
+                return import_error(
+                    "A record with that label already exists. Scan again and choose another label.",
+                    409,
+                )
+            result = await asyncio.wait_for(
+                acorn.accept_record_transfer(
+                    str(descriptor).strip(),
+                    record_name=record_label,
+                    allowed_servers=[settings.blossom_home_server],
+                    delete_transfer=True,
+                ),
+                timeout=settings.payment_timeout_seconds,
+            )
+        except RecordTransferError as exc:
+            return import_error(str(exc), 400)
+        except TimeoutError:
+            return import_error(
+                "The import timed out and its outcome may be uncertain. Check the records list before retrying.",
+                504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "record transfer import failed error_type=%s",
+                type(exc).__name__,
+            )
+            return import_error("Safebox could not import the record transfer.", 502)
+        return HTMLResponse(
+            render_template(
+                "record_transfer_result.html",
+                title="Record Imported",
+                error=None,
+                label=record_label,
+                transfer_deleted=bool(result.get("transfer_deleted")),
+                record_url=f'/record?{urlencode({"label": record_label})}',
+            ),
+            headers={"Cache-Control": "no-store"},
         )
 
     @app.get("/records", response_class=HTMLResponse)
@@ -2854,6 +3077,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         label: str,
         acorn: LoadedAcornDependency,
         saved: bool = False,
+        openetr: bool = False,
     ):
         settings = request.app.state.settings
         try:
@@ -2909,12 +3133,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         blob_fingerprint = _blob_recognition_fingerprint(
             getattr(record_value, "origsha256", None)
         )
+        openetr_history = None
+        if openetr and blob_fingerprint:
+            try:
+                openetr_history = await asyncio.wait_for(
+                    query_openetr_history(
+                        str(record_value.origsha256).strip().lower(),
+                        settings.openetr_relays,
+                        timeout=settings.openetr_query_timeout_seconds,
+                        limit=settings.openetr_query_limit,
+                    ),
+                    timeout=(settings.openetr_query_timeout_seconds * 2) + 1,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "OpenETR history query failed error_type=%s",
+                    type(exc).__name__,
+                )
+                openetr_history = {
+                    "digest": str(record_value.origsha256).strip().lower(),
+                    "relays": settings.openetr_relays,
+                    "origin": None,
+                    "controls": [],
+                    "warnings": [],
+                    "error": "OpenETR history is temporarily unavailable.",
+                }
         blob_query = urlencode({"label": label})
         return render_template(
             "record.html",
             title=label,
             label=label,
             edit_url=f'/record/edit?{urlencode({"label": label})}',
+            share_url=f'/record/share?{urlencode({"label": label})}',
+            openetr_requested=openetr,
+            openetr_url=(
+                f'/record?{urlencode({"label": label, "openetr": "1"})}'
+                "#openetr-history"
+            ),
             saved=saved,
             record_type=str(record_value.type),
             payload=rendered_payload,
@@ -2922,6 +3177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             blob_type=blob_type,
             blob_preview=blob_preview,
             blob_fingerprint=blob_fingerprint,
+            openetr_history=openetr_history,
             blob_url=f"/record/blob?{blob_query}",
             blob_inline_url=f"/record/blob?{blob_query}&inline=1",
             delete_csrf_token=CsrfProtector(settings).issue(),

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}
+<p class="error">{{ error }}</p>
+<p><a class="nav-button" href="/scan/lightning">Scan again</a></p>
+{% else %}
+<p role="status"><strong>{{ label }} was imported and stored.</strong></p>
+{% if transfer_deleted %}
+<p>The temporary sharing copy was deleted after successful storage.</p>
+{% else %}
+<p class="advisory">The record was stored, but deletion of the temporary
+sharing copy could not be confirmed. It remains protected by the bearer secret
+and its configured expiry.</p>
+{% endif %}
+<p><a class="nav-button" href="{{ record_url }}">View Record</a></p>
+{% endif %}
+{% endblock %}

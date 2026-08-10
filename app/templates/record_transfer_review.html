@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a class="nav-button" href="/scan/lightning">← Scan another code</a></p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if transfer %}
+<p>A valid Acorn record-sharing code was recognized.</p>
+<dl class="invoice-review">
+  <div><dt>Suggested label</dt><dd>{{ transfer.label }}</dd></div>
+  <div><dt>Record type</dt><dd>{{ transfer.record_type }}</dd></div>
+  <div><dt>Original Record</dt><dd>{% if transfer.has_original %}included{% else %}not included{% endif %}</dd></div>
+  <div><dt>Expires</dt><dd>{{ expires_at }}</dd></div>
+</dl>
+<form method="post" action="/record/import" data-progress-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="descriptor" value="{{ descriptor }}">
+  <label for="record-transfer-label">Store as</label>
+  <input id="record-transfer-label" name="label" type="text" maxlength="200"
+         value="{{ transfer.label }}" required>
+  <label><input type="checkbox" name="confirmed" value="yes" required>
+    Import and store this record in the connected Acorn.
+  </label>
+  <button type="submit" data-progress-label="Importing record…">Import Record</button>
+  <p class="progress" data-progress-message hidden>Retrieving, decrypting, validating, and storing the record. Please wait…</p>
+</form>
+{% endif %}
+{% endblock %}

@@ -117,6 +117,15 @@ JavaScript, camera access, or QR decoding is unavailable.
 
 ## State and trust boundary
 
+Record sharing follows the same server-directed model. The sender confirms a
+share form, Acorn creates an encrypted temporary transfer, and Safebox renders
+its compact Base64URL descriptor as a QR code. The existing scanner recognizes
+`acorn:record-transfer:` before attempting Lightning parsing and returns an
+import-review representation. Import requires a second CSRF-protected form
+submission. Acorn stores the received record before requesting deletion of the
+temporary transfer blob; JavaScript performs camera acquisition only and does
+not implement transfer cryptography or persistence.
+
 Safebox Web does not put an Acorn object, proof state, private records, or
 workflow state into JavaScript, `localStorage`, or `sessionStorage`. The
 encrypted session cookie contains the minimum material required to reconstruct
