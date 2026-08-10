@@ -42,6 +42,8 @@ img, svg { max-width: 100%; }
 a { color: var(--link); }
 .nav-button { display: inline-flex; box-sizing: border-box; min-height: 2.75rem; align-items: center; justify-content: center; padding: .55rem .85rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--control); color: var(--text); font-weight: 650; text-align: center; text-decoration: none; }
 .nav-button:hover, .nav-button:focus-visible { border-color: var(--link); color: var(--link); }
+.page-navigation { display: grid; gap: .65rem; margin: 0 0 1.5rem; }
+.page-navigation .nav-button { width: 100%; }
 label { display: block; margin-top: 1rem; }
 input, select, textarea, button { box-sizing: border-box; font: inherit; min-height: 2.75rem; padding: .6rem; width: 100%; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); }
 input[type="checkbox"] { min-height: auto; width: auto; margin-right: .45rem; }
@@ -52,6 +54,15 @@ button:disabled { cursor: wait; opacity: .65; }
 .wallet-actions { display: grid; gap: .75rem; margin: 1.5rem 0 .25rem; }
 .wallet-actions a { display: flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; padding: .6rem; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); font-weight: 650; text-align: center; text-decoration: none; }
 .wallet-actions a:hover, .wallet-actions a:focus-visible { border-color: var(--link); color: var(--link); }
+.wallet-address { position: relative; margin: 0 0 .75rem; text-align: center; }
+.wallet-address > summary { display: inline-block; color: var(--link); font: inherit; font-weight: 700; text-transform: lowercase; cursor: pointer; list-style: none; overflow-wrap: anywhere; }
+.wallet-address > summary::-webkit-details-marker { display: none; }
+.wallet-address > summary:hover, .wallet-address > summary:focus-visible { text-decoration: underline; text-underline-offset: .2rem; }
+.wallet-address-panel { position: fixed; z-index: 20; top: 7rem; left: 1rem; right: 1rem; box-sizing: border-box; max-width: 24rem; margin: 0 auto; padding: 1rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); box-shadow: 0 .5rem 1.5rem rgb(0 0 0 / 24%); color: var(--text); text-align: center; }
+.wallet-address-panel p { margin: .75rem 0 0; }
+.wallet-address-qr { display: flex; width: 100%; min-height: 0; margin: 0; padding: 0; justify-content: center; border: 0; background: transparent; }
+.wallet-address-qr svg { width: min(100%, 20rem); height: auto; }
+.wallet-address-copy-status { margin: -.25rem 0 .75rem; text-align: center; }
 .wallet-balance { margin: 1rem 0 1.5rem; padding: 1.35rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); text-align: center; }
 .wallet-balance h2 { margin: 0; color: var(--muted); font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
 .wallet-balance-amount { margin: .3rem 0 0; color: var(--link); font-size: clamp(2.5rem, 10vw, 4.25rem); font-weight: 800; line-height: 1.05; }
@@ -61,10 +72,19 @@ button:disabled { cursor: wait; opacity: .65; }
 .progress { margin-top: 1rem; color: var(--progress); font-weight: 650; }
 a, code { overflow-wrap: anywhere; }
 pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-wrap; word-break: break-word; }
-.page-tools { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
+.page-tools { display: grid; grid-template-columns: 1fr auto auto 1fr; gap: .55rem; align-items: start; margin-bottom: 1.5rem; }
+.header-disclosure { position: relative; margin: 0; }
+.header-advisory { justify-self: start; }
+.header-brand { justify-self: center; }
+.header-icon-control { display: inline-flex; box-sizing: border-box; width: 2.75rem; min-height: 2.75rem; align-items: center; justify-content: center; padding: .55rem; border: 1px solid var(--border); border-radius: .35rem; background: transparent; color: var(--text); cursor: pointer; list-style: none; }
+.header-icon-control::-webkit-details-marker { display: none; }
+.header-icon-control:hover, .header-icon-control:focus-visible, .header-disclosure[open] > .header-icon-control { border-color: var(--link); color: var(--link); }
+.header-icon, .theme-icon { width: 1.35rem; height: 1.35rem; flex: 0 0 auto; }
+.header-explanation { position: fixed; z-index: 20; top: 5.75rem; left: 1rem; right: 1rem; box-sizing: border-box; max-width: 40rem; margin: 0 auto; padding: .8rem 1rem; border: 1px solid var(--border); border-radius: .55rem; background: var(--surface); box-shadow: 0 .5rem 1.5rem rgb(0 0 0 / 24%); color: var(--text); }
+.header-explanation p { margin: 0; }
 .theme-toggle { display: inline-flex; width: 2.75rem; min-height: 2.75rem; margin: 0; padding: .55rem; align-items: center; justify-content: center; background: transparent; }
+.page-tools > .theme-toggle { justify-self: end; }
 .theme-toggle:hover, .theme-toggle:focus-visible { border-color: var(--link); color: var(--link); }
-.theme-icon { width: 1.35rem; height: 1.35rem; }
 .inline-icon { width: 1.25rem; height: 1.25rem; flex: 0 0 auto; }
 .record-fingerprint { display: flex; align-items: center; gap: .4rem; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
@@ -81,13 +101,10 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .openetr-warning { color: var(--advisory); }
 .invoice-qr { display: flex; justify-content: center; margin: 1.5rem 0; }
 .invoice-qr svg { width: min(100%, 22rem); height: auto; }
-.lightning-address-qr { display: flex; justify-content: center; margin: 1rem 0; }
-.lightning-address-qr svg { width: min(100%, 20rem); height: auto; }
 .receive-payment-card { margin: 1.25rem 0; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
 .receive-payment-card > summary { cursor: pointer; padding: 1rem; color: var(--text); font-weight: 700; }
 .receive-payment-card[open] > summary { border-bottom: 1px solid var(--note-border); }
 .receive-payment-content { padding: 0 1rem 1rem; text-align: center; }
-.encoded-payment-value { text-align: left; }
 .silent-payment-address { padding: .75rem; border-radius: .5rem; background: var(--surface-soft); text-align: left; }
 .silent-payment-qr { display: flex; justify-content: center; margin: 1rem 0; }
 .silent-payment-qr svg { width: min(100%, 20rem); height: auto; }
@@ -133,11 +150,6 @@ figure.blob-preview { padding: .75rem; }
 .danger-zone { margin: 2rem 0 1.5rem; padding: 1rem; border: 1px solid var(--error); border-radius: .7rem; }
 .danger-zone h2 { margin-top: 0; font-size: 1.15rem; }
 .danger-button { border-color: var(--error); color: var(--error); font-weight: 700; }
-.relationship { display: grid; grid-template-columns: auto auto auto; justify-content: center; gap: 1rem; align-items: center; margin: 0 0 2.5rem; }
-.relationship-card { display: flex; align-items: center; justify-content: center; padding: .65rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
-.relationship-mark { width: 3.5rem; height: 3.5rem; flex: 0 0 auto; }
-.relationship-connection { display: flex; align-items: center; justify-content: center; }
-.relationship-arrow { color: var(--link); font-size: 2rem; line-height: 1; }
 .transaction-list { display: grid; gap: 1rem; margin: 1.5rem 0; }
 .transaction-card { border: 1px solid var(--border); border-left: .35rem solid #777; border-radius: .8rem; padding: 1rem; background: var(--surface); min-width: 0; }
 .transaction-card.credit { border-left-color: var(--credit); }
@@ -164,11 +176,7 @@ figure.blob-preview { padding: .75rem; }
   p > a:only-child { display: inline-flex; min-height: 2.75rem; align-items: center; }
   ul, ol { padding-left: 1.35rem; }
   pre { margin-left: -.25rem; margin-right: -.25rem; padding: .75rem; }
-  .relationship { grid-template-columns: auto auto auto; gap: .55rem; margin-bottom: 1.5rem; }
-  .relationship-card { padding: .5rem; }
-  .relationship-mark { width: 2.5rem; height: 2.5rem; }
-  .relationship-arrow { font-size: 1.5rem; }
-  .invoice-qr svg, .lightning-address-qr svg, .silent-payment-qr svg { width: min(100%, 17rem); }
+  .invoice-qr svg, .wallet-address-qr svg, .silent-payment-qr svg { width: min(100%, 17rem); }
   .receive-payment-card, .retention-notice, .transaction-card { border-radius: .7rem; }
   .blob-preview-pdf { min-height: 24rem; }
   .record-actions { justify-content: stretch; }

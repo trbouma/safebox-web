@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block content %}
-<p><a class="nav-button" href="/wallet">← Back to wallet</a></p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 {% if result %}
 <p>Transaction: <code>{{ result.txid }}</code></p>

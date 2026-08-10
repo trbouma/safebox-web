@@ -1,6 +1,5 @@
 {% extends "base.html" %}
 {% block content %}
-<p><a class="nav-button" href="{{ record_url }}">← Back to record</a></p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 <p>Safebox will create a temporary encrypted copy of <strong>{{ label }}</strong>
 and display a short-lived sharing code. Anyone with the code can retrieve and

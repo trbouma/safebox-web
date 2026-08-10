@@ -1,5 +1,22 @@
 {% extends "base.html" %}
 {% block content %}
+{% if lightning_lnurl %}
+<details class="wallet-address">
+  <summary>{{ nip05_address | lower }}</summary>
+  <div class="wallet-address-panel">
+    <button class="wallet-address-qr" type="button"
+            data-address-copy="{{ nip05_address | lower }}"
+            data-address-copy-status="wallet-address-copy-status"
+            aria-label="Copy {{ nip05_address | lower }} and close Lightning payment QR code">
+      {{ address_qr | safe }}
+    </button>
+    <p>Scan for Lightning Payment.</p>
+    <p class="muted">Select the QR code to copy the address and close this panel.</p>
+  </div>
+</details>
+<p id="wallet-address-copy-status" class="wallet-address-copy-status muted"
+   role="status" aria-live="polite" hidden></p>
+{% endif %}
 <section class="wallet-balance" aria-labelledby="wallet-balance-heading">
   <h2 id="wallet-balance-heading">Balance</h2>
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
@@ -13,22 +30,6 @@
   <a href="/records">Manage Records</a>
   <a href="/handle">Claim or view a NIP-05 handle</a>
 </nav>
-{% if lightning_lnurl %}
-<details class="receive-payment-card lightning-address-card">
-  <summary>Receive Lightning</summary>
-  <div class="receive-payment-content">
-    <p>Lightning address: <strong>{{ nip05_address }}</strong></p>
-    <div class="lightning-address-qr" aria-label="Lightning address QR code">
-      {{ lightning_qr | safe }}
-    </div>
-    <p>Scan to pay <strong>{{ nip05_address }}</strong>.</p>
-    <details class="encoded-payment-value">
-      <summary>Show encoded LNURL</summary>
-      <code>{{ lightning_lnurl }}</code>
-    </details>
-  </div>
-</details>
-{% endif %}
 {% if silent_payment_address %}
 <details class="receive-payment-card silent-payment-card">
   <summary>Receive Silent Payment</summary>

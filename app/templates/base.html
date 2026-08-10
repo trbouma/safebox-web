@@ -9,25 +9,14 @@
   <script src="/static/forms.js" defer></script>
 </head>
 <body>
-  <div class="page-tools">
-    <button class="theme-toggle" type="button" data-theme-toggle
-      aria-label="Use light mode" title="Use light mode">
-      <svg class="theme-icon" data-theme-icon="sun" viewBox="0 0 24 24"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round" aria-hidden="true">
-        <circle cx="12" cy="12" r="4"></circle>
-        <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41"></path>
-      </svg>
-      <svg class="theme-icon" data-theme-icon="moon" viewBox="0 0 24 24"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
-        <path d="M20.5 14.2A8 8 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7Z"></path>
-      </svg>
-      <span class="visually-hidden" data-theme-label>Use light mode</span>
-    </button>
-  </div>
   {% include "partials/relationship.html" %}
   <main>
+    {% if show_page_navigation %}
+    <nav class="page-navigation" aria-label="Page navigation">
+      <a class="nav-button" href="{{ home_url }}">Home</a>
+      {% if page_back_url %}<a class="nav-button" href="{{ page_back_url }}">{{ page_back_label }}</a>{% endif %}
+    </nav>
+    {% endif %}
     <h1{% if headline_class %} class="{{ headline_class }}"{% endif %}>{{ title }}</h1>
     {% block content %}{% endblock %}
   </main>

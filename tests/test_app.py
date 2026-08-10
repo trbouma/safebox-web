@@ -472,9 +472,15 @@ def test_page_displays_acorn_safebox_relationship_visual() -> None:
 
     assert response.status_code == 200
     assert 'class="nav-button" href="/login"' in response.text
-    assert 'aria-label="Acorn connected with Safebox"' in response.text
-    assert 'role="img" aria-label="Acorn"' in response.text
-    assert 'role="img" aria-label="Safebox"' in response.text
+    assert 'aria-label="Safebox page tools"' in response.text
+    assert 'aria-label="About and advisory notice"' in response.text
+    assert 'aria-label="About Acorn"' in response.text
+    assert 'aria-label="About Safebox"' in response.text
+    assert "Detailed advisories can be found at the bottom" in response.text
+    assert "Acorn</strong> is the user-controlled component" in response.text
+    assert "Safebox</strong> is the web interface" in response.text
+    assert "relationship-arrow" not in response.text
+    assert response.text.count('name="header-explanation"') == 3
     assert "User-controlled component" not in response.text
     assert "User-controlled session" not in response.text
     assert "Web service surface" not in response.text
@@ -523,6 +529,9 @@ def test_progress_script_is_served_from_same_origin() -> None:
     assert 'form.setAttribute("aria-busy", "true")' in response.text
     assert "button.disabled = true" in response.text
     assert "navigator.clipboard.writeText(target.value)" in response.text
+    assert 'event.target.closest("button[data-address-copy]")' in response.text
+    assert "disclosure.open = false" in response.text
+    assert "copied to the clipboard" in response.text
     assert 'document.execCommand("copy")' in response.text
 
 
@@ -553,12 +562,53 @@ def test_pages_include_mobile_layout_safeguards() -> None:
     assert 'href="/static/styles.css"' in response.text
     assert stylesheet.status_code == 200
     assert stylesheet.headers["content-type"].startswith("text/css")
+    assert ".page-tools { display: grid; grid-template-columns: 1fr auto auto 1fr;" in stylesheet.text
+    assert ".header-icon, .theme-icon { width: 1.35rem; height: 1.35rem;" in stylesheet.text
     assert "-webkit-text-size-adjust: 100%" in stylesheet.text
     assert "min-height: 2.75rem" in stylesheet.text
     assert "@media (max-width: 36rem)" in stylesheet.text
     assert "@media (max-width: 24rem)" in stylesheet.text
     assert ".transaction-details { grid-template-columns: 1fr; }" in stylesheet.text
     assert ".safekeeping-message" in stylesheet.text
+    assert ".page-navigation .nav-button { width: 100%; }" in stylesheet.text
+
+
+def test_secondary_pages_have_consistent_top_level_navigation() -> None:
+    client = make_https_client()
+    login = client.get("/login")
+    login_nav = re.search(
+        r'<nav class="page-navigation".*?</nav>',
+        login.text,
+        flags=re.DOTALL,
+    )
+
+    assert login.status_code == 200
+    assert login_nav is not None
+    assert 'href="/">Home</a>' in login_nav.group(0)
+    assert "Back to" not in login_nav.group(0)
+    assert login.text.index('class="page-navigation"') < login.text.index(
+        "<h1>Connect an Acorn</h1>"
+    )
+
+
+def test_record_page_navigation_links_home_and_parent_records() -> None:
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeBlobAcorn(
+        existing_labels={"Private Notes"}
+    )
+    response = TestClient(app, base_url="https://safebox.example").get(
+        "/record", params={"label": "Private Notes"}
+    )
+    navigation = re.search(
+        r'<nav class="page-navigation".*?</nav>',
+        response.text,
+        flags=re.DOTALL,
+    )
+
+    assert response.status_code == 200
+    assert navigation is not None
+    assert 'href="/">Home</a>' in navigation.group(0)
+    assert 'href="/records">Back to Records</a>' in navigation.group(0)
 
 
 def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> None:
@@ -570,6 +620,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert response.status_code == 200
     assert '<nav class="wallet-actions" aria-label="Wallet actions">' in response.text
     assert '<h1 class="wallet-headline">Acorn is Connected</h1>' in response.text
+    assert 'class="page-navigation"' not in response.text
     assert '<a href="/deposit">Deposit funds</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text
     assert '<section class="wallet-balance"' in response.text
@@ -1476,9 +1527,18 @@ def test_connected_acorn_can_claim_and_resolve_a_nip05_handle(tmp_path) -> None:
         assert "NIP-05 address" not in client.get("/wallet").text
 
 
-def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
+def test_wallet_shows_plain_address_with_lnurl_qr(
     tmp_path,
+    monkeypatch,
 ) -> None:
+    qr_payloads: list[tuple[str, bool]] = []
+    original_qr_svg = main_module._qr_svg
+
+    def recording_qr_svg(payload: str, *, include_acorn: bool = False) -> str:
+        qr_payloads.append((payload, include_acorn))
+        return original_qr_svg(payload, include_acorn=include_acorn)
+
+    monkeypatch.setattr(main_module, "_qr_svg", recording_qr_svg)
     settings = replace(database_settings(tmp_path), service_acorn_enabled=True)
     app = create_app(settings)
     acorn = main_module.Acorn(
@@ -1502,15 +1562,19 @@ def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
 
         wallet_page = client.get("/wallet")
 
-    expected_endpoint = "https://safebox.example/.well-known/lnurlp/alice"
-    expected_lnurl = main_module.encode_lnurl(expected_endpoint)
     assert wallet_page.status_code == 200
-    assert "Receive Lightning" in wallet_page.text
     assert "alice@safebox.example" in wallet_page.text
-    assert '<details class="receive-payment-card lightning-address-card">' in wallet_page.text
-    assert 'class="lightning-address-qr"' in wallet_page.text
-    assert "Lightning address QR code" in wallet_page.text
-    assert expected_lnurl in wallet_page.text
+    assert '<details class="wallet-address">' in wallet_page.text
+    assert '<summary>alice@safebox.example</summary>' in wallet_page.text
+    assert 'class="wallet-address-qr"' in wallet_page.text
+    assert 'data-address-copy="alice@safebox.example"' in wallet_page.text
+    assert "close Lightning payment QR code" in wallet_page.text
+    assert "Scan for Lightning Payment." in wallet_page.text
+    assert "Select the QR code to copy the address and close this panel." in wallet_page.text
+    expected_lnurl = main_module.encode_lnurl(
+        "https://safebox.example/.well-known/lnurlp/alice"
+    )
+    assert (expected_lnurl, True) in qr_payloads
     assert "<svg" in wallet_page.text
     assert 'id="qr-background"' in wallet_page.text
     assert 'fill="#ffffff"' in wallet_page.text
@@ -1521,9 +1585,8 @@ def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
     assert "Ecash message retention" in wallet_page.text
     assert "for 1 week after publication" in wallet_page.text
     assert "Relay enforcement and physical deletion can vary" in wallet_page.text
-    assert wallet_page.text.index("Receive Lightning") < wallet_page.text.index(
-        "Receive Silent Payment"
-    )
+    assert wallet_page.text.index("alice@safebox.example") < wallet_page.text.index("Balance")
+    assert wallet_page.text.index("Balance") < wallet_page.text.index("Receive Silent Payment")
     assert wallet_page.text.index("Disconnect") < wallet_page.text.index("Advisories")
 
 
@@ -1536,7 +1599,7 @@ def test_invoice_qr_is_black_and_white_without_centre_mark() -> None:
     assert 'id="acorn-qr-mark"' not in svg
 
 
-def test_wallet_hides_lightning_qr_when_provider_is_disabled(tmp_path) -> None:
+def test_wallet_hides_address_qr_when_payment_provider_is_disabled(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
     acorn = main_module.Acorn(
@@ -1559,7 +1622,8 @@ def test_wallet_hides_lightning_qr_when_provider_is_disabled(tmp_path) -> None:
 
     assert "NIP-05 address" in wallet_page.text
     assert "Receive Lightning" not in wallet_page.text
-    assert '<div class="lightning-address-qr"' not in wallet_page.text
+    assert '<details class="wallet-address">' not in wallet_page.text
+    assert '<div class="wallet-address-qr"' not in wallet_page.text
 
 
 def test_handle_and_component_uniqueness_are_enforced(tmp_path) -> None:
@@ -1673,7 +1737,10 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
     response = client.get("/transactions")
 
     assert response.status_code == 200
-    assert response.text.index("← Back to wallet") < response.text.index(
+    assert response.text.index(">Home</a>") < response.text.index(
+        'aria-label="Transaction history"'
+    )
+    assert response.text.index(">Back to Wallet</a>") < response.text.index(
         'aria-label="Transaction history"'
     )
     assert 'aria-label="Transaction history"' in response.text

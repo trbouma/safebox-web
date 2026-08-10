@@ -92,6 +92,14 @@ enough to justify a named template.
 
 ## Progressive enhancement only
 
+Secondary representations receive their navigation from the shared server-side
+template boundary. A full-width **Home** action always targets `/`, which
+redirects an attached session to its wallet, and a second full-width action
+returns to the meaningful parent representation such as Wallet, Records,
+Record, Deposit, or Scanner. Pages without a meaningful parent show only Home.
+The landing and connected-wallet main representations omit this navigation.
+Individual templates do not reproduce top and bottom return links.
+
 `app/static/forms.js` does not call `fetch()`, open WebSockets, intercept form
 submission, store application state, or calculate wallet outcomes. It only:
 

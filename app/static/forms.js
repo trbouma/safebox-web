@@ -51,6 +51,49 @@ window.addEventListener("pageshow", () => {
 });
 
 document.addEventListener("click", async (event) => {
+  const qr = event.target.closest("button[data-address-copy]");
+  if (!qr) {
+    return;
+  }
+
+  const address = qr.dataset.addressCopy;
+  const status = document.getElementById(qr.dataset.addressCopyStatus);
+  const disclosure = qr.closest("details");
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(address);
+    } else {
+      const temporary = document.createElement("textarea");
+      temporary.value = address;
+      temporary.setAttribute("readonly", "");
+      temporary.style.position = "fixed";
+      temporary.style.opacity = "0";
+      document.body.appendChild(temporary);
+      temporary.select();
+      const copied = document.execCommand("copy");
+      temporary.remove();
+      if (!copied) {
+        throw new Error("copy was rejected");
+      }
+    }
+
+    if (disclosure) {
+      disclosure.open = false;
+    }
+    if (status) {
+      status.hidden = false;
+      status.textContent = `${address} copied to the clipboard.`;
+    }
+  } catch (_error) {
+    if (status) {
+      status.hidden = false;
+      status.textContent = "The address could not be copied automatically.";
+    }
+  }
+});
+
+document.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-copy-target]");
   if (!button) {
     return;

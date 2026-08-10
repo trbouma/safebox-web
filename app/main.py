@@ -463,9 +463,14 @@ def _record_form(
     """Render the add/update form without retaining record data server-side."""
 
     title = "Update Record" if updating else "Add a Record"
+    page_back_url = (
+        f'/record?{urlencode({"label": label})}' if updating and label else "/records"
+    )
     return render_template(
         "record_form.html",
         title=title,
+        page_back_url=page_back_url,
+        page_back_label="Back to Record" if updating and label else "Back to Records",
         csrf_token=csrf_token,
         label=label,
         payload=payload,
@@ -1206,11 +1211,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ).first()
         nip05_address = None
         lightning_lnurl = None
-        lightning_qr = None
+        address_qr = None
         if claimed_handle is not None:
             nip05_address = (
                 f"{claimed_handle.claimed_handle}@{request.url.hostname}"
-            )
+            ).lower()
             if settings.service_acorn_enabled:
                 pay_endpoint = str(
                     request.url_for(
@@ -1219,7 +1224,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                 )
                 lightning_lnurl = encode_lnurl(pay_endpoint)
-                lightning_qr = _qr_svg(lightning_lnurl, include_acorn=True)
+                address_qr = _qr_svg(lightning_lnurl, include_acorn=True)
         silent_payment_address = None
         silent_payment_qr = None
         try:
@@ -1262,7 +1267,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             nip05_address=nip05_address,
             lightning_lnurl=lightning_lnurl,
-            lightning_qr=lightning_qr,
+            address_qr=address_qr,
             silent_payment_address=silent_payment_address,
             silent_payment_qr=silent_payment_qr,
             retention_notice=_ecash_retention_notice(settings),
