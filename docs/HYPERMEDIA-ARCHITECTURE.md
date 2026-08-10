@@ -30,6 +30,13 @@ implemented. The tradeoffs, alternatives, compatibility gate, and go/no-go
 criteria are documented in the
 [Local Acorn Vault Design Note](./LOCAL-ACORN-VAULT-DESIGN-NOTE.md).
 
+Future installability, service-worker caching, notifications, offline behavior,
+camera and NFC input, and local-vault work must also follow the
+[Progressive Web App and Hypermedia Boundary](./PWA-HYPERMEDIA-BOUNDARY.md).
+PWA capabilities may enhance how a server-provided action is presented,
+captured, cached, or resumed; they do not move workflow authority into the
+browser.
+
 ## Upstream component boundary
 
 This document is the Safebox Web implementation of the authoritative
@@ -251,6 +258,8 @@ For every browser-facing feature:
 - Is any JavaScript limited to optional presentation enhancement?
 - Does a failed or timed-out mutation explain whether retrying is safe?
 - Does the implementation preserve the upstream Acorn application boundary?
+- If it uses a PWA capability, does it preserve the service-worker, offline,
+  notification, and browser-storage rules in the PWA boundary document?
 
 If the answer to any of these questions is no, the change requires an explicit
 architecture review.

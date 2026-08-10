@@ -8,6 +8,11 @@ The browser interface follows a documented
 Application and wallet logic remains in FastAPI and Acorn; browser JavaScript
 is limited to progressive presentation behavior and narrowly scoped device
 input such as QR acquisition.
+The companion
+[Progressive Web App and Hypermedia Boundary](docs/PWA-HYPERMEDIA-BOUNDARY.md)
+defines how future installability, offline presentation, service workers,
+notifications, NFC, and local browser conveniences can be introduced without
+moving workflow authority or Acorn state into the browser.
 
 A first read-only OpenETR integration now projects the signed origin and linked
 control-event history for an existing Original Record. The initial adapter
