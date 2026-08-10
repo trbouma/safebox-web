@@ -781,7 +781,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/", response_class=HTMLResponse)
-    async def home() -> str:
+    async def home(request: Request):
+        settings = request.app.state.settings
+        session_token = request.cookies.get(cookie_name_for_request(request))
+        if session_token:
+            try:
+                SessionCipher(settings).decode(session_token)
+            except ValueError:
+                pass
+            else:
+                return RedirectResponse("/wallet", status_code=303)
         return render_template("home.html", title="Safebox")
 
     @app.get("/login", response_class=HTMLResponse)

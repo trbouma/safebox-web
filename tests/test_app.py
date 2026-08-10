@@ -430,6 +430,41 @@ def test_page_displays_acorn_safebox_relationship_visual() -> None:
     assert "Web service surface" not in response.text
 
 
+def test_root_redirects_valid_existing_session_to_wallet() -> None:
+    client = make_https_client()
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        SessionCipher(TEST_SETTINGS).encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+            )
+        ),
+        domain="safebox.example",
+        path="/",
+    )
+
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/wallet"
+
+
+def test_root_keeps_landing_page_for_invalid_session() -> None:
+    client = make_https_client()
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        "invalid-session",
+        domain="safebox.example",
+        path="/",
+    )
+
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "Connect an Acorn" in response.text
+
+
 def test_progress_script_is_served_from_same_origin() -> None:
     response = make_https_client().get("/static/forms.js")
 
