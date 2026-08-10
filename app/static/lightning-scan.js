@@ -8,6 +8,7 @@ const status = root?.querySelector("[data-scanner-status]");
 const startButton = root?.querySelector("[data-scanner-start]");
 const stopButton = root?.querySelector("[data-scanner-stop]");
 const resultInput = document.querySelector("[data-scanner-result]");
+const scanForm = document.querySelector("[data-scanner-form]");
 
 if (
   root instanceof HTMLElement &&
@@ -15,7 +16,8 @@ if (
   status instanceof HTMLElement &&
   startButton instanceof HTMLButtonElement &&
   stopButton instanceof HTMLButtonElement &&
-  resultInput instanceof HTMLInputElement
+  resultInput instanceof HTMLInputElement &&
+  scanForm instanceof HTMLFormElement
 ) {
   let accepted = false;
 
@@ -25,15 +27,20 @@ if (
       if (accepted) return;
       accepted = true;
       const scannedValue = String(result.data || "").trim();
+      if (!scannedValue) {
+        accepted = false;
+        status.textContent = "The QR code did not contain any data. Try again.";
+        return;
+      }
       resultInput.value = scannedValue;
       status.textContent = scannedValue.toLowerCase().startsWith("acorn:record-transfer:")
-        ? "Record-sharing code acquired. Review the transfer below."
-        : "Payment code acquired. Review the payment below.";
+        ? "Record-sharing code acquired. Opening the transfer review…"
+        : "Payment code acquired. Opening the payment review…";
       scanner.stop();
       startButton.hidden = false;
       startButton.disabled = false;
       stopButton.hidden = true;
-      resultInput.focus();
+      scanForm.requestSubmit();
     },
     {
       preferredCamera: "environment",
@@ -41,6 +48,14 @@ if (
       highlightCodeOutline: true,
       maxScansPerSecond: 10,
       returnDetailedScanResult: true,
+      onDecodeError: (error) => {
+        const message = String(error?.message || error || "");
+        if (message && message !== QrScanner.NO_QR_CODE_FOUND) {
+          console.warn("QR decoder error", error);
+          status.textContent =
+            "The camera is active, but the QR decoder reported an error. Reload the page or enter the code manually.";
+        }
+      },
     },
   );
 

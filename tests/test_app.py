@@ -1911,7 +1911,9 @@ def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None
     assert 'data-lightning-scanner' in response.text
     assert 'src="/static/lightning-scan.js"' in response.text
     assert 'method="post" action="/scan/lightning"' in response.text
+    assert "data-scanner-form" in response.text
     assert "Camera scanning requires JavaScript" in response.text
+    assert "worker-src 'self' blob:" in response.headers["content-security-policy"]
 
 
 def test_scanned_lightning_address_prefills_payment_review() -> None:

@@ -14,7 +14,8 @@ next action.</p>
   <button type="button" data-scanner-stop hidden>Stop camera</button>
 </section>
 
-<form method="post" action="/scan/lightning" autocomplete="off">
+<form method="post" action="/scan/lightning" autocomplete="off"
+      data-scanner-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label for="lightning_payment">Scanned or manually entered code</label>
   <input id="lightning_payment" name="lightning_payment" type="text"

@@ -770,10 +770,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
-        response.headers["Content-Security-Policy"] = (
+        content_security_policy = (
             "default-src 'self'; script-src 'self'; style-src 'self'; "
             "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
         )
+        if request.url.path == "/scan/lightning":
+            # qr-scanner uses a same-origin module that creates its decoder
+            # worker from a blob URL when the browser's native BarcodeDetector
+            # is unavailable or unsuitable.
+            content_security_policy += "; worker-src 'self' blob:"
+        response.headers["Content-Security-Policy"] = content_security_policy
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
