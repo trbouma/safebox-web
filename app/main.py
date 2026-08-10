@@ -68,6 +68,7 @@ from app.security import (
     normalize_home_mint,
     set_session_cookie,
 )
+from app.silent_payments import derive_nostr_silent_payment_address
 from app.templating import render_template
 
 
@@ -1199,6 +1200,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 lightning_lnurl = encode_lnurl(pay_endpoint)
                 lightning_qr = _qr_svg(lightning_lnurl, include_acorn=True)
+        silent_payment_address = None
+        silent_payment_qr = None
+        try:
+            silent_payment_address = derive_nostr_silent_payment_address(
+                acorn.pubkey_bech32
+            )
+            silent_payment_qr = _qr_svg(silent_payment_address)
+        except ValueError as exc:
+            logger.warning(
+                "silent payment public derivation unavailable error_type=%s",
+                type(exc).__name__,
+            )
         verification, verification_error = await _read_proof_verification(
             acorn,
             settings.wallet_load_timeout_seconds,
@@ -1230,6 +1243,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             nip05_address=nip05_address,
             lightning_lnurl=lightning_lnurl,
             lightning_qr=lightning_qr,
+            silent_payment_address=silent_payment_address,
+            silent_payment_qr=silent_payment_qr,
             retention_notice=_ecash_retention_notice(settings),
             balance_status=balance_status,
             wallet_balance=wallet_balance,

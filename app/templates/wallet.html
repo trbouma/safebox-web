@@ -13,6 +13,36 @@
   <a href="/records">Manage private records</a>
   <a href="/handle">Claim or view a NIP-05 handle</a>
 </nav>
+{% if lightning_lnurl %}
+<details class="receive-payment-card lightning-address-card">
+  <summary>Receive Lightning</summary>
+  <div class="receive-payment-content">
+    <p>Lightning address: <strong>{{ nip05_address }}</strong></p>
+    <div class="lightning-address-qr" aria-label="Lightning address QR code">
+      {{ lightning_qr | safe }}
+    </div>
+    <p>Scan to pay <strong>{{ nip05_address }}</strong>.</p>
+    <details class="encoded-payment-value">
+      <summary>Show encoded LNURL</summary>
+      <code>{{ lightning_lnurl }}</code>
+    </details>
+  </div>
+</details>
+{% endif %}
+{% if silent_payment_address %}
+<details class="receive-payment-card silent-payment-card">
+  <summary>Receive Bitcoin with Silent Payments</summary>
+  <div class="receive-payment-content silent-payment-content">
+    <p>This reusable address is derived from this Acorn's public key. The
+    address itself does not appear in the resulting Bitcoin transaction.</p>
+    <p class="silent-payment-address"><code>{{ silent_payment_address }}</code></p>
+    <div class="silent-payment-qr" aria-label="Silent Payment address QR code">
+      {{ silent_payment_qr | safe }}
+    </div>
+    <p>Scan or copy this address to send a compatible Bitcoin Silent Payment.</p>
+  </div>
+</details>
+{% endif %}
 <form method="post" action="/logout">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <button type="submit">Disconnect</button>
@@ -40,17 +70,6 @@
     <h3 id="balance-details-heading">Balance verification</h3>
     {{ balance_status | safe }}
   </aside>
-  {% if lightning_lnurl %}
-  <section class="lightning-address-card" aria-labelledby="lightning-address-heading">
-    <h3 id="lightning-address-heading">Receive Lightning</h3>
-    <p>Lightning address: <strong>{{ nip05_address }}</strong></p>
-    <div class="lightning-address-qr" aria-label="Lightning address QR code">
-      {{ lightning_qr | safe }}
-    </div>
-    <p>Scan to pay <strong>{{ nip05_address }}</strong>.</p>
-    <details><summary>Show encoded LNURL</summary><code>{{ lightning_lnurl }}</code></details>
-  </section>
-  {% endif %}
   {% if retention_notice %}
   {{ retention_notice | safe }}
   {% endif %}

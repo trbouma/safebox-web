@@ -63,10 +63,16 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .theme-toggle { width: auto; min-height: 2.5rem; margin: 0; padding: .4rem .7rem; background: transparent; }
 .invoice-qr { display: flex; justify-content: center; margin: 1.5rem 0; }
 .invoice-qr svg { width: min(100%, 22rem); height: auto; }
-.lightning-address-card { margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); text-align: center; }
 .lightning-address-qr { display: flex; justify-content: center; margin: 1rem 0; }
 .lightning-address-qr svg { width: min(100%, 20rem); height: auto; }
-.lightning-address-card details { text-align: left; }
+.receive-payment-card { margin: 1.25rem 0; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
+.receive-payment-card > summary { cursor: pointer; padding: 1rem; color: var(--text); font-weight: 700; }
+.receive-payment-card[open] > summary { border-bottom: 1px solid var(--note-border); }
+.receive-payment-content { padding: 0 1rem 1rem; text-align: center; }
+.encoded-payment-value { text-align: left; }
+.silent-payment-address { padding: .75rem; border-radius: .5rem; background: var(--surface-soft); text-align: left; }
+.silent-payment-qr { display: flex; justify-content: center; margin: 1rem 0; }
+.silent-payment-qr svg { width: min(100%, 20rem); height: auto; }
 .scanner { margin: 1.25rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
 .scanner-video { display: block; width: min(100%, 28rem); aspect-ratio: 1; margin: 0 auto 1rem; border-radius: .7rem; object-fit: cover; background: #000; }
 .scanner-status { color: var(--muted); }
@@ -142,8 +148,8 @@ figure.blob-preview { padding: .75rem; }
   .relationship-card { padding: .5rem; }
   .relationship-mark { width: 2.5rem; height: 2.5rem; }
   .relationship-arrow { font-size: 1.5rem; }
-  .invoice-qr svg, .lightning-address-qr svg { width: min(100%, 17rem); }
-  .lightning-address-card, .retention-notice, .transaction-card { border-radius: .7rem; padding: .85rem; }
+  .invoice-qr svg, .lightning-address-qr svg, .silent-payment-qr svg { width: min(100%, 17rem); }
+  .receive-payment-card, .retention-notice, .transaction-card { border-radius: .7rem; }
   .blob-preview-pdf { min-height: 24rem; }
   .record-actions { justify-content: stretch; }
   .record-add { width: 100%; }

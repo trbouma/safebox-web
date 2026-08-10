@@ -104,7 +104,9 @@ def database_settings(tmp_path) -> Settings:
 
 
 class FakeLoadedAcorn:
-    pubkey_bech32 = "npub1testcomponent"
+    pubkey_bech32 = (
+        "npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d"
+    )
     home_relay = "wss://relay.example.com"
     home_mint = "https://mint.example.com"
 
@@ -486,6 +488,32 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert "321 <span>sats</span>" in response.text
     assert response.text.index("wallet-balance") < response.text.index("wallet-actions")
     assert response.text.index("wallet-actions") < response.text.index("Component public key")
+
+
+def test_wallet_shows_collapsible_silent_payment_address_and_qr(tmp_path) -> None:
+    client = TestClient(
+        create_app(database_settings(tmp_path)),
+        base_url="https://safebox.example",
+    )
+    fake = FakeLoadedAcorn()
+    client.app.dependency_overrides[get_loaded_acorn] = lambda: fake
+
+    with client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert (
+        '<details class="receive-payment-card silent-payment-card">'
+        in response.text
+    )
+    assert "Receive Bitcoin with Silent Payments" in response.text
+    assert "sp1qqt0uh8dlt9yp" in response.text
+    assert 'aria-label="Silent Payment address QR code"' in response.text
+    assert '<div class="silent-payment-qr"' in response.text
+    assert "<svg" in response.text
+    assert 'id="qr-background"' in response.text
+    assert 'fill="#ffffff"' in response.text
+    assert 'id="qr-path" fill="#000000"' in response.text
 
 
 def test_pages_use_external_jinja_layout_assets() -> None:
@@ -1256,6 +1284,7 @@ def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
     assert wallet_page.status_code == 200
     assert "Receive Lightning" in wallet_page.text
     assert "alice@safebox.example" in wallet_page.text
+    assert '<details class="receive-payment-card lightning-address-card">' in wallet_page.text
     assert 'class="lightning-address-qr"' in wallet_page.text
     assert "Lightning address QR code" in wallet_page.text
     assert expected_lnurl in wallet_page.text
@@ -1268,6 +1297,9 @@ def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
     assert "Ecash message retention" in wallet_page.text
     assert "for 1 week after publication" in wallet_page.text
     assert "Relay enforcement and physical deletion can vary" in wallet_page.text
+    assert wallet_page.text.index("Receive Lightning") < wallet_page.text.index(
+        "Receive Bitcoin with Silent Payments"
+    )
     assert wallet_page.text.index("Disconnect") < wallet_page.text.index("General advisory")
 
 

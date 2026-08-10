@@ -125,6 +125,12 @@ web process     -> SAFEBOX_COOKIE_KEY + required shared database access
 service worker  -> service Acorn nsec + private worker state + shared jobs
 ```
 
+The proposed Bitcoin treasury boundary follows the same separation. The
+service Acorn may hold an encrypted, public receive descriptor as configuration,
+while Bitcoin Core allocates watch-only addresses and an offline Sparrow wallet
+or hardware signer retains exclusive spending authority. See the
+[Service Acorn Treasury Descriptor Design Note](SERVICE-ACORN-TREASURY-DESCRIPTOR-DESIGN-NOTE.md).
+
 The current shared `/app/data` mount provides logical process separation only.
 It does not prevent the web container from reading the service recovery file.
 Enforceable isolation requires a worker-only volume or a secret service with

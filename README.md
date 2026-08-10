@@ -19,6 +19,22 @@ object control graph, viewpoint-dependent recognition through the social graph,
 and Acorn's spendable funds. Together these let users evaluate and act on
 portable evidence without making Safebox another system of record.
 
+A proposed Bitcoin gateway would derive an attached Acorn's OpenETR Nostr
+Silent Payments address from its `npub`, verify a received transaction locally,
+and let the user explicitly sweep the matched output to the persistent service
+worker for fee-disclosed ecash settlement. Its root-equivalent scan-key
+constraint, worker boundary, NSP-to-NSP forwarding requirement, durable job
+model, and staged rollout are specified in the
+[Bitcoin Silent Payment Gateway Design Note](docs/BITCOIN-SILENT-PAYMENT-GATEWAY-DESIGN-NOTE.md).
+The service Acorn's proposed role as a signed on-chain-to-Lightning swap agent
+is detailed in the
+[Silent Payment to Lightning Swap Design Note](docs/SILENT-PAYMENT-LIGHTNING-SWAP-DESIGN-NOTE.md).
+The proposed hot-gateway/cold-treasury implementation keeps spending keys in
+an offline Sparrow wallet, stores only an encrypted public receive descriptor
+in the service Acorn, and delegates fresh-address allocation to a Bitcoin Core
+watch-only wallet. See the
+[Service Acorn Treasury Descriptor Design Note](docs/SERVICE-ACORN-TREASURY-DESCRIPTOR-DESIGN-NOTE.md).
+
 An optional passkey-protected browser vault for reconnecting after session
 expiry is under evaluation and is not implemented. See the
 [Local Acorn Vault Design Note](docs/LOCAL-ACORN-VAULT-DESIGN-NOTE.md) for its
