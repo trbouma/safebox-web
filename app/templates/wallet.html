@@ -31,15 +31,15 @@
 {% endif %}
 {% if silent_payment_address %}
 <details class="receive-payment-card silent-payment-card">
-  <summary>Receive Bitcoin with Silent Payments</summary>
+  <summary>Receive Silent Payment</summary>
   <div class="receive-payment-content silent-payment-content">
     <p>This reusable address is derived from this Acorn's public key. The
-    address itself does not appear in the resulting Bitcoin transaction.</p>
+    address itself does not appear in the resulting network transaction.</p>
     <p class="silent-payment-address"><code>{{ silent_payment_address }}</code></p>
     <div class="silent-payment-qr" aria-label="Silent Payment address QR code">
       {{ silent_payment_qr | safe }}
     </div>
-    <p>Scan or copy this address to send a compatible Bitcoin Silent Payment.</p>
+    <p>Scan or copy this address to send a compatible Silent Payment.</p>
     <hr>
     <form method="post" action="/bitcoin/silent-payment/detect" data-progress-form>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -47,11 +47,11 @@
       <input id="silent-payment-txid" name="txid" type="text"
              inputmode="text" autocapitalize="none" autocomplete="off"
              minlength="64" maxlength="64" pattern="[0-9a-fA-F]{64}" required>
-      <button type="submit" data-progress-label="Checking incoming Bitcoin…">Check incoming funds</button>
+      <button type="submit" data-progress-label="Checking incoming payment…">Check Payment</button>
       <p class="progress" data-progress-message hidden>Checking the transaction for this Acorn. Please wait…</p>
     </form>
     <p class="advisory">This targeted check sends the transaction id to the
-      Bitcoin backend configured by the Safebox operator. That backend can
+      payment-network service configured by the Safebox operator. That service can
       observe the lookup, but it does not receive the Acorn private key.</p>
   </div>
 </details>

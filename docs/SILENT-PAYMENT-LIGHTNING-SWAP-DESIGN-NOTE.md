@@ -31,6 +31,17 @@ This is a non-atomic provider swap. The user irreversibly transfers Bitcoin in
 exchange for a signed Lightning settlement obligation. It must not be
 presented as trustless, atomic, or guaranteed solely by the Bitcoin protocol.
 
+From an external observer's perspective, the public settlement trail ends at
+the provider-controlled destination; it does not directly continue to the
+recipient Acorn or gift-wrapped ecash delivery. The provider consequently
+absorbs the correlation among the incoming transaction, settlement, recipient,
+and payout. This moves the trail into the provider's trust boundary rather than
+eliminating it. The operator and anyone who compromises its proxy, application,
+worker, database, keys, or logs may still reconstruct that association, while
+outside observers may attempt amount and timing correlation. The full privacy
+analysis and mitigations are maintained in the
+[gateway privacy and trust model](BITCOIN-SILENT-PAYMENT-GATEWAY-DESIGN-NOTE.md#privacy-and-trust-model).
+
 ## Protocol basis
 
 The public receive address follows the OpenETR NSP derivation contract:

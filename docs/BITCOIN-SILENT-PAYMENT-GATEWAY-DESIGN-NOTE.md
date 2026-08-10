@@ -546,6 +546,21 @@ Silent Payments prevent the static `sp1...` receiver address from appearing as
 a reusable on-chain address. They do not make the gateway invisible to its
 participants.
 
+### Where the public trail ends
+
+In the proposed gateway-assisted swap, the public settlement trail runs from
+the sender's transaction through the matched Silent Payment output and into an
+address controlled by the Safebox Web operator. Delivery from that point to the
+recipient occurs as gift-wrapped ecash. An external observer therefore does not
+receive a direct public-ledger link from the operator's settlement output to the
+recipient Acorn.
+
+The trail has not disappeared. It has moved from a public ledger into the
+operator's trust boundary. Safebox Web absorbs the correlation between the
+incoming payment, the service-controlled settlement, and the outgoing ecash
+delivery. This is a meaningful privacy property against ordinary external
+observation, but it is not anonymity from the gateway operator.
+
 Safebox Web learns the association among:
 
 - the authenticated attached Acorn `npub`;
@@ -555,10 +570,41 @@ Safebox Web learns the association among:
 - the amount and fee; and
 - the ecash recipient and delivery relay.
 
+Depending on deployment and retention policy, the operator may also be able to
+associate this information with a browser session, source IP address, claimed
+handle, request timing, mint interaction, reverse-proxy logs, and internal job
+records. A compromise of the application, proxy, worker, database, service
+Acorn, or operational logs may expose some or all of that correlation.
+
+External observers can still attempt timing and amount correlation. An
+immediate ecash delivery matching the received amount less a predictable fee
+is easier to correlate than delivery separated by batching, timing variation,
+or other users' activity. Gift wrapping protects event contents and direct
+sender-recipient metadata at the relay layer, but it does not eliminate all
+network, timing, or traffic-analysis signals.
+
 The reverse proxy, application operator, database operator, Bitcoin backend,
 and service worker therefore occupy meaningful trust boundaries. Logs should
 use short fingerprints and internal job ids rather than full txids where full
 values are not operationally required.
+
+Practical privacy controls include:
+
+- retaining only the reconciliation data required by an explicit policy;
+- omitting full txids, Acorn public keys, handles, and recipient relays from
+  general application and proxy logs;
+- separating web, gateway, mint, and relay operators where practical;
+- using fresh service-controlled settlement addresses;
+- batching treasury movement rather than immediately consolidating every
+  receipt through an identical pattern;
+- avoiding exact public amount and timing disclosures in outgoing events; and
+- protecting the service Acorn key, database, proxy configuration, and worker
+  credentials as correlation-sensitive material.
+
+The externally defensible statement is therefore: **the public trail does not
+directly identify the receiving Acorn; Safebox Web becomes the privacy and
+trust boundary that absorbs the observable settlement trail.** Operators must
+not describe this as an untraceable or trustless payment.
 
 The service worker is a custodial bridge for the interval between receiving the
 Bitcoin output and completing ecash delivery. Users rely on the operator to:

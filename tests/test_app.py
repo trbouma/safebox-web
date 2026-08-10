@@ -506,7 +506,7 @@ def test_wallet_shows_collapsible_silent_payment_address_and_qr(tmp_path) -> Non
         '<details class="receive-payment-card silent-payment-card">'
         in response.text
     )
-    assert "Receive Bitcoin with Silent Payments" in response.text
+    assert "Receive Silent Payment" in response.text
     assert "sp1qqt0uh8dlt9yp" in response.text
     assert 'aria-label="Silent Payment address QR code"' in response.text
     assert '<div class="silent-payment-qr"' in response.text
@@ -515,7 +515,7 @@ def test_wallet_shows_collapsible_silent_payment_address_and_qr(tmp_path) -> Non
     assert 'fill="#ffffff"' in response.text
     assert 'id="qr-path" fill="#000000"' in response.text
     assert 'action="/bitcoin/silent-payment/detect"' in response.text
-    assert "Check incoming funds" in response.text
+    assert "Check Payment" in response.text
 
 
 def test_silent_payment_detection_shows_available_sweep_form(
@@ -640,12 +640,12 @@ def test_silent_payment_sweep_requires_review_then_confirmation(
     assert review.status_code == 200
     assert "20,800 sats" in review.text
     assert "200 sats at 2.0 sat/vB" in review.text
-    assert "Broadcast sweep" in review.text
+    assert "Receive Funds" in review.text
     assert "signed-transaction" not in review.text
     assert unconfirmed.status_code == 400
-    assert "Confirm that the Bitcoin sweep is irreversible" in unconfirmed.text
+    assert "Confirm that the transaction is irreversible" in unconfirmed.text
     assert broadcast.status_code == 200
-    assert "sweep broadcast successfully" in broadcast.text
+    assert "received successfully" in broadcast.text
     assert signed_txid in broadcast.text
     assert [name for name, _ in calls] == ["preview", "broadcast"]
 
@@ -1433,7 +1433,7 @@ def test_wallet_shows_lnurl_qr_for_enabled_claimed_lightning_address(
     assert "for 1 week after publication" in wallet_page.text
     assert "Relay enforcement and physical deletion can vary" in wallet_page.text
     assert wallet_page.text.index("Receive Lightning") < wallet_page.text.index(
-        "Receive Bitcoin with Silent Payments"
+        "Receive Silent Payment"
     )
     assert wallet_page.text.index("Disconnect") < wallet_page.text.index("General advisory")
 

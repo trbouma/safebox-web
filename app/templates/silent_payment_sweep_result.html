@@ -4,10 +4,10 @@
 {% if error %}
 <p class="error">{{ error }}</p>
 <p>Do not retry automatically if the result is uncertain. Check the source
-outpoint and expected transaction id with a Bitcoin explorer or node first.</p>
+outpoint and expected transaction id with a compatible network explorer or node first.</p>
 {% endif %}
 {% if result %}
-<p><strong>Silent Payment sweep broadcast successfully.</strong></p>
+<p><strong>Silent Payment received successfully.</strong></p>
 <dl class="invoice-review">
   <div><dt>Broadcast transaction id</dt><dd><code>{{ result.broadcast_txid }}</code></dd></div>
   <div><dt>Destination</dt><dd><code>{{ result.destination_address }}</code></dd></div>

@@ -4,7 +4,7 @@
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 {% if preview %}
 <p class="error"><strong>Review carefully.</strong> Broadcasting this transaction
-irreversibly transfers the detected Bitcoin to the destination below.</p>
+irreversibly transfers the detected funds to the settlement address below.</p>
 <dl class="invoice-review">
   <div><dt>Source outpoint</dt><dd><code>{{ preview.receipt_txid }}:{{ preview.vout }}</code></dd></div>
   <div><dt>Detected value</dt><dd>{{ "{:,}".format(preview.matched_value) }} sats</dd></div>
@@ -19,10 +19,10 @@ irreversibly transfers the detected Bitcoin to the destination below.</p>
   <input type="hidden" name="vout" value="{{ preview.vout }}">
   <input type="hidden" name="destination_address" value="{{ preview.destination_address }}">
   <label><input type="checkbox" name="confirmed" value="yes" required>
-    I have verified the destination, amount and fee and understand this Bitcoin transaction cannot be reversed.
+    I have verified the destination, amount and fee and understand this transaction cannot be reversed.
   </label>
-  <button class="danger-button" type="submit" data-progress-label="Broadcasting sweep…">Broadcast sweep</button>
-  <p class="progress" data-progress-message hidden>Rechecking the output and broadcasting the sweep. Do not submit again…</p>
+  <button class="danger-button" type="submit" data-progress-label="Receiving payment…">Receive Funds</button>
+  <p class="progress" data-progress-message hidden>Rechecking and processing the payment. Do not submit again…</p>
 </form>
 {% endif %}
 {% endblock %}

@@ -1271,7 +1271,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse(
                 render_template(
                     "silent_payment_receipts.html",
-                    title="Check incoming Bitcoin",
+                    title="Check Silent Payment",
                     error="The form token is invalid or expired. Return to the wallet and try again.",
                     result=None,
                     csrf_token=CsrfProtector(settings).issue(),
@@ -1284,8 +1284,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse(
                 render_template(
                     "silent_payment_receipts.html",
-                    title="Check incoming Bitcoin",
-                    error="Enter a 64-character hexadecimal Bitcoin transaction id.",
+                    title="Check Silent Payment",
+                    error="Enter a 64-character hexadecimal transaction id.",
                     result=None,
                     csrf_token=CsrfProtector(settings).issue(),
                 ),
@@ -1330,7 +1330,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse(
                 render_template(
                     "silent_payment_sweep_review.html",
-                    title="Review Silent Payment sweep",
+                    title="Review Silent Payment",
                     error="The form token is invalid or expired.",
                     preview=None,
                     csrf_token=CsrfProtector(settings).issue(),
@@ -1347,7 +1347,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             error = "The receipt output index is invalid."
             preview = None
         elif not destination:
-            error = "Enter a Bitcoin destination address."
+            error = "Enter a settlement address."
             preview = None
         else:
             try:
@@ -1368,7 +1368,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return HTMLResponse(
             render_template(
                 "silent_payment_sweep_review.html",
-                title="Review Silent Payment sweep",
+                title="Review Silent Payment",
                 error=error,
                 preview=preview,
                 csrf_token=CsrfProtector(settings).issue(),
@@ -1393,14 +1393,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not CsrfProtector(settings).verify(csrf_token):
             error = "The form token is invalid or expired."
         elif confirmed != "yes":
-            error = "Confirm that the Bitcoin sweep is irreversible."
+            error = "Confirm that the transaction is irreversible."
         else:
             normalized_txid = str(txid or "").strip().lower()
             destination = str(destination_address or "").strip()
             if BITCOIN_TXID_PATTERN.fullmatch(normalized_txid) is None or vout < 0:
                 error = "The receipt outpoint is invalid."
             elif not destination:
-                error = "The Bitcoin destination address is required."
+                error = "The settlement address is required."
             else:
                 try:
                     result = await asyncio.to_thread(
@@ -1418,7 +1418,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return HTMLResponse(
             render_template(
                 "silent_payment_sweep_result.html",
-                title="Silent Payment sweep",
+                title="Silent Payment received",
                 error=error,
                 result=result,
             ),

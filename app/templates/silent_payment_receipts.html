@@ -20,14 +20,14 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <input type="hidden" name="txid" value="{{ receipt.txid }}">
       <input type="hidden" name="vout" value="{{ receipt.vout }}">
-      <label for="destination-{{ receipt.vout }}">Bitcoin destination address</label>
+      <label for="destination-{{ receipt.vout }}">Settlement address</label>
       <input id="destination-{{ receipt.vout }}" name="destination_address"
              type="text" autocapitalize="none" autocomplete="off" required>
-      <button type="submit" data-progress-label="Building sweep preview…">Review sweep</button>
-      <p class="progress" data-progress-message hidden>Rechecking and preparing the sweep. Please wait…</p>
+      <button type="submit" data-progress-label="Preparing payment…">Review Payment</button>
+      <p class="progress" data-progress-message hidden>Rechecking and preparing the payment. Please wait…</p>
     </form>
     {% elif receipt.availability == "unconfirmed" %}
-    <p>This output is unspent but not yet confirmed. Wait for confirmation before sweeping.</p>
+    <p>This payment is not yet confirmed. Wait for confirmation before receiving it.</p>
     {% else %}
     <p>This output is not currently available as an unspent output. It may already have been spent.</p>
     {% endif %}
@@ -35,7 +35,7 @@
   {% endfor %}
 </div>
 {% else %}
-<p>No Silent Payment output belonging to this Acorn was found in this transaction.</p>
+<p>No Silent Payment belonging to this Acorn was found in this transaction.</p>
 {% endif %}
 {% endif %}
 {% endblock %}
