@@ -225,48 +225,40 @@ of a captured cookie. Changing `SAFEBOX_COOKIE_KEY` invalidates all sessions.
 The former `SAFEBOX_SESSION_TTL_SECONDS` setting remains a compatibility
 fallback, but new deployments should specify the lifetime in hours.
 
-The **Safebox Acorn mnemonic** is used only to derive the operational `nsec` during the
-login request. It is not placed in the cookie. The application does not write
-either secret to disk, but the decrypted `nsec` necessarily exists in process
-memory while handling an authenticated request.
+The **Safebox Acorn mnemonic** normally derives the operational `nsec` only
+during creation or login. During explicit quick onboarding, Safebox temporarily
+places that mnemonic in the authenticated encrypted cookie until the user
+completes backup. It is never written to the application database or relay.
+The decrypted cookie and `nsec` necessarily exist in process memory while an
+authenticated request is handled.
 
 When creating a new Acorn, Safebox generates the Safebox Acorn mnemonic and its
 derived `nsec` in memory, writes the initial encrypted wallet metadata through
 Acorn, and verifies relay readback before starting the session. The selected
-home mint is stored in that relay-backed wallet metadata. Safebox displays the
-recovery material on the creation result page. Acorn also generates an
-independent 256-bit record protection key (RPK). The encrypted session cookie
-holds the `nsec`, bootstrap relay, RPK, and session format version. The RPK is
-never rendered as raw hexadecimal, returned by `/api/session`, logged, or
-written to the application database. Its separately labelled 24-word mnemonic
-encoding is intentionally rendered only during the confirmed creation or
-recovery ceremony and must be treated as equivalent secret material.
+home mint is stored in that relay-backed wallet metadata. Safebox deliberately
+asks Acorn not to persist the mnemonic in wallet metadata.
 
-This is an initial key-custody and recovery scaffold only. Protected-record
-encryption is not yet enabled, and the session-held RPK is not itself a recovery
-backup. Acorn encodes the exact RPK as the separately labelled, checksummed
-24-word **Protected record mnemonic**. Safebox displays that mnemonic at
-creation and requires the user to confirm an offline backup. No current record
-depends on the RPK, and the complete protected-record profile still requires
-implementation and review.
+Protected Records are not enabled during creation. No RPK or Protected record
+mnemonic exists, which keeps quick onboarding focused on the Acorn itself.
 
-For rapid onboarding, the creation form also offers an explicit **continue now
-and complete recovery later** choice. When selected, Safebox asks Acorn to put
-both mnemonics in its reserved, NIP-44 self-encrypted `deferred_recovery`
-system record and requires relay readback before opening the wallet. Safebox
-does not put the mnemonics in its database or browser cookie. The wallet shows
-a prominent **Recovery Backup Required** warning until the user opens the
-recovery page, displays and saves the safekeeping message, and explicitly
-confirms completion.
+For rapid onboarding, `/onboard` provides a one-click **Create a New Acorn**
+action using the configured default relay and mint. It also assigns a default
+public handle derived deterministically from the first 32 bits of the Acorn
+public key: two BIP39 English words followed by a number from 0 through 999
+(for example, `abandonabandon0`). If that name is already claimed, Safebox
+advances the numeric suffix until it finds an available name. The authenticated
+Acorn can rename or remove the provider-held mapping later. Safebox places the Safebox
+Acorn mnemonic only in the encrypted browser cookie. Acorn writes a non-secret
+`deferred_recovery` pending marker with relay readback verification. The wallet
+opens immediately and shows **Recovery Backup Required** until the user saves
+the Acorn recovery message and explicitly confirms completion.
 
-Completion removes the generated mnemonic from current wallet metadata,
-requests NIP-09 deletion of the secret-bearing system record, replaces it with
-a non-secret completion marker, and updates the cookie's backup-confirmed flag.
-This is a temporary convenience mechanism, not a durable backup service. While
-it is pending, compromise of the Acorn `nsec` exposes both mnemonics; relay
-deletion is advisory and cannot prove that historical encrypted copies were
-physically erased. Deferral is therefore never selected implicitly and should
-be completed promptly in a quiet, trusted setting.
+Completion replaces the pending relay marker with a non-secret completion
+marker and issues a replacement cookie without the mnemonic. This is temporary
+convenience, not durable backup: cookie expiry, browser-data clearing,
+disconnection, or loss of the original browser session before completion makes
+the mnemonic unavailable. The warning should be resolved promptly in a quiet,
+trusted setting.
 
 The creation form offers either a 12-word or 24-word BIP39 Safebox Acorn mnemonic.
 The 12-word option is the default and uses 128 bits of generated entropy; the
@@ -283,15 +275,14 @@ request memory and is neither echoed into an error response nor stored by
 Safebox Web. The entropy must come from a cryptographically secure source, not
 from a password or other guessable text.
 
-A separate **Bring your own record-protection entropy** option accepts another
-32-byte value in the same masked, confirmed form. This value must be generated
-independently and must not be reused as wallet entropy. Acorn derives the RPK
-with HKDF-SHA256 and the domain-separation context
-`safebox-acorn/record-protection-key/v1`; Safebox Web does not implement the
-derivation itself. If this field is blank, Acorn obtains fresh entropy from the
-operating-system cryptographic random source. The supplied entropy is not
-stored, echoed, or placed in the cookie; only the derived working RPK is placed
-in the encrypted cookie.
+An authenticated user can later select **Enable Protected Records**. Acorn then
+generates an independent 256-bit RPK, or derives one from separately supplied
+32-byte entropy using HKDF-SHA256 and
+`safebox-acorn/record-protection-key/v1`. Acorn publishes only a non-secret
+active marker and one-way key fingerprint. Safebox stores the working RPK in
+the encrypted cookie and displays the separately labelled, checksummed 24-word
+Protected record mnemonic for confirmed offline backup. Neither representation
+is stored on a relay or in the application database.
 
 The two user-facing mnemonic names are deliberately distinct:
 
@@ -301,24 +292,12 @@ Protected record mnemonic -> recovers the independent RPK
 ```
 
 Safebox Web encodes the RPK bytes directly as the Protected record mnemonic; it
-never passes that mnemonic through the wallet's SLIP-10 key derivation. At
-creation, Safebox combines both mnemonics, the bootstrap relay, home mint, and
-component public key in one mobile-friendly **Safebox Acorn safekeeping
-message**. The message remains visible and manually selectable without
-JavaScript. A progressive-enhancement button can copy the entire message to
-the clipboard for transfer to a trusted password-manager vault or another
-protected location. Clipboard managers, device synchronization, remote
-sessions, and other applications may retain that copy, so the interface warns
-the user to clear it afterward.
-
-The combined message is a convenience backup, not independent custody of the
-two secrets. Anyone who obtains it can recover both the Acorn signing key and
-the RPK. High-assurance users should additionally keep the two mnemonics in
-separately protected locations rather than relying exclusively on one
-password-manager entry.
+never passes that mnemonic through the wallet's SLIP-10 derivation. The Acorn
+and Protected record ceremonies remain separate so the RPK is not created,
+displayed, or retained before it is needed.
 
 An authenticated
-user can select **view recovery options** from the wallet page. The first page
+user with activated record protection can select **view recovery options** from the wallet page. The first page
 contains only a warning; a CSRF-protected confirmed POST displays the Protected
 record mnemonic.
 The response is marked `Cache-Control: no-store`. A second confirmed POST marks
