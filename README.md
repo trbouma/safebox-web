@@ -243,10 +243,11 @@ mnemonic exists, which keeps quick onboarding focused on the Acorn itself.
 
 For rapid onboarding, `/onboard` provides a one-click **Create a New Acorn**
 action using the configured default relay and mint. The page presents only a
-pre-checked creation confirmation: recovery is fixed at 12 words, backup is
-deferred, and the wallet opens immediately after initialization and relay
-readback. Connecting an existing Acorn remains available at `/login`, but that
-alternative is deliberately omitted from the fast onboarding page.
+single **Create My Acorn** confirmation button: recovery is fixed at 12 words,
+backup is deferred, and the wallet opens immediately after initialization and
+relay readback. For a browser without a valid session, `/` redirects directly
+to this page. Connecting an existing Acorn remains available at `/login`, but
+that alternative is deliberately omitted from the fast onboarding page.
 
 Onboarding also assigns a default public handle derived deterministically from
 the first 32 bits of the Acorn public key: two BIP39 English words followed by

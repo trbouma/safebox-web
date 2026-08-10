@@ -858,11 +858,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 pass
             else:
                 return RedirectResponse("/wallet", status_code=303)
-        return render_template("home.html", title="Safebox")
+        return RedirectResponse("/onboard", status_code=303)
 
     @app.get("/onboard", response_class=HTMLResponse)
     async def onboard(request: Request):
-        """Provide a QR-friendly entry point for a new or existing Acorn."""
+        """Provide the one-action entry point for creating a new Acorn."""
 
         settings = request.app.state.settings
         session_token = request.cookies.get(cookie_name_for_request(request))

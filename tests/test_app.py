@@ -506,11 +506,10 @@ def test_direct_127001_http_is_allowed() -> None:
     assert response.status_code == 200
 
 
-def test_page_displays_acorn_safebox_relationship_visual() -> None:
-    response = make_https_client().get("/")
+def test_onboard_page_displays_acorn_safebox_relationship_visual() -> None:
+    response = make_https_client().get("/onboard")
 
     assert response.status_code == 200
-    assert 'class="nav-button" href="/login"' in response.text
     assert 'aria-label="Safebox page tools"' in response.text
     assert 'aria-label="About and advisory notice"' in response.text
     assert 'aria-label="About Acorn"' in response.text
@@ -545,7 +544,7 @@ def test_root_redirects_valid_existing_session_to_wallet() -> None:
     assert response.headers["location"] == "/wallet"
 
 
-def test_root_keeps_landing_page_for_invalid_session() -> None:
+def test_root_sends_invalid_session_to_fast_onboarding() -> None:
     client = make_https_client()
     client.cookies.set(
         SECURE_COOKIE_NAME,
@@ -556,8 +555,8 @@ def test_root_keeps_landing_page_for_invalid_session() -> None:
 
     response = client.get("/", follow_redirects=False)
 
-    assert response.status_code == 200
-    assert "Connect an Acorn" in response.text
+    assert response.status_code == 303
+    assert response.headers["location"] == "/onboard"
 
 
 def test_onboard_offers_single_confirmed_fast_creation_path() -> None:
@@ -569,7 +568,8 @@ def test_onboard_offers_single_confirmed_fast_creation_path() -> None:
     assert 'name="defer_recovery" value="yes"' in response.text
     assert 'name="assign_default_handle" value="yes"' in response.text
     assert 'name="mnemonic_words" value="12"' in response.text
-    assert 'name="confirmed" type="checkbox" value="yes" checked required' in response.text
+    assert 'name="confirmed" value="yes"' in response.text
+    assert 'name="confirmed" type="checkbox"' not in response.text
     assert "Create My Acorn" in response.text
     assert 'href="/login"' not in response.text
     assert "Use an Existing Acorn" not in response.text
@@ -1098,7 +1098,7 @@ def test_login_page_links_to_new_acorn_creation() -> None:
 
     assert response.status_code == 200
     assert response.text.index('value="mnemonic"') < response.text.index('value="nsec"')
-    assert 'href="/create"' in response.text
+    assert 'href="/onboard"' in response.text
     assert "Create a new Acorn" in response.text
     assert "Restore protected record access" in response.text
     assert 'name="record_protection_recovery"' in response.text
