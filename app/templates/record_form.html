@@ -2,11 +2,11 @@
 {% block content %}
 <p><a class="nav-button" href="/records">← Back to records</a></p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
-<p>Acorn protects the label and contents and writes the private record to the
-bootstrap relay. A private record may also include an optional Original Record.
+<p>Acorn protects the label and contents and writes the record to the
+bootstrap relay. A record may also include an optional Original Record.
 Safebox does not retain a server-side copy.</p>
 <form method="post" action="/record/save" enctype="multipart/form-data" autocomplete="off"
-      data-progress-message="Protecting, storing, and verifying the private record. Please wait."
+      data-progress-message="Protecting, storing, and verifying the record. Please wait."
       data-progress-button="Saving record…">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label for="label">Record label</label>
@@ -17,7 +17,7 @@ Safebox does not retain a server-side copy.</p>
     <option value="text"{% if payload_format == "text" %} selected{% endif %}>Text</option>
     <option value="json"{% if payload_format == "json" %} selected{% endif %}>JSON</option>
   </select>
-  <label for="payload">Private record contents (optional with an Original Record)</label>
+  <label for="payload">Record contents (optional with an Original Record)</label>
   <textarea id="payload" name="payload" maxlength="262144">{{ payload }}</textarea>
   <label for="attachment">Original Record (optional)</label>
   <input id="attachment" name="attachment" type="file">
@@ -26,7 +26,7 @@ Safebox does not retain a server-side copy.</p>
   select a file to replace it.{% else %}Select a file to attach it to this record.{% endif %}</p>
   <label>
     <input type="checkbox" name="confirmed" value="yes" required>
-    Save this private record{% if has_blob %} and preserve or replace its Original Record as selected{% endif %}.
+    Save this record{% if has_blob %} and preserve or replace its Original Record as selected{% endif %}.
   </label>
   <button type="submit">{{ title }}</button>
 </form>

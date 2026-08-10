@@ -110,6 +110,10 @@ figure.blob-preview { padding: .75rem; }
 .record-list-item { display: flex; box-sizing: border-box; width: 100%; min-height: 3.25rem; align-items: center; padding: .8rem 1rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); color: var(--text); font-weight: 700; text-decoration: none; }
 .record-list-item::after { content: "\2192"; margin-left: auto; padding-left: 1rem; color: var(--link); font-size: 1.15rem; }
 .record-list-item:hover, .record-list-item:focus-visible { border-color: var(--link); color: var(--link); background: var(--surface-soft); }
+.record-capabilities { display: grid; grid-template-columns: 1fr; gap: .65rem; margin: 1.25rem 0; }
+.record-capability { display: flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; margin: 0; padding: .55rem .6rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--control); color: var(--text); font: inherit; font-weight: 700; text-align: center; text-decoration: none; }
+.record-capability:hover, .record-capability:focus-visible { border-color: var(--link); color: var(--link); }
+.record-capability:disabled { cursor: not-allowed; opacity: .5; }
 .danger-zone { margin: 2rem 0 1.5rem; padding: 1rem; border: 1px solid var(--error); border-radius: .7rem; }
 .danger-zone h2 { margin-top: 0; font-size: 1.15rem; }
 .danger-button { border-color: var(--error); color: var(--error); font-weight: 700; }
@@ -153,8 +157,6 @@ figure.blob-preview { padding: .75rem; }
   .blob-preview-pdf { min-height: 24rem; }
   .record-actions { justify-content: stretch; }
   .record-add { width: 100%; }
-  .record-table th, .record-table td { padding: .7rem .75rem; }
-  .record-table thead th:last-child, .record-table td:last-child { width: 4.75rem; }
   .transaction-header { align-items: flex-start; flex-direction: column; gap: .2rem; }
   .transaction-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

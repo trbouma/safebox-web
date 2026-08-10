@@ -519,7 +519,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert '<nav class="wallet-actions" aria-label="Wallet actions">' in response.text
     assert '<h1 class="wallet-headline">Acorn is Connected</h1>' in response.text
     assert '<a href="/deposit">Deposit funds</a>' in response.text
-    assert '<a href="/records">Manage private records</a>' in response.text
+    assert '<a href="/records">Manage Records</a>' in response.text
     assert '<section class="wallet-balance"' in response.text
     assert "321 <span>sats</span>" in response.text
     assert response.text.index("wallet-balance") < response.text.index("wallet-actions")
@@ -2091,7 +2091,8 @@ def test_record_index_links_encoded_labels() -> None:
     assert "/record?label=A+%26+B" in response.text
     assert 'href="/record/edit"' in response.text
     assert 'href="/blob/upload"' not in response.text
-    assert '<nav class="record-list" aria-label="Private records">' in response.text
+    assert '<h1>Manage Records</h1>' in response.text
+    assert '<nav class="record-list" aria-label="Records">' in response.text
     assert response.text.count('class="record-list-item"') == 3
     assert ">Open</a>" not in response.text
 
@@ -2220,7 +2221,11 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
 
     assert detail.status_code == 200
     assert "Original Record fingerprint: <code>1EA23F2B</code>" in detail.text
-    assert "Download Original Record" in detail.text
+    assert '<nav class="record-capabilities" aria-label="Record actions">' in detail.text
+    assert 'href="/record/blob?label=Private+Notes">Original</a>' in detail.text
+    assert ">Share</button>" in detail.text
+    assert ">Issue</button>" in detail.text
+    assert ">Verify</button>" in detail.text
     assert "/record/blob?label=Private+Notes" in detail.text
     assert response.status_code == 200
     assert response.content == b"private blob contents"
@@ -2276,7 +2281,7 @@ def test_pdf_blob_uses_pdfjs_progressive_viewer_with_download_fallback() -> None
     assert 'href="/record/blob?label=Report&amp;inline=1"' in response.text
     assert "Open PDF full screen" in response.text
     assert "JavaScript is required for the inline PDF preview" in response.text
-    assert "Download Original Record" in response.text
+    assert 'href="/record/blob?label=Report">Original</a>' in response.text
 
 
 def test_blob_fingerprint_is_hidden_when_plaintext_digest_is_invalid() -> None:
@@ -2420,7 +2425,7 @@ def test_record_edit_form_loads_and_escapes_existing_payload() -> None:
     response = client.get("/record/edit", params={"label": "Field Notes"})
 
     assert response.status_code == 200
-    assert "Update private record" in response.text
+    assert "Update Record" in response.text
     assert 'value="Field Notes"' in response.text
     assert 'value="Field Notes" readonly' in response.text
     assert '<option value="json" selected>JSON</option>' in response.text

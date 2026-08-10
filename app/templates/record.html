@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-{% if saved %}<p role="status"><strong>Private record saved and verified.</strong></p>{% endif %}
+{% if saved %}<p role="status"><strong>Record saved and verified.</strong></p>{% endif %}
 <pre>{{ payload }}</pre>
 {% if has_blob %}
 <section class="blob-record" aria-labelledby="blob-heading">
   <h2 id="blob-heading">Original Record</h2>
-  <p>The Original Record is protected by Acorn and stored separately from its private record metadata.</p>
+  <p>The Original Record is protected by Acorn and stored separately from its record metadata.</p>
   {% if blob_fingerprint %}
   <p>Original Record fingerprint: <code>{{ blob_fingerprint }}</code></p>
   {% endif %}
@@ -31,13 +31,22 @@
   {% else %}
   <p>No inline preview is available{% if blob_type %} for <code>{{ blob_type }}</code>{% endif %}.</p>
   {% endif %}
-  <p><a class="nav-button" href="{{ blob_url }}">Download Original Record</a></p>
 </section>
 {% endif %}
+<nav class="record-capabilities" aria-label="Record actions">
+  {% if has_blob %}
+  <a class="record-capability" href="{{ blob_url }}">Original</a>
+  {% else %}
+  <button class="record-capability" type="button" disabled>Original</button>
+  {% endif %}
+  <button class="record-capability" type="button" disabled title="Sharing is planned">Share</button>
+  <button class="record-capability" type="button" disabled title="Issuance support is planned">Issue</button>
+  <button class="record-capability" type="button" disabled title="Verification support is planned">Verify</button>
+</nav>
 <p><a class="nav-button" href="{{ edit_url }}">Edit this record</a></p>
 <section class="danger-zone" aria-labelledby="delete-record-heading">
   <h2 id="delete-record-heading">Delete this record</h2>
-  <p>This requests deletion of the private record{% if has_blob %} and its Original Record{% endif %}.</p>
+  <p>This requests deletion of the record{% if has_blob %} and its Original Record{% endif %}.</p>
   <p>Relay deletion is advisory, and infrastructure operators may retain copies or backups.</p>
   <form method="post" action="/record/delete">
     <input type="hidden" name="csrf_token" value="{{ delete_csrf_token }}">

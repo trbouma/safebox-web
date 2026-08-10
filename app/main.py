@@ -458,7 +458,7 @@ def _record_form(
 ) -> str:
     """Render the add/update form without retaining record data server-side."""
 
-    title = "Update private record" if updating else "Add private record"
+    title = "Update Record" if updating else "Add a Record"
     return render_template(
         "record_form.html",
         title=title,
@@ -2314,9 +2314,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except TimeoutError:
             return HTMLResponse(
                 _page(
-                    "Private records",
+                    "Manage Records",
                     '<p class="error">Timed out while loading record labels.</p>'
-                    '<p><a href="/wallet">Return to wallet</a></p>',
+                    '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
                 ),
                 status_code=504,
             )
@@ -2327,9 +2327,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return HTMLResponse(
                 _page(
-                    "Private records",
+                    "Manage Records",
                     '<p class="error">Unable to load record labels from the bootstrap relay.</p>'
-                    '<p><a href="/wallet">Return to wallet</a></p>',
+                    '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
                 ),
                 status_code=502,
             )
@@ -2337,7 +2337,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         unique_labels = list(dict.fromkeys(str(label) for label in labels))
         return render_template(
             "records.html",
-            title="Private records",
+            title="Manage Records",
             labels=[
                 {
                     "label": record_label,
@@ -2740,7 +2740,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
             return save_error(
-                "Safebox could not publish and verify the private record. Reload "
+                "Safebox could not publish and verify the record. Reload "
                 "the record before trying again.",
                 502,
             )
@@ -2766,7 +2766,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse(
                 render_template(
                     "record_deleted.html",
-                    title="Delete private record",
+                    title="Delete Record",
                     label=record_label,
                     error=message,
                     return_url=return_url,
@@ -2838,7 +2838,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         blob_cleanup = result.get("blob_cleanup")
         return render_template(
             "record_deleted.html",
-            title="Private record deleted",
+            title="Record Deleted",
             label=record_label,
             error=None,
             return_url=None,
@@ -2864,18 +2864,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except TimeoutError:
             return HTMLResponse(
                 _page(
-                    "Private record",
+                    "Record",
                     '<p class="error">Timed out while loading the record.</p>'
-                    '<p><a href="/records">Return to records</a></p>',
+                    '<p><a class="nav-button" href="/records">Return to records</a></p>',
                 ),
                 status_code=504,
             )
         except ValueError:
             return HTMLResponse(
                 _page(
-                    "Private record",
+                    "Record",
                     '<p class="error">The requested record was not found.</p>'
-                    '<p><a href="/records">Return to records</a></p>',
+                    '<p><a class="nav-button" href="/records">Return to records</a></p>',
                 ),
                 status_code=404,
             )
@@ -2886,9 +2886,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return HTMLResponse(
                 _page(
-                    "Private record",
+                    "Record",
                     '<p class="error">Unable to load the record from the bootstrap relay.</p>'
-                    '<p><a href="/records">Return to records</a></p>',
+                    '<p><a class="nav-button" href="/records">Return to records</a></p>',
                 ),
                 status_code=502,
             )

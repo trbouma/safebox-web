@@ -7,7 +7,7 @@
 {% if blob_requested and blob_deleted %}
 <p>The configured storage server accepted the Original Record deletion request.</p>
 {% elif blob_requested %}
-<p class="error">The private record deletion was requested, but Safebox could not confirm deletion of the Original Record.</p>
+<p class="error">The record deletion was requested, but Safebox could not confirm deletion of the Original Record.</p>
 {% endif %}
 {% if hidden_count %}
 <p>The original record was no longer visible on {{ hidden_count }} queried relay{% if hidden_count != 1 %}s{% endif %}.</p>

@@ -3,7 +3,7 @@
 <p><a class="nav-button" href="/records">← Back to records</a></p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 <p>The Original Record is protected by Acorn and stored separately from its
-private record metadata.</p>
+record metadata.</p>
 <p>Maximum file size: <strong>{{ max_blob_megabytes }} MiB</strong>.</p>
 <form method="post" action="/blob/upload" enctype="multipart/form-data"
       autocomplete="off"
