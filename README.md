@@ -112,6 +112,10 @@ retirement command. See
 [Standalone Service Acorn Worker](docs/SERVICE-ACORN-LIFECYCLE.md).
 The initial provider flow is documented in
 [Lightning Payments to Acorn Handles](docs/LIGHTNING-HANDLE-PAYMENTS.md).
+The latency-sensitive social-client boundary is documented separately in the
+[NIP-57 Zap Callback Design Note](docs/NIP57-ZAP-CALLBACK-DESIGN-NOTE.md), with
+the deployed troubleshooting experience captured in
+[NIP-57 Zap Integration: Lessons Learned](docs/NIP57-ZAP-LESSONS-LEARNED.md).
 Concurrency boundaries and the PostgreSQL hardening path are documented in
 [Concurrency and Provider-Job Coordination](docs/CONCURRENCY-AND-JOB-COORDINATION.md).
 

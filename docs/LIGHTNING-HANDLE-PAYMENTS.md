@@ -80,7 +80,8 @@ gift-wrapped ecash delivery, and kind-9735 receipt publication.
 
 Invoice binding has two operating modes. The default compatibility mode
 requests an ordinary Cashu mint quote after validating and storing the signed
-zap request. This permits Lightning payment through mint backends that cannot
+zap request. The dedicated web handler performs this quote request; the worker
+begins with settlement monitoring. This permits Lightning payment through mint backends that cannot
 create a description-hash invoice for the exact kind-9734 JSON. The worker logs
 that the invoice is unbound and continues delivery.
 
@@ -162,9 +163,11 @@ change cannot redirect an already-issued invoice.
 
 ## Durable states
 
-The web process never calls the service Acorn directly. It inserts a
-`provider_payment` row in `QUOTE_PENDING` and waits briefly for the worker to
-store the invoice. The worker advances the row through:
+The web process never calls the service Acorn directly. For ordinary payments,
+it inserts a `provider_payment` row in `QUOTE_PENDING` and waits briefly for the
+worker to store the invoice. For zaps, the dedicated handler inserts
+`QUOTE_CREATING`, requests and stores the invoice synchronously, and hands the
+worker an `INVOICE_PENDING` row. The worker advances the remaining states:
 
 ```text
 QUOTE_PENDING
@@ -175,6 +178,10 @@ QUOTE_PENDING
     -> RECEIPT_PENDING -> DELIVERED      zap
                        -> RECEIPT_FAILED zap funds delivered; receipt needs review
 ```
+
+The zap-specific decision and production experience are recorded in the
+[NIP-57 Zap Callback Design Note](NIP57-ZAP-CALLBACK-DESIGN-NOTE.md) and
+[NIP-57 Zap Integration: Lessons Learned](NIP57-ZAP-LESSONS-LEARNED.md).
 
 Invoice creation failures become `FAILED`. A delivery exception becomes
 `DELIVERY_FAILED` and is not retried automatically. This is intentional: after
