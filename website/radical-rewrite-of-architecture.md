@@ -79,6 +79,11 @@ credentials    -> one important kind of record
 OpenETR        -> signed evidence about exact transferable records
 ```
 
+[OpenETR](https://trbouma.github.io/openetr/) is an experimental records-first
+framework for electronic transferable records. It anchors evidence to exact
+artifact digests and signed control events so a verifier can inspect what
+happened to a record without depending on the original application database.
+
 The rewrite is not that credentials disappear. It is that credentials can be
 understood as a specialized kind of record, while leaving space for other
 record types with different lifecycles.
