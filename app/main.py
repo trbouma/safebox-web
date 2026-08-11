@@ -3010,7 +3010,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         acorn: RecordAcornDependency,
         csrf_token: str = Form(...),
         label: str = Form(...),
-        confirmed: str = Form(""),
     ) -> HTMLResponse:
         settings = request.app.state.settings
         form_token = CsrfProtector(settings)
@@ -3019,7 +3018,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             return HTMLResponse(_page("Present Record", f'<p class="error">{escape(str(exc))}</p>'), status_code=400)
         record_url = f'/record?{urlencode({"label": record_label})}'
-        if not form_token.verify(csrf_token) or confirmed != "yes":
+        if not form_token.verify(csrf_token):
             return HTMLResponse(
                 render_template(
                     "record_present.html",
@@ -3027,7 +3026,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     label=record_label,
                     record_url=record_url,
                     csrf_token=form_token.issue(),
-                    error="Confirm before creating a temporary presentation.",
+                    error="The form token is invalid or expired. Try again.",
                 ),
                 status_code=403,
                 headers={"Cache-Control": "no-store"},
@@ -3186,7 +3185,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         acorn: RecordAcornDependency,
         csrf_token: str = Form(...),
         label: str = Form(...),
-        confirmed: str = Form(""),
     ) -> HTMLResponse:
         settings = request.app.state.settings
         form_token = CsrfProtector(settings)
@@ -3195,7 +3193,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             return HTMLResponse(_page("Share Record", f'<p class="error">{escape(str(exc))}</p>'), status_code=400)
         record_url = f'/record?{urlencode({"label": record_label})}'
-        if not form_token.verify(csrf_token) or confirmed != "yes":
+        if not form_token.verify(csrf_token):
             return HTMLResponse(
                 render_template(
                     "record_share.html",
@@ -3203,7 +3201,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     label=record_label,
                     record_url=record_url,
                     csrf_token=form_token.issue(),
-                    error="Confirm before creating a temporary sharing copy.",
+                    error="The form token is invalid or expired. Try again.",
                 ),
                 status_code=403,
                 headers={"Cache-Control": "no-store"},
@@ -3263,7 +3261,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         csrf_token: str = Form(...),
         descriptor: str = Form(...),
         label: str = Form(...),
-        confirmed: str = Form(""),
     ) -> HTMLResponse:
         settings = request.app.state.settings
         form_token = CsrfProtector(settings)
@@ -3289,9 +3286,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Cache-Control": "no-store"},
             )
 
-        if not form_token.verify(csrf_token) or confirmed != "yes":
+        if not form_token.verify(csrf_token):
             return stop_result(
-                "Confirm before deleting the temporary sharing copy.",
+                "The form token is invalid or expired. Try again.",
                 403,
             )
         try:
@@ -3334,7 +3331,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         csrf_token: str = Form(...),
         descriptor: str = Form(...),
         label: str = Form(...),
-        confirmed: str = Form(""),
     ) -> HTMLResponse:
         settings = request.app.state.settings
         form_token = CsrfProtector(settings)
@@ -3353,8 +3349,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Cache-Control": "no-store"},
             )
 
-        if not form_token.verify(csrf_token) or confirmed != "yes":
-            return import_error("Confirm before importing the record.", 403)
+        if not form_token.verify(csrf_token):
+            return import_error("The form token is invalid or expired. Scan again.", 403)
         try:
             record_label = _validate_record_label(label)
             existing_labels = await asyncio.wait_for(

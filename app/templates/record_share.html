@@ -7,9 +7,6 @@ decrypt that copy until it is imported or expires.</p>
 <form method="post" action="/record/share" data-progress-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="label" value="{{ label }}">
-  <label><input type="checkbox" name="confirmed" value="yes" required>
-    Create a temporary sharing copy of this record.
-  </label>
   <button type="submit" data-progress-label="Creating sharing code…">Create Sharing Code</button>
   <p class="progress" data-progress-message hidden>Protecting and uploading the temporary transfer. Please wait…</p>
 </form>

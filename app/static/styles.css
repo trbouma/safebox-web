@@ -80,6 +80,22 @@ button:disabled { cursor: wait; opacity: .65; }
 .wallet-balance-state { margin: .6rem 0 0; color: var(--muted); font-size: .9rem; }
 .error { color: var(--error); }
 .progress { margin-top: 1rem; color: var(--progress); font-weight: 650; }
+form[aria-busy="true"] .progress:not([hidden])::before {
+  display: inline-block;
+  width: .85rem;
+  height: .85rem;
+  margin-right: .55rem;
+  border: .18rem solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  vertical-align: -.12rem;
+  animation: safebox-progress-spin .8s linear infinite;
+}
+@keyframes safebox-progress-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  form[aria-busy="true"] .progress:not([hidden])::before { animation: none; }
+}
 a, code { overflow-wrap: anywhere; }
 pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-wrap; word-break: break-word; }
 .page-tools { display: grid; grid-template-columns: 1fr auto auto 1fr; gap: .55rem; align-items: start; margin-bottom: 1.5rem; }

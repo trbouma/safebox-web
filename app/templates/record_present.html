@@ -7,9 +7,6 @@ History, but Safebox will not offer an import action.</p>
 <form method="post" action="/record/present" data-progress-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="label" value="{{ label }}">
-  <label><input type="checkbox" name="confirmed" value="yes" required>
-    Create a temporary presentation of this record.
-  </label>
   <button type="submit" data-progress-label="Creating presentation…">Present Record</button>
   <p class="progress" data-progress-message hidden>Protecting and uploading the temporary presentation. Please wait…</p>
 </form>

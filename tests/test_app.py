@@ -20,9 +20,13 @@ os.environ.setdefault("SAFEBOX_COOKIE_KEY", Fernet.generate_key().decode("ascii"
 from fastapi.testclient import TestClient
 
 from acorn import (
+    Acorn,
     RECORD_PRESENTATION_PREFIX,
     RecordTransferDescriptor,
+    RecordTransferEnvelope,
+    encode_record_presentation_descriptor,
     encode_record_transfer_descriptor,
+    encrypt_record_transfer_envelope,
     record_protection_key_from_entropy,
     record_protection_recovery_phrase,
 )
@@ -921,6 +925,9 @@ def test_progress_script_is_served_from_same_origin() -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/javascript")
     assert 'form.setAttribute("aria-busy", "true")' in response.text
+    assert 'form.hasAttribute("data-progress-form")' in response.text
+    assert 'button.dataset.progressLabel' in response.text
+    assert 'status.hidden = false' in response.text
     assert "button.disabled = true" in response.text
     assert "navigator.clipboard.writeText(target.value)" in response.text
     assert 'event.target.closest("button[data-address-copy]")' in response.text
@@ -2446,6 +2453,9 @@ def test_scanner_recognizes_record_transfer_descriptor() -> None:
     assert "A valid Acorn record-sharing code was recognized" in response.text
     assert "Shared Notes" in response.text
     assert 'action="/record/import"' in response.text
+    assert 'type="checkbox"' not in response.text
+    assert 'data-progress-form' in response.text
+    assert 'data-progress-label="Importing record…"' in response.text
     assert TEST_TRANSFER_DESCRIPTOR in response.text
     assert acorn.record_transfer_inspect_calls == [
         {
@@ -2815,7 +2825,7 @@ def test_record_index_links_encoded_labels() -> None:
     assert ">Open</a>" not in response.text
 
 
-def test_record_share_creates_base64url_qr_after_confirmation() -> None:
+def test_record_share_creates_base64url_qr_from_explicit_action() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
     app.dependency_overrides[get_record_acorn] = lambda: acorn
@@ -2827,7 +2837,6 @@ def test_record_share_creates_base64url_qr_after_confirmation() -> None:
         data={
             "csrf_token": valid_csrf_token(),
             "label": "Field Notes",
-            "confirmed": "yes",
         },
     )
 
@@ -2840,6 +2849,8 @@ def test_record_share_creates_base64url_qr_after_confirmation() -> None:
     assert 'action="/record/share/stop"' in created.text
     assert "Stop Sharing" in created.text
     assert "Keep this page open while sharing" in created.text
+    assert 'type="checkbox"' not in warning.text
+    assert 'type="checkbox"' not in created.text
     assert 'src="/static/record-share.js"' in created.text
     assert acorn.record_transfer_create_calls == [
         {
@@ -2866,20 +2877,23 @@ def test_record_presentation_creates_distinct_qr_capability() -> None:
     app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
+    warning = client.get("/record/present", params={"label": "Field Notes"})
     response = client.post(
         "/record/present",
         data={
             "csrf_token": valid_csrf_token(),
             "label": "Field Notes",
-            "confirmed": "yes",
         },
     )
 
+    assert warning.status_code == 200
+    assert 'type="checkbox"' not in warning.text
     assert response.status_code == 200
     assert 'aria-label="Record presentation QR code"' in response.text
     assert TEST_PRESENTATION_DESCRIPTOR in response.text
     assert "Stop Presenting" in response.text
     assert 'action="/record/present/stop"' in response.text
+    assert 'type="checkbox"' not in response.text
     assert acorn.record_presentation_create_calls == [
         {
             "record_name": "Field Notes",
@@ -2936,6 +2950,64 @@ def test_scanned_presentation_displays_record_and_history_without_import(monkeyp
     ]
 
 
+def test_scanner_opens_real_encrypted_presentation_capability(monkeypatch) -> None:
+    import acorn.acorn as acorn_module
+
+    secret = b"p" * 32
+    ciphertext, _ = encrypt_record_transfer_envelope(
+        RecordTransferEnvelope(
+            label="Emergency Credential",
+            record_type="generic",
+            payload={"status": "presented"},
+            blob_data=b"presented image bytes",
+            blob_type="image/png",
+            capability="presentation",
+        ),
+        secret=secret,
+    )
+    digest = __import__("hashlib").sha256(ciphertext).hexdigest()
+    descriptor = encode_record_presentation_descriptor(
+        RecordTransferDescriptor(
+            blob_url=f"https://blossom.getsafebox.app/{digest}",
+            ciphertext_sha256=digest,
+            secret=secret,
+            expires_at=2_000_000_000,
+        )
+    )
+
+    class RetrievedBlob:
+        def get_bytes(self) -> bytes:
+            return ciphertext
+
+    class FakeBlossomClient:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        def get_blob(self, *, server: str, sha256: str):
+            assert server == "https://blossom.getsafebox.app"
+            assert sha256 == digest
+            return RetrievedBlob()
+
+    monkeypatch.setattr(acorn_module, "BlossomClient", FakeBlossomClient)
+    receiver = object.__new__(Acorn)
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_payment_acorn] = lambda: receiver
+
+    response = TestClient(app, base_url="https://safebox.example").post(
+        "/scan/lightning",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_payment": descriptor,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Emergency Credential" in response.text
+    assert "presented" in response.text
+    assert "Presented image" in response.text
+    assert "Import Record" not in response.text
+
+
 def test_recipient_done_deletes_presentation_without_importing() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
@@ -2988,7 +3060,7 @@ def test_presenter_can_stop_presentation_without_confirmation_checkbox() -> None
     ]
 
 
-def test_originator_can_stop_record_sharing_after_confirmation() -> None:
+def test_originator_can_stop_record_sharing_from_explicit_action() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
     app.dependency_overrides[get_record_acorn] = lambda: acorn
@@ -3000,7 +3072,6 @@ def test_originator_can_stop_record_sharing_after_confirmation() -> None:
             "csrf_token": valid_csrf_token(),
             "descriptor": TEST_TRANSFER_DESCRIPTOR,
             "label": "Field Notes",
-            "confirmed": "yes",
         },
     )
 
@@ -3015,7 +3086,7 @@ def test_originator_can_stop_record_sharing_after_confirmation() -> None:
     ]
 
 
-def test_stop_record_sharing_requires_confirmation() -> None:
+def test_stop_record_sharing_requires_valid_csrf_token() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
     app.dependency_overrides[get_record_acorn] = lambda: acorn
@@ -3024,18 +3095,18 @@ def test_stop_record_sharing_requires_confirmation() -> None:
     response = client.post(
         "/record/share/stop",
         data={
-            "csrf_token": valid_csrf_token(),
+            "csrf_token": "invalid",
             "descriptor": TEST_TRANSFER_DESCRIPTOR,
             "label": "Field Notes",
         },
     )
 
     assert response.status_code == 403
-    assert "Confirm before deleting" in response.text
+    assert "form token is invalid or expired" in response.text
     assert acorn.record_transfer_delete_calls == []
 
 
-def test_confirmed_record_transfer_import_stores_then_deletes_transfer() -> None:
+def test_record_transfer_import_action_stores_then_deletes_transfer() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
     app.dependency_overrides[get_record_acorn] = lambda: acorn
@@ -3047,7 +3118,6 @@ def test_confirmed_record_transfer_import_stores_then_deletes_transfer() -> None
             "csrf_token": valid_csrf_token(),
             "descriptor": TEST_TRANSFER_DESCRIPTOR,
             "label": "Imported Notes",
-            "confirmed": "yes",
         },
     )
 

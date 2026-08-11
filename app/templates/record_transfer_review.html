@@ -15,9 +15,6 @@
   <label for="record-transfer-label">Store as</label>
   <input id="record-transfer-label" name="label" type="text" maxlength="200"
          value="{{ transfer.label }}" required>
-  <label><input type="checkbox" name="confirmed" value="yes" required>
-    Import and store this record in the connected Acorn.
-  </label>
   <button type="submit" data-progress-label="Importing record…">Import Record</button>
   <p class="progress" data-progress-message hidden>Retrieving, decrypting, validating, and storing the record. Please wait…</p>
 </form>

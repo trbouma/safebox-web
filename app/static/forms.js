@@ -8,14 +8,19 @@ document.addEventListener("submit", (event) => {
   if (
     event.defaultPrevented ||
     !(form instanceof HTMLFormElement) ||
-    !form.dataset.progressMessage
+    !(form.dataset.progressMessage || form.hasAttribute("data-progress-form"))
   ) {
     return;
   }
 
   form.setAttribute("aria-busy", "true");
 
-  let status = form.querySelector("[data-progress-status]");
+  const inlineStatus = form.querySelector("[data-progress-message]");
+  const message =
+    form.dataset.progressMessage ||
+    inlineStatus?.textContent.trim() ||
+    "Working. Please wait…";
+  let status = inlineStatus || form.querySelector("[data-progress-status]");
   if (!status) {
     status = document.createElement("p");
     status.className = "progress";
@@ -23,13 +28,19 @@ document.addEventListener("submit", (event) => {
     status.setAttribute("role", "status");
     status.setAttribute("aria-live", "polite");
     form.appendChild(status);
+  } else {
+    status.hidden = false;
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
   }
-  status.textContent = form.dataset.progressMessage;
+  status.textContent = message;
 
   form.querySelectorAll('button[type="submit"]').forEach((button) => {
     button.dataset.originalText = button.textContent;
-    if (form.dataset.progressButton) {
-      button.textContent = form.dataset.progressButton;
+    const progressLabel =
+      form.dataset.progressButton || button.dataset.progressLabel;
+    if (progressLabel) {
+      button.textContent = progressLabel;
     }
     button.disabled = true;
     button.setAttribute("aria-disabled", "true");
@@ -37,17 +48,21 @@ document.addEventListener("submit", (event) => {
 });
 
 window.addEventListener("pageshow", () => {
-  document.querySelectorAll("form[data-progress-message]").forEach((form) => {
-    form.removeAttribute("aria-busy");
-    form.querySelector("[data-progress-status]")?.remove();
-    form.querySelectorAll('button[type="submit"]').forEach((button) => {
-      button.disabled = false;
-      button.removeAttribute("aria-disabled");
-      if (button.dataset.originalText) {
-        button.textContent = button.dataset.originalText;
-      }
+  document
+    .querySelectorAll("form[data-progress-message], form[data-progress-form]")
+    .forEach((form) => {
+      form.removeAttribute("aria-busy");
+      form.querySelector("[data-progress-status]")?.remove();
+      const inlineStatus = form.querySelector("[data-progress-message]");
+      if (inlineStatus) inlineStatus.hidden = true;
+      form.querySelectorAll('button[type="submit"]').forEach((button) => {
+        button.disabled = false;
+        button.removeAttribute("aria-disabled");
+        if (button.dataset.originalText) {
+          button.textContent = button.dataset.originalText;
+        }
+      });
     });
-  });
 });
 
 document.addEventListener("click", async (event) => {
