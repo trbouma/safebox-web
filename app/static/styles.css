@@ -38,6 +38,7 @@ html { min-height: 100%; -webkit-text-size-adjust: 100%; background: var(--page)
 body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; overflow-wrap: break-word; background: var(--page); color: var(--text); }
 h1, h2 { line-height: 1.2; }
 .wallet-headline { text-align: center; }
+.continuity-mode { margin: -.75rem 0 1.25rem; color: var(--link); font-size: .9rem; font-weight: 700; letter-spacing: .04em; text-align: center; text-transform: uppercase; }
 img, svg { max-width: 100%; }
 a { color: var(--link); }
 .nav-button { display: inline-flex; box-sizing: border-box; min-height: 2.75rem; align-items: center; justify-content: center; padding: .55rem .85rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--control); color: var(--text); font-weight: 650; text-align: center; text-decoration: none; }

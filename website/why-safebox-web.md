@@ -42,13 +42,40 @@ Grove on the same small appliance.
 
 ## Practical continuity
 
-The long-term goal is simple:
+For most people, the starting point is ordinary: they open Safebox Web through
+a web-connected service, check a balance, receive value, store a record, or
+present evidence. The experience should feel familiar and convenient.
+
+The important difference is underneath. The app should not be the only place
+the wallet can live. If a hosted service is unavailable, a provider changes
+terms, or the wider internet is down, the same Acorn-controlled state should
+have a local continuity path.
+
+In that situation, Safebox Web can fall back to local services:
+
+- a local Acorn execution environment for keys, funds, records, and recovery;
+- a local Spurline relay for signed events and wallet state;
+- a local Grove service for protected original records and larger blobs; and
+- later, nearby community infrastructure or mesh transport when wider
+  connectivity is unavailable.
+
+This is where Lockbox enters the product story. Lockbox is the appliance-like
+form of that local fallback: a small local home for the same components people
+may normally reach through a web-connected service.
+
+<figure class="safebox-continuity-figure" markdown>
+![Concept illustration of a phone running Safebox Web beside a compact Lockbox-style Safebox appliance with an integrated keypad, NFC tap point, short LoRa-style antenna, and physical Wi-Fi control, ready beside a small emergency bag, passports, keys, and an emergency folder](assets/images/lockbox-appliance-concept.jpg)
+<figcaption>Safebox Web is the user app. Lockbox lets the same app work across different continuity modes: useful in ordinary life, and ready to come with the household or community when circumstances change.</figcaption>
+</figure>
+
+The long-term goal remains simple:
 
 > Lockbox preserves local authority, continuity, and evidence.
 
-Safebox Web is the part a person touches. Acorn is the portable wallet and
+Safebox Web is the app a person touches. Acorn is the portable wallet and
 record state underneath it. Spurline preserves local relay events. Grove
-preserves encrypted blob availability. Together they form a practical
-continuity stack.
+preserves encrypted blob availability. Lockbox brings those pieces together so
+the user has a web-enabled experience in ordinary conditions and a local-first
+fallback when continuity matters.
 
 [Read the records-first architecture](radical-rewrite-of-architecture.md){ .md-button .md-button--primary }

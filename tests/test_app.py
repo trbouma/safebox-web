@@ -1020,7 +1020,8 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
 
     assert response.status_code == 200
     assert '<nav class="wallet-actions" aria-label="Wallet actions">' in response.text
-    assert '<h1 class="wallet-headline">Acorn is Connected</h1>' in response.text
+    assert '<h1 class="wallet-headline">Safebox is Connected</h1>' in response.text
+    assert '<p class="continuity-mode">Connected Mode</p>' in response.text
     assert 'class="page-navigation"' not in response.text
     assert '<a href="/deposit">Deposit funds</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text

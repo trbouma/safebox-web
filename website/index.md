@@ -14,7 +14,7 @@ description: A local-first wallet app for individuals and communities.
 <figure class="safebox-phone" markdown>
   <div class="safebox-phone-frame">
     <span class="safebox-phone-speaker" aria-hidden="true"></span>
-    <img src="assets/images/safebox-phone-app.png" alt="Safebox Web wallet screen shown as a mobile app">
+    <img src="assets/images/safebox-phone-app.png" alt="Safebox Web mobile app screen showing Safebox is Connected in Connected Mode">
   </div>
 </figure>
 

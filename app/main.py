@@ -1793,7 +1793,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return render_template(
             "wallet.html",
-            title="Acorn is Connected",
+            title="Safebox is Connected",
             headline_class="wallet-headline",
             npub=acorn.pubkey_bech32,
             home_relay=acorn.home_relay,

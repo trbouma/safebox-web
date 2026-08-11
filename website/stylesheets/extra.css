@@ -177,6 +177,26 @@
   font-size: 1.05rem;
 }
 
+.safebox-continuity-figure {
+  margin: 1.5rem 0 1.75rem;
+}
+
+.safebox-continuity-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.9rem;
+}
+
+.safebox-continuity-figure figcaption {
+  max-width: 42rem;
+  margin: 0.75rem auto 0;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
 .md-typeset blockquote {
   border-left-color: var(--safebox-copper);
 }
@@ -224,5 +244,16 @@
 
   .safebox-brand-mark {
     margin: 0 auto;
+  }
+
+  .md-typeset .md-button {
+    display: block;
+    width: 100%;
+    margin: 0.45rem 0 0;
+    text-align: center;
+  }
+
+  .md-typeset .md-button + .md-button {
+    margin-top: 0.75rem;
   }
 }

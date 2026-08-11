@@ -32,8 +32,8 @@ without making one hosted service permanent.
 
 ### Safebox Web
 
-The browser-facing application for onboarding, records, payments, handles,
-sharing, and presentation workflows.
+The user app for onboarding, records, payments, handles, sharing, and
+presentation workflows.
 
 </article>
 
@@ -78,9 +78,8 @@ events, control history, and verifier policy.
 ## Toward Lockbox
 
 Lockbox is the future appliance-like product profile for running this family
-locally. The initial target is a Raspberry Pi 4, with future FreeBSD deployment
-work and hardware-backed trust boundaries such as a keypad and TROPIC01 HSM
-under consideration.
+locally. The initial target is FreeBSD on a Raspberry Pi 4, with
+hardware-backed trust boundaries such as a keypad and TROPIC01 HSM.
 
 In that model:
 
@@ -91,6 +90,12 @@ In that model:
 - OpenETR provides signed transferable-record evidence; and
 - external services remain useful, but not always required for local
   continuity.
+
+Safebox Web should be able to describe this in plain continuity modes:
+**Connected Mode**, **Local Mode**, **Mobile Mode**, and **Community Mode**.
+The current app can start with Connected Mode and later determine the active
+mode from service reachability, local pairing, bridge state, and community
+mesh participation.
 
 ## Related repositories
 
