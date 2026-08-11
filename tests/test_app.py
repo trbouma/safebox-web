@@ -2362,6 +2362,21 @@ def test_scanner_recognizes_record_transfer_descriptor() -> None:
     assert acorn.payments == []
 
 
+def test_scanner_browser_module_recognizes_presentation_before_transfer() -> None:
+    response = make_https_client().get("/static/lightning-scan.js")
+
+    assert response.status_code == 200
+    presentation_check = response.text.index(
+        'lowerValue.startsWith("acorn:record-presentation:")'
+    )
+    transfer_check = response.text.index(
+        'lowerValue.startsWith("acorn:record-transfer:")'
+    )
+    assert presentation_check < transfer_check
+    assert "Record presentation acquired" in response.text
+    assert "scanForm.requestSubmit()" in response.text
+
+
 def test_scanned_non_lightning_qr_is_rejected_without_payment() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)

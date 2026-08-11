@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
-<p>Point the camera at a Safebox record-sharing code, Lightning address, or
-invoice. Scanning only acquires the request; you will review and confirm the
-next action.</p>
+<p>Point the camera at a Safebox record-sharing or presentation code,
+Lightning address, or invoice. Scanning only acquires the request; Safebox
+determines the capability from the code before showing the next action.</p>
 
 <section class="scanner" data-lightning-scanner>
   <video class="scanner-video" data-scanner-video playsinline muted></video>

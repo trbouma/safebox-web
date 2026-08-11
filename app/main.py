@@ -29,6 +29,7 @@ from acorn import (
     RECORD_PRESENTATION_PREFIX,
     RECORD_TRANSFER_PREFIX,
     RecordTransferError,
+    decode_record_presentation_descriptor,
     decode_record_transfer_descriptor,
     generate_record_protection_key,
     record_protection_key_from_entropy,
@@ -691,7 +692,10 @@ def _qr_svg(payload: str, *, include_acorn: bool = False) -> str:
             else qrcode.constants.ERROR_CORRECT_M
         ),
         box_size=8,
-        border=4 if include_acorn else 2,
+        # ISO/IEC 18004 specifies a four-module quiet zone. Record capability
+        # descriptors are relatively dense, so the full quiet zone materially
+        # improves camera acquisition on small mobile screens.
+        border=4,
     )
     qr.add_data(payload)
     qr.make(fit=True)
@@ -2321,6 +2325,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         scanned_value = str(lightning_payment).strip()
         if scanned_value.lower().startswith(RECORD_PRESENTATION_PREFIX):
             try:
+                # Validate the visible capability tag and compact descriptor
+                # before retrieving any temporary content.
+                decode_record_presentation_descriptor(scanned_value)
                 presentation = await asyncio.wait_for(
                     acorn.inspect_record_presentation(
                         scanned_value,
