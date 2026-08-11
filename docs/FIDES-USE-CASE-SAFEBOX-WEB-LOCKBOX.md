@@ -18,12 +18,13 @@ infrastructure. A user can create or connect a wallet, store encrypted private
 records, attach protected original documents, claim a handle, receive or
 transfer value, and later move the same wallet state to another compatible
 environment. Underneath the app, Acorn provides portable key, record, recovery,
-and ecash state. OpenETR can link exact artifacts to signed origin and control
-history, extending verifiable credentials into a broader records-first model.
-Safebox Web helps users operate these workflows without becoming the permanent
-system of record.
+and ecash state. OpenETR is an experimental records-first framework that can
+link exact artifacts to signed origin and control history. Together these
+pieces explore how verifiable credentials can fit within a broader model of
+portable, verifiable records without making Safebox Web the permanent system
+of record.
 
-Character count: 777 / 1,200
+Character count: 838 / 1,200
 
 ### Sector
 
@@ -46,8 +47,9 @@ No
 Suggested note if there is a comments field:
 
 Developer-stage implementation with live local integration tests across
-Safebox Web, Acorn, Spurline, and Grove. Suitable for demonstrations and pilot
-planning, not yet production use.
+Safebox Web, Acorn, Spurline, and Grove, plus an OpenETR evidence direction.
+Suitable for demonstrations, contribution, and pilot planning; not yet
+production use.
 
 ### Involved organizations
 
@@ -74,7 +76,8 @@ the current request.
 encrypts the content and stores metadata on a relay; large encrypted blobs can
 be stored through Grove.
 5. When public evidence is needed, OpenETR can bind the exact artifact to
-signed origin and control-history events.
+signed origin and control-history events so others can inspect what happened
+to the record.
 6. The user can share or present a record by QR code. The recipient can review
 the record, protected original, and related evidence before deciding what to
 recognize or import.
@@ -82,10 +85,10 @@ recognize or import.
 community, proofs may support local in-kind clearing until global connectivity
 returns.
 8. In a Lockbox deployment, Safebox Web, Acorn, Spurline, Grove, and OpenETR
-preserve local authority, continuity, and evidence while still synchronizing
-with external infrastructure when available.
+preserve local authority, continuity, and evidence while synchronizing with
+external infrastructure when available.
 
-Character count: 1,126 / 1,200
+Character count: 1,170 / 1,200
 
 ## Tags
 
@@ -104,6 +107,7 @@ Additional related URLs:
 - https://github.com/trbouma/grove
 - https://github.com/trbouma/spurline
 - https://github.com/trbouma/openetr
+- https://trbouma.github.io/openetr/
 
 ## Media
 

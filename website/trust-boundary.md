@@ -19,6 +19,19 @@ only when handling a request that needs an Acorn instance.
 The application database is for operational application state, such as handle
 directory entries and provider jobs. It is not the user's wallet.
 
+## Web-enabled, local-first
+
+Safebox Web can be reached through a browser, but the browser-facing app is not
+the authority context for the user's records. Acorn publishes encrypted records
+as signed Nostr events. Relays provide availability and routing; they do not
+decide what a record means.
+
+The authority that can be checked is attached to the signed event itself: who
+published it, which key can decrypt it, and which later signed events refer to
+it. That is why the same record can be preserved on a public relay, community
+relay, private relay, or local Spurline relay without becoming owned by that
+relay.
+
 ## What Acorn handles
 
 Acorn handles wallet loading, proof operations, record encryption, relay

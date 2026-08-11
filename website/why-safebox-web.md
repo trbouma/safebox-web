@@ -16,7 +16,7 @@ That means the app starts from a simple user promise: funds, records, and
 evidence should remain usable when a device, provider, relay, or application
 changes.
 
-## An app, not the authority
+## The app is not the authority
 
 Safebox Web provides the human workflows:
 

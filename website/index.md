@@ -82,6 +82,23 @@ the controlled key, relay-backed records, or recovery path.
 
 </div>
 
+## Web-enabled but local-first under the hood
+
+Safebox Web can feel like an ordinary web app: open it in a browser, use clear
+screens, scan QR codes, and share records. Underneath, the important state is
+not meant to belong to the web deployment.
+
+Acorn publishes encrypted records through Nostr relays. A relay can store and
+serve a signed event, but it does not become the authority over what the record
+means. The authority that travels with the record is the cryptographic evidence
+of who published it, who can decrypt it, and which later signed events refer to
+it.
+
+That lets records live anywhere suitable: a public relay, a community relay, a
+private relay, or a local Spurline relay inside a Lockbox. The web app is a
+convenient way to use the record. The record's continuity does not depend on
+that one web app remaining online.
+
 ## Part of the local-first family
 
 Safebox Web is a sibling product in the Acorn family:
