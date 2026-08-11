@@ -20,6 +20,7 @@ os.environ.setdefault("SAFEBOX_COOKIE_KEY", Fernet.generate_key().decode("ascii"
 from fastapi.testclient import TestClient
 
 from acorn import (
+    RECORD_PRESENTATION_PREFIX,
     RecordTransferDescriptor,
     encode_record_transfer_descriptor,
     record_protection_key_from_entropy,
@@ -73,6 +74,10 @@ TEST_TRANSFER_DESCRIPTOR = encode_record_transfer_descriptor(
         secret=b"s" * 32,
         expires_at=2_000_000_000,
     )
+)
+TEST_PRESENTATION_DESCRIPTOR = (
+    RECORD_PRESENTATION_PREFIX
+    + TEST_TRANSFER_DESCRIPTOR.split(":", 2)[2]
 )
 
 
@@ -159,6 +164,8 @@ class FakeLoadedAcorn:
         self.record_transfer_inspect_calls: list[dict] = []
         self.record_transfer_accept_calls: list[dict] = []
         self.record_transfer_delete_calls: list[dict] = []
+        self.record_presentation_create_calls: list[dict] = []
+        self.record_presentation_inspect_calls: list[dict] = []
         self.deferred_recovery_state = {"status": "ABSENT", "pending": False}
         self.deferred_recovery = {"status": "ABSENT", "pending": False}
         self.deferred_recovery_complete_calls = 0
@@ -242,6 +249,30 @@ class FakeLoadedAcorn:
     async def delete_record_transfer(self, descriptor: str, **kwargs) -> dict:
         self.record_transfer_delete_calls.append({"descriptor": descriptor, **kwargs})
         return {"status": "DELETED", "transfer_deleted": True}
+
+    async def create_record_presentation(self, record_name: str, **kwargs) -> dict:
+        self.record_presentation_create_calls.append({"record_name": record_name, **kwargs})
+        return {
+            "descriptor": TEST_PRESENTATION_DESCRIPTOR,
+            "expires_at": 2_000_000_000,
+            "label": record_name,
+            "has_original": True,
+        }
+
+    async def inspect_record_presentation(self, descriptor: str, **kwargs) -> dict:
+        self.record_presentation_inspect_calls.append({"descriptor": descriptor, **kwargs})
+        blob_data = b"presented PDF bytes"
+        return {
+            "label": "Presented Credential",
+            "record_type": "generic",
+            "payload": {"credential": "verified copy"},
+            "has_original": True,
+            "blob_data": blob_data,
+            "blob_type": "application/pdf",
+            "blob_sha256": __import__("hashlib").sha256(blob_data).hexdigest(),
+            "expires_at": 2_000_000_000,
+            "server": "https://blossom.getsafebox.app",
+        }
 
     async def put_record(self, **kwargs):
         self.record_put_calls.append(kwargs)
@@ -2720,6 +2751,134 @@ def test_record_share_page_serves_scoped_navigation_warning() -> None:
     assert 'window.removeEventListener("beforeunload"' in script.text
 
 
+def test_record_presentation_creates_distinct_qr_capability() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/present",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Field Notes",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert 'aria-label="Record presentation QR code"' in response.text
+    assert TEST_PRESENTATION_DESCRIPTOR in response.text
+    assert "Stop Presenting" in response.text
+    assert 'action="/record/present/stop"' in response.text
+    assert acorn.record_presentation_create_calls == [
+        {
+            "record_name": "Field Notes",
+            "expires_in": 3600,
+            "blossom_transfer_server": TEST_SETTINGS.blossom_home_server,
+        }
+    ]
+
+
+def test_scanned_presentation_displays_record_and_history_without_import(monkeypatch) -> None:
+    async def fake_history(digest, relays, **kwargs):
+        return {
+            "digest": digest,
+            "relays": tuple(relays),
+            "origin": {
+                "id": "01" * 32,
+                "author": "npub1issuer",
+                "created_at": "2026-08-10 12:00 UTC",
+                "content": "Attested original",
+            },
+            "controls": [],
+            "warnings": [],
+            "error": None,
+        }
+
+    monkeypatch.setattr(main_module, "query_openetr_history", fake_history)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/scan/lightning",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_payment": TEST_PRESENTATION_DESCRIPTOR,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Presented Credential" in response.text
+    assert "verified copy" in response.text
+    assert "Control History" in response.text
+    assert "Attested original" in response.text
+    assert ">Done</button>" in response.text
+    assert "Import Record" not in response.text
+    assert 'action="/record/import"' not in response.text
+    assert acorn.record_transfer_accept_calls == []
+    assert acorn.record_presentation_inspect_calls == [
+        {
+            "descriptor": TEST_PRESENTATION_DESCRIPTOR,
+            "allowed_servers": [TEST_SETTINGS.blossom_home_server],
+        }
+    ]
+
+
+def test_recipient_done_deletes_presentation_without_importing() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/presentation/done",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "descriptor": TEST_PRESENTATION_DESCRIPTOR,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "temporary presentation was deleted" in response.text
+    assert "No record was imported" in response.text
+    assert acorn.record_transfer_accept_calls == []
+    assert acorn.record_transfer_delete_calls == [
+        {
+            "descriptor": TEST_PRESENTATION_DESCRIPTOR,
+            "allowed_servers": [TEST_SETTINGS.blossom_home_server],
+        }
+    ]
+
+
+def test_presenter_can_stop_presentation_without_confirmation_checkbox() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/present/stop",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "descriptor": TEST_PRESENTATION_DESCRIPTOR,
+            "label": "Field Notes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Presentation of Field Notes has stopped" in response.text
+    assert "No record was imported" in response.text
+    assert acorn.record_transfer_delete_calls == [
+        {
+            "descriptor": TEST_PRESENTATION_DESCRIPTOR,
+            "allowed_servers": [TEST_SETTINGS.blossom_home_server],
+        }
+    ]
+
+
 def test_originator_can_stop_record_sharing_after_confirmation() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
@@ -2924,6 +3083,7 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
     assert '<nav class="record-capabilities" aria-label="Record actions">' in detail.text
     assert 'href="/record/blob?label=Private+Notes">Original</a>' in detail.text
     assert 'href="/record/share?label=Private+Notes">Share</a>' in detail.text
+    assert 'href="/record/present?label=Private+Notes">Present</a>' in detail.text
     assert ">Issue</button>" in detail.text
     assert ">Verify</button>" in detail.text
     assert "/record/blob?label=Private+Notes" in detail.text
@@ -2934,7 +3094,7 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
     assert acorn.blob_reads == ["Private Notes"]
 
 
-def test_record_offers_on_demand_openetr_history_without_querying(monkeypatch) -> None:
+def test_record_offers_control_history_button_without_querying(monkeypatch) -> None:
     queried = False
 
     async def fake_query(*args, **kwargs):
@@ -2952,9 +3112,9 @@ def test_record_offers_on_demand_openetr_history_without_querying(monkeypatch) -
     )
 
     assert response.status_code == 200
-    assert 'id="openetr-history"' in response.text
-    assert "Load Control History" in response.text
-    assert "openetr=1#openetr-history" in response.text.replace("&amp;", "&")
+    assert '<details class="openetr-history"' not in response.text
+    assert '>Control History</a>' in response.text
+    assert "openetr=1" in response.text.replace("&amp;", "&")
     assert queried is False
 
 
@@ -3006,7 +3166,9 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
-    assert '<details class="openetr-history" id="openetr-history" open>' in response.text
+    assert '<section class="openetr-history-content"' in response.text
+    assert '<details class="openetr-history"' not in response.text
+    assert 'href="/record?label=Receipt">Back to Record</a>' in response.text
     assert "Origin Event" in response.text
     assert digest in response.text
     assert "Issued warehouse receipt" in response.text

@@ -157,6 +157,24 @@ events are not reliable enough to guarantee cleanup, particularly on mobile,
 so the visible warning, explicit deletion form, recipient cleanup, descriptor
 expiry, and storage-operator retention remain separate safeguards.
 
+Record presentation is a separate capability, not a visual variation of
+sharing. The presenter confirms a server-side form, Acorn creates an
+authenticated presentation-only envelope, and Safebox renders an
+`acorn:record-presentation:` QR descriptor. After scanning, the server retrieves
+and validates the package and returns a read-only representation containing the
+record, its Original Record, and available Control History. The response has no
+import form or import affordance. Acorn also rejects import if a presentation
+descriptor is relabelled as a transfer, because the capability is authenticated
+inside the encrypted envelope.
+
+The recipient's **Done** form and the presenter's **Stop Presenting** form both
+request best-effort deletion using the presentation-scoped authority. Either
+party may complete cleanup first, and the other receives a graceful closed
+representation. The presenter page reuses the bounded navigation warning used
+for sharing. These controls reduce accidental persistence; they cannot prevent
+screenshots or other out-of-band copying by a recipient who was allowed to view
+the presentation.
+
 Safebox Web does not put an Acorn object, proof state, private records, or
 workflow state into JavaScript, `localStorage`, or `sessionStorage`. The
 encrypted session cookie contains the minimum material required to reconstruct

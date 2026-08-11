@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ from sqlmodel import Session, select
 
 from acorn import (
     Acorn,
+    RECORD_PRESENTATION_PREFIX,
     RECORD_TRANSFER_PREFIX,
     RecordTransferError,
     decode_record_transfer_descriptor,
@@ -825,6 +827,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # worker from a blob URL when the browser's native BarcodeDetector
             # is unavailable or unsuitable.
             content_security_policy += "; worker-src 'self' blob:"
+            content_security_policy += "; img-src 'self' data:; connect-src 'self' data:"
         response.headers["Content-Security-Policy"] = content_security_policy
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -2316,6 +2319,84 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return scan_error("The form token is invalid or expired. Scan again.", 403)
 
         scanned_value = str(lightning_payment).strip()
+        if scanned_value.lower().startswith(RECORD_PRESENTATION_PREFIX):
+            try:
+                presentation = await asyncio.wait_for(
+                    acorn.inspect_record_presentation(
+                        scanned_value,
+                        allowed_servers=[settings.blossom_home_server],
+                    ),
+                    timeout=settings.wallet_load_timeout_seconds,
+                )
+            except RecordTransferError as exc:
+                return scan_error(str(exc))
+            except TimeoutError:
+                return scan_error("The record presentation lookup timed out.", 504)
+            except Exception as exc:
+                logger.warning(
+                    "record presentation inspection failed error_type=%s",
+                    type(exc).__name__,
+                )
+                return scan_error("The temporary record presentation could not be loaded.", 502)
+
+            payload = presentation.get("payload")
+            rendered_payload = (
+                payload
+                if isinstance(payload, str)
+                else json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True, default=str)
+            )
+            blob_data = presentation.get("blob_data")
+            blob_type = presentation.get("blob_type")
+            blob_sha256 = presentation.get("blob_sha256")
+            blob_data_url = None
+            if isinstance(blob_data, bytes):
+                blob_data_url = (
+                    f"data:{blob_type or 'application/octet-stream'};base64,"
+                    + base64.b64encode(blob_data).decode("ascii")
+                )
+            control_history = None
+            if blob_sha256:
+                try:
+                    control_history = await asyncio.wait_for(
+                        query_openetr_history(
+                            str(blob_sha256),
+                            settings.openetr_relays,
+                            timeout=settings.openetr_query_timeout_seconds,
+                            limit=settings.openetr_query_limit,
+                        ),
+                        timeout=(settings.openetr_query_timeout_seconds * 2) + 1,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "presentation control history failed error_type=%s",
+                        type(exc).__name__,
+                    )
+                    control_history = {
+                        "digest": str(blob_sha256),
+                        "relays": settings.openetr_relays,
+                        "origin": None,
+                        "controls": [],
+                        "warnings": [],
+                        "error": "Control history is temporarily unavailable.",
+                    }
+            return HTMLResponse(
+                render_template(
+                    "record_presentation_view.html",
+                    title=presentation["label"],
+                    presentation=presentation,
+                    payload=rendered_payload,
+                    blob_preview=_blob_preview_kind(blob_type),
+                    blob_data_url=blob_data_url,
+                    blob_fingerprint=(
+                        str(blob_sha256)[:8].upper() if blob_sha256 else None
+                    ),
+                    control_history=control_history,
+                    descriptor=scanned_value,
+                    csrf_token=form_token.issue(),
+                ),
+                headers={"Cache-Control": "no-store"},
+            )
+
         if scanned_value.lower().startswith(RECORD_TRANSFER_PREFIX):
             try:
                 decode_record_transfer_descriptor(scanned_value)
@@ -2816,6 +2897,182 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CsrfProtector(settings).issue(),
             notice=notice,
             retention_notice=_ecash_retention_notice(settings),
+        )
+
+    @app.get("/record/present", response_class=HTMLResponse)
+    async def present_record_form(
+        request: Request,
+        acorn: RecordAcornDependency,
+        label: str,
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        try:
+            record_label = _validate_record_label(label)
+            await asyncio.wait_for(
+                acorn.get_record_safebox(record_name=record_label),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except (ValueError, TimeoutError):
+            return HTMLResponse(
+                _page(
+                    "Present Record",
+                    '<p class="error">The requested record could not be loaded.</p>'
+                    '<p><a class="nav-button" href="/records">Return to records</a></p>',
+                ),
+                status_code=404,
+            )
+        return HTMLResponse(
+            render_template(
+                "record_present.html",
+                title="Present Record",
+                label=record_label,
+                record_url=f'/record?{urlencode({"label": record_label})}',
+                csrf_token=CsrfProtector(settings).issue(),
+                error=None,
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/record/present", response_class=HTMLResponse)
+    async def create_record_presentation(
+        request: Request,
+        acorn: RecordAcornDependency,
+        csrf_token: str = Form(...),
+        label: str = Form(...),
+        confirmed: str = Form(""),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+        try:
+            record_label = _validate_record_label(label)
+        except ValueError as exc:
+            return HTMLResponse(_page("Present Record", f'<p class="error">{escape(str(exc))}</p>'), status_code=400)
+        record_url = f'/record?{urlencode({"label": record_label})}'
+        if not form_token.verify(csrf_token) or confirmed != "yes":
+            return HTMLResponse(
+                render_template(
+                    "record_present.html",
+                    title="Present Record",
+                    label=record_label,
+                    record_url=record_url,
+                    csrf_token=form_token.issue(),
+                    error="Confirm before creating a temporary presentation.",
+                ),
+                status_code=403,
+                headers={"Cache-Control": "no-store"},
+            )
+        try:
+            presentation = await asyncio.wait_for(
+                acorn.create_record_presentation(
+                    record_label,
+                    expires_in=3600,
+                    blossom_transfer_server=settings.blossom_home_server,
+                ),
+                timeout=settings.payment_timeout_seconds,
+            )
+        except TimeoutError:
+            error = "Creating the temporary presentation timed out. Its outcome may be uncertain."
+        except Exception as exc:
+            logger.warning("record presentation creation failed error_type=%s", type(exc).__name__)
+            error = "Safebox could not create the temporary presentation."
+        else:
+            descriptor = str(presentation["descriptor"])
+            return HTMLResponse(
+                render_template(
+                    "record_present_qr.html",
+                    title="Present Record",
+                    label=record_label,
+                    record_url=record_url,
+                    descriptor=descriptor,
+                    presentation_qr=_qr_svg(descriptor),
+                    csrf_token=form_token.issue(),
+                    expires_at=datetime.fromtimestamp(
+                        int(presentation["expires_at"]), tz=timezone.utc
+                    ).strftime("%Y-%m-%d %H:%M UTC"),
+                ),
+                headers={"Cache-Control": "no-store"},
+            )
+        return HTMLResponse(
+            render_template(
+                "record_present.html",
+                title="Present Record",
+                label=record_label,
+                record_url=record_url,
+                csrf_token=form_token.issue(),
+                error=error,
+            ),
+            status_code=502,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/record/present/stop", response_class=HTMLResponse)
+    async def stop_record_presentation(
+        request: Request,
+        acorn: RecordAcornDependency,
+        csrf_token: str = Form(...),
+        descriptor: str = Form(...),
+        label: str = Form(...),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            return HTMLResponse(_page("Stop Presenting", '<p class="error">The form token is invalid or expired.</p>'), status_code=403)
+        try:
+            record_label = _validate_record_label(label)
+            await asyncio.wait_for(
+                acorn.delete_record_transfer(
+                    str(descriptor).strip(),
+                    allowed_servers=[settings.blossom_home_server],
+                ),
+                timeout=settings.payment_timeout_seconds,
+            )
+            message = f"Presentation of {escape(record_label)} has stopped."
+        except Exception as exc:
+            logger.warning("record presentation stop uncertain error_type=%s", type(exc).__name__)
+            message = "The presentation is closed. Deletion of its temporary copy could not be confirmed."
+        return HTMLResponse(
+            render_template(
+                "record_presentation_closed.html",
+                title="Presentation Closed",
+                message=message,
+                record_url=f'/record?{urlencode({"label": str(label)})}',
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/record/presentation/done", response_class=HTMLResponse)
+    async def finish_record_presentation(
+        request: Request,
+        acorn: RecordAcornDependency,
+        csrf_token: str = Form(...),
+        descriptor: str = Form(...),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            return HTMLResponse(_page("Close Presentation", '<p class="error">The form token is invalid or expired.</p>'), status_code=403)
+        deleted = False
+        try:
+            result = await asyncio.wait_for(
+                acorn.delete_record_transfer(
+                    str(descriptor).strip(),
+                    allowed_servers=[settings.blossom_home_server],
+                ),
+                timeout=settings.payment_timeout_seconds,
+            )
+            deleted = bool(result.get("transfer_deleted"))
+        except Exception as exc:
+            logger.info("presentation recipient cleanup unavailable error_type=%s", type(exc).__name__)
+        return HTMLResponse(
+            render_template(
+                "record_presentation_closed.html",
+                title="Presentation Complete",
+                message=(
+                    "The temporary presentation was deleted."
+                    if deleted
+                    else "The presentation is closed; its temporary copy was already unavailable or deletion could not be confirmed."
+                ),
+                record_url=None,
+            ),
+            headers={"Cache-Control": "no-store"},
         )
 
     @app.get("/record/share", response_class=HTMLResponse)
@@ -3705,16 +3962,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "error": "OpenETR history is temporarily unavailable.",
                 }
         blob_query = urlencode({"label": label})
+        record_url = f"/record?{blob_query}"
+        if openetr:
+            return render_template(
+                "control_history.html",
+                title="Control History",
+                label=label,
+                record_url=record_url,
+                has_blob=bool(getattr(record_value, "blobref", None)),
+                blob_fingerprint=blob_fingerprint,
+                openetr_history=openetr_history,
+            )
         return render_template(
             "record.html",
             title=label,
             label=label,
             edit_url=f'/record/edit?{urlencode({"label": label})}',
             share_url=f'/record/share?{urlencode({"label": label})}',
-            openetr_requested=openetr,
-            openetr_url=(
+            present_url=f'/record/present?{urlencode({"label": label})}',
+            control_history_url=(
                 f'/record?{urlencode({"label": label, "openetr": "1"})}'
-                "#openetr-history"
             ),
             saved=saved,
             record_type=str(record_value.type),
@@ -3723,7 +3990,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             blob_type=blob_type,
             blob_preview=blob_preview,
             blob_fingerprint=blob_fingerprint,
-            openetr_history=openetr_history,
             blob_url=f"/record/blob?{blob_query}",
             blob_inline_url=f"/record/blob?{blob_query}&inline=1",
             delete_csrf_token=CsrfProtector(settings).issue(),

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<p class="advisory"><strong>Temporary presentation.</strong> This record has
+not been imported into your Acorn.</p>
+<pre>{{ payload }}</pre>
+{% if presentation.has_original %}
+<section class="blob-record" aria-labelledby="presented-original-heading">
+  <h2 id="presented-original-heading">Original Record</h2>
+  {% if blob_fingerprint %}<p>Fingerprint: <code>{{ blob_fingerprint }}</code></p>{% endif %}
+  {% if blob_preview == "image" %}
+  <figure class="blob-preview"><img src="{{ blob_data_url }}" alt="Presented image"></figure>
+  {% elif blob_preview == "pdf" %}
+  <div class="blob-preview blob-preview-pdf" data-pdf-viewer
+       data-pdf-url="{{ blob_data_url }}" aria-label="Presented PDF">
+    <p data-pdf-status role="status">Loading PDF…</p>
+    <div class="pdf-controls" data-pdf-controls hidden>
+      <button type="button" data-pdf-previous>Previous</button>
+      <span data-pdf-page aria-live="polite"></span>
+      <button type="button" data-pdf-next>Next</button>
+    </div>
+    <canvas class="pdf-canvas" aria-label="Rendered PDF page" hidden></canvas>
+  </div>
+  <script type="module" src="/static/pdf-viewer.js"></script>
+  {% else %}
+  <p>No inline preview is available for this Original Record.</p>
+  {% endif %}
+</section>
+{% endif %}
+<section aria-labelledby="presentation-history-heading">
+  <h2 id="presentation-history-heading">Control History</h2>
+  {% if not control_history %}
+  <p>No Original Record fingerprint is available for a Control History lookup.</p>
+  {% elif control_history.error %}
+  <p class="error">{{ control_history.error }}</p>
+  {% elif not control_history.origin %}
+  <p>No OpenETR origin event was found for this Original Record.</p>
+  {% else %}
+  <article class="openetr-event">
+    <h3>Origin Event</h3>
+    <dl class="openetr-event-fields">
+      <dt>Object digest</dt><dd><code>{{ control_history.digest }}</code></dd>
+      <dt>Event</dt><dd><code>{{ control_history.origin.id }}</code></dd>
+      <dt>Issuer</dt><dd><code>{{ control_history.origin.author }}</code></dd>
+      <dt>Created</dt><dd>{{ control_history.origin.created_at }}</dd>
+      {% if control_history.origin.content %}<dt>Statement</dt><dd>{{ control_history.origin.content }}</dd>{% endif %}
+    </dl>
+  </article>
+  {% for event in control_history.controls %}
+  <article class="openetr-event">
+    <h3>{{ event.action_label }}</h3>
+    <dl class="openetr-event-fields">
+      <dt>Event</dt><dd><code>{{ event.id }}</code></dd>
+      <dt>Signer</dt><dd><code>{{ event.author }}</code></dd>
+      <dt>Created</dt><dd>{{ event.created_at }}</dd>
+    </dl>
+  </article>
+  {% else %}<p>No related control events were found.</p>{% endfor %}
+  {% endif %}
+</section>
+<form method="post" action="/record/presentation/done" data-progress-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="descriptor" value="{{ descriptor }}">
+  <button type="submit" data-progress-label="Closing presentation…">Done</button>
+  <p class="progress" data-progress-message hidden>Closing the presentation and deleting its temporary copy. Please wait…</p>
+</form>
+{% endblock %}

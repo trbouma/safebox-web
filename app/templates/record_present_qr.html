@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Ask the recipient to scan this code with Safebox. It grants temporary access
+to view <strong>{{ label }}</strong> and its Control History.</p>
+<div class="invoice-qr" aria-label="Record presentation QR code">
+  {{ presentation_qr | safe }}
+</div>
+<label for="record-presentation-descriptor">Presentation code</label>
+<textarea id="record-presentation-descriptor" readonly spellcheck="false"
+          autocapitalize="none">{{ descriptor }}</textarea>
+<p><strong>Expires:</strong> {{ expires_at }}</p>
+<p class="advisory" role="note"><strong>Keep this page open while presenting.</strong>
+Safebox will warn before navigating away. Stop Presenting removes the temporary
+copy before its normal expiry.</p>
+<section class="danger-zone" aria-labelledby="stop-presenting-heading">
+  <h2 id="stop-presenting-heading">Stop Presenting</h2>
+  <form method="post" action="/record/present/stop" data-progress-form
+        data-stop-record-sharing>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="label" value="{{ label }}">
+    <input type="hidden" name="descriptor" value="{{ descriptor }}">
+    <button type="submit" data-progress-label="Stopping presentation…">Stop Presenting</button>
+    <p class="progress" data-progress-message hidden>Deleting the temporary presentation. Please wait…</p>
+  </form>
+</section>
+<script src="/static/record-share.js" defer></script>
+{% endblock %}

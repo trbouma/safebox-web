@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="openetr-history-content" aria-label="Control history details">
+  {% if not has_blob %}
+  <p>An Original Record is required before its control history can be queried.</p>
+  {% elif not blob_fingerprint %}
+  <p>This Original Record does not contain a valid SHA-256 object digest.</p>
+  {% elif openetr_history.error %}
+  <p class="error">{{ openetr_history.error }}</p>
+  {% elif not openetr_history.origin %}
+  <p>No OpenETR origin event was found for this Original Record.</p>
+  {% else %}
+  <p class="openetr-evidence-note">These are cryptographically valid signed
+  events returned by the configured OpenETR relay infrastructure. Recognition
+  of the signer and the effect of an event remain separate questions.</p>
+  <section class="openetr-event" aria-labelledby="openetr-origin-heading">
+    <h2 id="openetr-origin-heading">Origin Event</h2>
+    <dl class="openetr-event-fields">
+      <dt>Object digest</dt><dd><code>{{ openetr_history.digest }}</code></dd>
+      <dt>Event</dt><dd><code>{{ openetr_history.origin.id }}</code></dd>
+      <dt>Kind</dt><dd>{{ openetr_history.origin.kind }}</dd>
+      <dt>Issuer</dt><dd><code>{{ openetr_history.origin.author }}</code></dd>
+      <dt>Created</dt><dd>{{ openetr_history.origin.created_at }}</dd>
+      {% if openetr_history.origin.content %}<dt>Statement</dt><dd>{{ openetr_history.origin.content }}</dd>{% endif %}
+    </dl>
+  </section>
+  <h2>Control Events</h2>
+  {% for event in openetr_history.controls %}
+  <article class="openetr-event">
+    <h3>{{ event.action_label }}</h3>
+    <dl class="openetr-event-fields">
+      <dt>Event</dt><dd><code>{{ event.id }}</code></dd>
+      <dt>Kind</dt><dd>{{ event.kind }}</dd>
+      <dt>Signer</dt><dd><code>{{ event.author }}</code></dd>
+      <dt>Created</dt><dd>{{ event.created_at }}</dd>
+      <dt>Prior event</dt><dd><code>{{ event.prior_event_id }}</code></dd>
+      {% if event.participant %}<dt>Participant</dt><dd><code>{{ event.participant }}</code></dd>{% endif %}
+      {% if event.content %}<dt>Statement</dt><dd>{{ event.content }}</dd>{% endif %}
+    </dl>
+  </article>
+  {% else %}
+  <p>No related control events were found.</p>
+  {% endfor %}
+  {% for warning in openetr_history.warnings %}
+  <p class="openetr-warning"><strong>Note:</strong> {{ warning }}</p>
+  {% endfor %}
+  <p class="openetr-source">Queried {% for relay in openetr_history.relays %}<code>{{ relay }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% endif %}
+</section>
+{% endblock %}

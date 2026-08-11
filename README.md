@@ -72,6 +72,9 @@ This implementation intentionally provides:
 - QR-mediated Base64URL record sharing with sender and receiver confirmation,
   receiver-side storage, sender-initiated Stop Sharing, and post-import
   temporary-blob cleanup;
+- QR-mediated record presentation for temporary viewing of a record, its
+  Original Record, and Control History without an import action, with
+  recipient **Done** and presenter **Stop Presenting** cleanup;
 - an on-demand, server-rendered OpenETR origin and control-history projection
   for Original Records;
 - user-confirmed Lightning deposits through the Acorn home mint;

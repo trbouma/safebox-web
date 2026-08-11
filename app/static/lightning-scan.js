@@ -33,9 +33,12 @@ if (
         return;
       }
       resultInput.value = scannedValue;
-      status.textContent = scannedValue.toLowerCase().startsWith("acorn:record-transfer:")
-        ? "Record-sharing code acquired. Opening the transfer review…"
-        : "Payment code acquired. Opening the payment review…";
+      const lowerValue = scannedValue.toLowerCase();
+      status.textContent = lowerValue.startsWith("acorn:record-presentation:")
+        ? "Record presentation acquired. Opening the temporary view…"
+        : lowerValue.startsWith("acorn:record-transfer:")
+          ? "Record-sharing code acquired. Opening the transfer review…"
+          : "Payment code acquired. Opening the payment review…";
       scanner.stop();
       startButton.hidden = false;
       startButton.disabled = false;

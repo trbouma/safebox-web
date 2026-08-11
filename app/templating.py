@@ -12,6 +12,7 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIRECTORY))
 _MAIN_TEMPLATES = {"home.html", "onboard.html", "wallet.html"}
 _PARENT_NAVIGATION = {
     "blob_upload.html": ("/records", "Back to Records"),
+    "control_history.html": (None, "Back to Record"),
     "deposit.html": ("/wallet", "Back to Wallet"),
     "deposit_invoice.html": ("/deposit", "Back to Deposit"),
     "deferred_recovery.html": ("/recovery", "Back to Recovery"),
@@ -48,6 +49,12 @@ def render_template(template_name: str, **context: Any) -> str:
     if template_name in {"record_share.html", "record_share_qr.html", "record_share_stopped.html"}:
         context.setdefault("page_back_url", context.get("record_url"))
         context.setdefault("page_back_label", "Back to Record")
+    elif template_name in {"record_present.html", "record_present_qr.html"}:
+        context.setdefault("page_back_url", context.get("record_url"))
+        context.setdefault("page_back_label", "Back to Record")
+    elif template_name == "control_history.html":
+        context["page_back_url"] = context.get("record_url")
+        context["page_back_label"] = "Back to Record"
     elif template_name == "record_transfer_review.html":
         context.setdefault("page_back_url", "/scan/lightning")
         context.setdefault("page_back_label", "Back to Scanner")
