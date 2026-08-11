@@ -53,6 +53,11 @@ verifies:
 - one bounded `relays` tag containing only public `wss://` receipt targets; and
 - a bounded zap comment and request size.
 
+Relay hints are advisory. The handler ignores plaintext, localhost, private,
+malformed, and duplicate hints, retains at most ten usable public `wss://`
+targets, and rejects the request only if no safe receipt target remains. One
+bad client-supplied hint therefore cannot poison an otherwise valid zap.
+
 The social recipient key and destination Acorn key are intentionally separate.
 For a post zap, the signed request's `p` tag identifies the social recipient
 derived by the client from the zapped post. Safebox Web does not require that
@@ -64,6 +69,14 @@ lookup and supports a social identity that uses a distinct Acorn for funds.
 The exact validated JSON is stored in a `provider_zap` row. Its event id is
 unique, so a repeated callback for the same signed zap returns the existing
 invoice instead of intentionally creating a second obligation.
+
+Zap invoice creation has a dedicated compatibility handler. Unlike ordinary
+LNURL payments, the zap callback creates the mint quote synchronously, matching
+the proven Safebox 2 interaction pattern and avoiding a background-worker poll
+in the latency-sensitive social-client request. The durable row is first marked
+`QUOTE_CREATING`, which prevents the singleton worker from racing the callback
+and requesting a second invoice. The worker continues to own settlement,
+gift-wrapped ecash delivery, and kind-9735 receipt publication.
 
 Invoice binding has two operating modes. The default compatibility mode
 requests an ordinary Cashu mint quote after validating and storing the signed

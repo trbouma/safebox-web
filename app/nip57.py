@@ -140,9 +140,19 @@ def validate_zap_request(
     relay_tags = _tag_values(tags, "relays")
     if len(relay_tags) != 1 or len(relay_tags[0]) < 2:
         raise ValueError("Zap request must contain one non-empty relays tag")
-    if len(relay_tags[0][1:]) > MAX_ZAP_RECEIPT_RELAYS:
-        raise ValueError("Zap request contains too many receipt relays")
-    relays = tuple(dict.fromkeys(_receipt_relay(value) for value in relay_tags[0][1:]))
+    usable_relays: list[str] = []
+    for value in relay_tags[0][1:]:
+        try:
+            relay = _receipt_relay(value)
+        except ValueError:
+            # Client relay hints are advisory. Ignore unsuitable entries while
+            # retaining the strict outbound boundary for receipt publication.
+            continue
+        if relay not in usable_relays:
+            usable_relays.append(relay)
+        if len(usable_relays) == MAX_ZAP_RECEIPT_RELAYS:
+            break
+    relays = tuple(usable_relays)
     if not relays:
         raise ValueError("Zap request does not contain a usable receipt relay")
 

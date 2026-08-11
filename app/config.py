@@ -224,6 +224,7 @@ class Settings:
     lnurl_min_sendable_msat: int = 1000
     lnurl_max_sendable_msat: int = 100_000_000
     lnurl_comment_allowed: int = 256
+    nip57_require_description_hash: bool = False
     service_acorn_enabled: bool = False
     service_acorn_home_relay: str = "wss://relay.getsafebox.app"
     service_acorn_home_mint: str = "https://mint.getsafebox.app"
@@ -387,6 +388,10 @@ class Settings:
             lnurl_min_sendable_msat=lnurl_min,
             lnurl_max_sendable_msat=lnurl_max,
             lnurl_comment_allowed=comment_allowed,
+            nip57_require_description_hash=_env_bool(
+                "SAFEBOX_NIP57_REQUIRE_DESCRIPTION_HASH",
+                False,
+            ),
             service_acorn_enabled=_env_bool(
                 "SAFEBOX_SERVICE_ACORN_ENABLED",
                 False,

@@ -41,6 +41,7 @@ def enqueue_provider_payment(
     metadata: str,
     mint: str,
     zap_request: ValidatedZapRequest | None = None,
+    initial_status: str = "QUOTE_PENDING",
 ) -> str:
     payment_id = uuid.uuid4().hex
     with Session(engine) as session:
@@ -53,6 +54,7 @@ def enqueue_provider_payment(
             amount_sat=amount_msat // 1000,
             comment=comment,
             lnurl_metadata=metadata,
+            status=initial_status,
             mint=mint,
         )
         session.add(payment)
@@ -236,6 +238,67 @@ def _request_zap_mint_quote(
         invoice=invoice,
         description_hash_bound=description_hash_bound,
     )
+
+
+async def create_zap_invoice(
+    engine: Engine,
+    payment_id: str,
+    *,
+    require_description_hash: bool = False,
+) -> ProviderPayment:
+    """Create a zap invoice in the callback while preserving durable state.
+
+    Social clients expect an LNURL callback to return promptly. Zap rows enter
+    ``QUOTE_CREATING`` so the background worker cannot race the callback for a
+    second mint quote; settlement and delivery remain worker-owned.
+    """
+
+    payment = get_provider_payment(engine, payment_id)
+    zap = get_provider_zap(engine, payment_id)
+    if payment is None or zap is None:
+        raise RuntimeError("Durable zap payment state is missing")
+    if payment.invoice:
+        return payment
+    if payment.status != "QUOTE_CREATING":
+        raise RuntimeError(
+            payment.error or f"Zap invoice is not creatable from {payment.status}"
+        )
+    try:
+        quote = await asyncio.to_thread(
+            _request_zap_mint_quote,
+            payment,
+            zap,
+            require_description_hash=require_description_hash,
+        )
+        update_provider_payment(
+            engine,
+            payment_id,
+            status="INVOICE_PENDING",
+            mint_quote=quote.quote,
+            invoice=quote.invoice,
+            error=None,
+            next_check_at=utc_now(),
+        )
+        logger.info(
+            "provider zap invoice ready payment_id=%s handle=%s amount_sat=%s description_hash_bound=%s",
+            payment_id,
+            payment.claimed_handle,
+            payment.amount_sat,
+            quote.description_hash_bound,
+        )
+        prepared = get_provider_payment(engine, payment_id)
+        if prepared is None:
+            raise RuntimeError("Durable zap payment disappeared after quote creation")
+        return prepared
+    except Exception as exc:
+        logger.exception("provider zap invoice creation failed payment_id=%s", payment_id)
+        update_provider_payment(
+            engine,
+            payment_id,
+            status="FAILED",
+            error=f"Zap invoice creation failed: {type(exc).__name__}",
+        )
+        raise RuntimeError("Unable to create a Lightning invoice") from exc
 
 
 async def _publish_provider_zap_receipt(acorn, payment: ProviderPayment, zap: ProviderZap):

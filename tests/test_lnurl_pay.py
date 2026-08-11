@@ -182,17 +182,17 @@ def test_lnurl_discovery_accepts_and_persists_valid_zap(tmp_path, monkeypatch) -
     settings = payment_settings(tmp_path)
     app = create_app(settings)
 
-    async def fake_wait(engine, payment_id, *, timeout, interval=0.05):
-        update_provider_payment(
-            engine,
-            payment_id,
-            status="INVOICE_PENDING",
-            mint_quote="quote-zap",
-            invoice="lnbc21-zap",
-        )
-        return get_provider_payment(engine, payment_id)
+    quote_calls: list[str] = []
 
-    monkeypatch.setattr(lnurl_module, "wait_for_provider_invoice", fake_wait)
+    def fake_quote(payment, zap, *, require_description_hash):
+        quote_calls.append(payment.payment_id)
+        return SimpleNamespace(
+            quote="quote-zap",
+            invoice="lnbc21-zap",
+            description_hash_bound=False,
+        )
+
+    monkeypatch.setattr(provider_module, "_request_zap_mint_quote", fake_quote)
 
     with TestClient(app, base_url="https://pay.example") as client:
         add_registration(app.state.database_engine, real_key=True)
@@ -214,15 +214,56 @@ def test_lnurl_discovery_accepts_and_persists_valid_zap(tmp_path, monkeypatch) -
         )
         assert callback.json()["pr"] == "lnbc21-zap"
 
+        repeated = client.get(
+            "/lnpay/alice",
+            params={"amount": "21000", "nostr": zap_json},
+        )
+        assert repeated.json()["pr"] == "lnbc21-zap"
+
         with Session(app.state.database_engine) as session:
             payment = session.exec(select(ProviderPayment)).one()
             zap = session.exec(select(ProviderZap)).one()
         assert payment.comment == "pytest zap"
+        assert payment.status == "INVOICE_PENDING"
         assert zap.payment_id == payment.payment_id
         assert zap.request_json == zap_json
         assert json.loads(zap.receipt_relays_json) == [
             "wss://relay.example.com"
         ]
+        assert quote_calls == [payment.payment_id]
+
+
+def test_zap_callback_returns_clean_error_when_mint_quote_fails(
+    tmp_path, monkeypatch
+) -> None:
+    settings = payment_settings(tmp_path)
+    app = create_app(settings)
+
+    def fail_quote(payment, zap, *, require_description_hash):
+        raise RuntimeError("mint unavailable")
+
+    monkeypatch.setattr(provider_module, "_request_zap_mint_quote", fail_quote)
+
+    with TestClient(app, base_url="https://pay.example") as client:
+        add_registration(app.state.database_engine, real_key=True)
+        set_provider_identity(app.state.database_engine, PROVIDER_KEYS.public_key_hex())
+        lnurl = lnurl_module.encode_lnurl(
+            "https://pay.example/.well-known/lnurlp/alice"
+        )
+        response = client.get(
+            "/lnpay/alice",
+            params={"amount": "21000", "nostr": signed_zap_request(lnurl=lnurl)},
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "ERROR",
+            "reason": "Unable to create a Lightning invoice",
+        }
+        with Session(app.state.database_engine) as session:
+            payment = session.exec(select(ProviderPayment)).one()
+        assert payment.status == "FAILED"
+        assert payment.invoice is None
 
 
 def test_zap_validation_rejects_amount_and_preserves_social_recipient() -> None:
@@ -249,6 +290,36 @@ def test_zap_validation_rejects_amount_and_preserves_social_recipient() -> None:
         expected_lnurl=lnurl,
     )
     assert validated.recipient_pubkey == RECIPIENT_KEYS.public_key_hex()
+
+
+def test_zap_validation_ignores_unsafe_relay_hints_when_wss_remains() -> None:
+    lnurl = lnurl_module.encode_lnurl(
+        "https://pay.example/.well-known/lnurlp/alice"
+    )
+    payload = json.loads(signed_zap_request(lnurl=lnurl))
+    payload["tags"][0] = [
+        "relays",
+        "ws://relay.example.com",
+        "wss://localhost:7447",
+        "wss://relay.example.com",
+    ]
+    event = Event(
+        kind=payload["kind"],
+        content=payload["content"],
+        pub_key=SENDER_KEYS.public_key_hex(),
+        tags=payload["tags"],
+        created_at=payload["created_at"],
+    )
+    event.sign(SENDER_KEYS.private_key_hex())
+
+    validated = validate_zap_request(
+        json.dumps(event.data(), separators=(",", ":"), sort_keys=True),
+        amount_msat=21_000,
+        provider_pubkey=PROVIDER_KEYS.public_key_hex(),
+        expected_lnurl=lnurl,
+    )
+
+    assert validated.relays == ("wss://relay.example.com",)
 
 
 class FakeProviderAcorn:
