@@ -746,6 +746,42 @@ def test_quick_onboarding_passes_selected_24_word_mnemonic_strength(
     assert generated_strengths == [256]
 
 
+def test_quick_onboarding_retries_transient_relay_readback(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    class FlakyReadbackAcorn(FakeCreatedAcorn):
+        load_attempts = 0
+
+        async def load_data(self) -> None:
+            self.__class__.load_attempts += 1
+            if self.__class__.load_attempts == 1:
+                raise RuntimeError("relay readback not visible yet")
+            await super().load_data()
+
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FlakyReadbackAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
+    )
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/onboard",
+            data={"csrf_token": CsrfProtector(settings).issue()},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/wallet"
+    assert FlakyReadbackAcorn.load_attempts == 2
+    assert FakeCreatedAcorn.instances[0].loaded is True
+
+
 def test_quick_onboarding_rejects_invalid_mnemonic_length() -> None:
     response = make_https_client().post(
         "/onboard",
@@ -931,7 +967,7 @@ def test_progress_script_is_served_from_same_origin() -> None:
     assert "button.disabled = true" in response.text
     assert "navigator.clipboard.writeText(target.value)" in response.text
     assert 'event.target.closest("button[data-address-copy]")' in response.text
-    assert "disclosure.open = false" in response.text
+    assert "disclosure.open = false" not in response.text
     assert "copied to the clipboard" in response.text
     assert 'document.execCommand("copy")' in response.text
 
@@ -1047,6 +1083,8 @@ def test_wallet_prominently_warns_while_recovery_backup_is_pending(tmp_path) -> 
 
     assert response.status_code == 200
     assert "Recovery Backup Required" in response.text
+    assert '<details class="recovery-warning">' in response.text
+    assert "<summary>Recovery Backup Required</summary>" in response.text
     assert 'href="/recovery"' in response.text
     assert "Copy Recovery Words" in response.text
     assert response.text.index("Recovery Backup Required") < response.text.index(
@@ -2125,13 +2163,16 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
 
     assert wallet_page.status_code == 200
     assert "alice@safebox.example" in wallet_page.text
-    assert '<details class="wallet-address">' in wallet_page.text
-    assert '<summary>alice@safebox.example</summary>' in wallet_page.text
+    assert '<section class="wallet-address" aria-label="Lightning payment address">' in wallet_page.text
+    assert '<p class="wallet-address-value">alice@safebox.example</p>' in wallet_page.text
+    assert '<details class="wallet-address-disclosure">' in wallet_page.text
+    assert "Show QR Code" in wallet_page.text
+    assert "Hide QR" in wallet_page.text
     assert 'class="wallet-address-qr"' in wallet_page.text
+    assert 'aria-label="Lightning payment QR code"' in wallet_page.text
     assert 'data-address-copy="alice@safebox.example"' in wallet_page.text
-    assert "close Lightning payment QR code" in wallet_page.text
+    assert "Copy payment address" in wallet_page.text
     assert "Scan for Lightning Payment." in wallet_page.text
-    assert "Select the QR code to copy the address and close this panel." in wallet_page.text
     expected_lnurl = main_module.encode_lnurl(
         "https://safebox.example/.well-known/lnurlp/alice"
     )
@@ -2185,7 +2226,7 @@ def test_wallet_hides_address_qr_when_payment_provider_is_disabled(tmp_path) -> 
 
     assert "NIP-05 address" in wallet_page.text
     assert "Receive Lightning" not in wallet_page.text
-    assert '<details class="wallet-address">' not in wallet_page.text
+    assert '<section class="wallet-address"' not in wallet_page.text
     assert '<div class="wallet-address-qr"' not in wallet_page.text
 
 

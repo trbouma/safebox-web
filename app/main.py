@@ -764,6 +764,34 @@ def _invoice_svg(invoice: str) -> str:
     return _qr_svg(invoice)
 
 
+async def _load_new_acorn_with_retry(
+    acorn: Acorn,
+    *,
+    timeout: float,
+    attempts: int = 2,
+) -> None:
+    """Verify a newly created Acorn, allowing one transient relay readback miss."""
+
+    last_error: BaseException | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            await asyncio.wait_for(acorn.load_data(), timeout=timeout)
+            return
+        except Exception as exc:
+            last_error = exc
+            if attempt >= attempts:
+                break
+            logger.info(
+                "new acorn relay readback retrying attempt=%s max_attempts=%s error_type=%s",
+                attempt,
+                attempts,
+                type(exc).__name__,
+            )
+            await asyncio.sleep(0.25)
+    if last_error is not None:
+        raise last_error
+
+
 def _deposit_invoice_page(
     state: DepositQuoteState,
     state_token: str,
@@ -1058,8 +1086,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 timeout=settings.wallet_load_timeout_seconds,
             )
-            await asyncio.wait_for(
-                acorn.load_data(),
+            await _load_new_acorn_with_retry(
+                acorn,
                 timeout=settings.wallet_load_timeout_seconds,
             )
         except TimeoutError:

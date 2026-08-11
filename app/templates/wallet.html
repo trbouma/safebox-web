@@ -2,29 +2,38 @@
 {% block content %}
 <p class="continuity-mode">Connected Mode</p>
 {% if lightning_lnurl %}
-<details class="wallet-address">
-  <summary>{{ nip05_address | lower }}</summary>
-  <div class="wallet-address-panel">
-    <button class="wallet-address-qr" type="button"
-            data-address-copy="{{ nip05_address | lower }}"
-            data-address-copy-status="wallet-address-copy-status"
-            aria-label="Copy {{ nip05_address | lower }} and close Lightning payment QR code">
+<section class="wallet-address" aria-label="Lightning payment address">
+  <p class="wallet-address-value">{{ nip05_address | lower }}</p>
+  <details class="wallet-address-disclosure">
+    <summary>
+      <span class="wallet-address-summary-show">Show QR Code</span>
+      <span class="wallet-address-summary-hide">Hide QR</span>
+    </summary>
+    <div class="wallet-address-panel">
+      <div class="wallet-address-qr" aria-label="Lightning payment QR code">
       {{ address_qr | safe }}
-    </button>
-    <p>Scan for Lightning Payment.</p>
-    <p class="muted">Select the QR code to copy the address and close this panel.</p>
-  </div>
-</details>
-<p id="wallet-address-copy-status" class="wallet-address-copy-status muted"
-   role="status" aria-live="polite" hidden></p>
+      </div>
+      <p>Scan for Lightning Payment.</p>
+      <p class="breakable"><code>{{ nip05_address | lower }}</code></p>
+      <button type="button"
+              data-address-copy="{{ nip05_address | lower }}"
+              data-address-copy-status="wallet-address-copy-status"
+              aria-label="Copy {{ nip05_address | lower }}">
+        Copy payment address
+      </button>
+      <p id="wallet-address-copy-status" class="wallet-address-copy-status muted"
+         role="status" aria-live="polite" hidden></p>
+    </div>
+  </details>
+</section>
 {% endif %}
 {% if recovery_backup_pending %}
-<section class="recovery-warning" aria-labelledby="recovery-warning-heading">
-  <h2 id="recovery-warning-heading">Recovery Backup Required</h2>
+<details class="recovery-warning">
+  <summary>Recovery Backup Required</summary>
   <p>This Acorn is ready to use, but its recovery words have not been copied
   and acknowledged. Complete the backup later from a private, quiet place.</p>
   <a class="nav-button" href="/recovery">Copy Recovery Words</a>
-</section>
+</details>
 {% endif %}
 {% if handle_assignment_failed and not nip05_address %}
 <section class="recovery-warning" aria-labelledby="handle-warning-heading">

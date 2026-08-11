@@ -73,7 +73,6 @@ document.addEventListener("click", async (event) => {
 
   const address = qr.dataset.addressCopy;
   const status = document.getElementById(qr.dataset.addressCopyStatus);
-  const disclosure = qr.closest("details");
 
   try {
     if (navigator.clipboard && window.isSecureContext) {
@@ -93,9 +92,6 @@ document.addEventListener("click", async (event) => {
       }
     }
 
-    if (disclosure) {
-      disclosure.open = false;
-    }
     if (status) {
       status.hidden = false;
       status.textContent = `${address} copied to the clipboard.`;
