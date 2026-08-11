@@ -1,0 +1,101 @@
+---
+title: Product Architecture
+description: How Safebox Web fits with Acorn, Grove, Spurline, and Lockbox.
+---
+
+# Product Architecture
+
+Safebox Web is designed as a sibling product in a broader local-first family.
+Each component has a narrow responsibility and can be developed, tested, and
+operated independently.
+
+The user-facing promise is simpler than the component diagram: Safebox Web is
+the wallet app; the other pieces help preserve funds, records, and evidence
+without making one hosted service permanent.
+
+```text
+              Safebox Web
+                   |
+                   v
+                Acorn
+          /    |     \
+         v     v      v
+    Spurline  Grove  OpenETR
+   local relay blobs  evidence
+```
+
+## Component roles
+
+<div class="safebox-grid safebox-grid--two" markdown>
+
+<article class="safebox-card" markdown>
+
+### Safebox Web
+
+The browser-facing application for onboarding, records, payments, handles,
+sharing, and presentation workflows.
+
+</article>
+
+<article class="safebox-card" markdown>
+
+### Acorn
+
+The protocol runtime for keys, signing, encrypted records, recovery, ecash,
+Lightning workflows, and relay-backed wallet state.
+
+</article>
+
+<article class="safebox-card" markdown>
+
+### Spurline
+
+A local Nostr relay that preserves relevant events for an individual,
+organization, application, or community.
+
+</article>
+
+<article class="safebox-card" markdown>
+
+### Grove
+
+A Blossom-compatible blob store for opaque, content-addressed bytes. Acorn can
+encrypt originals before Grove receives them.
+
+</article>
+
+<article class="safebox-card" markdown>
+
+### OpenETR
+
+A records-first evidence layer for exact artifact digests, signed origin
+events, control history, and verifier policy.
+
+</article>
+
+</div>
+
+## Toward Lockbox
+
+Lockbox is the future appliance-like product profile for running this family
+locally. The initial target is a Raspberry Pi 4, with future FreeBSD deployment
+work and hardware-backed trust boundaries such as a keypad and TROPIC01 HSM
+under consideration.
+
+In that model:
+
+- Safebox Web is the local user interface;
+- Acorn is the controlled protocol state;
+- Spurline is the local evidence relay;
+- Grove is the local encrypted blob store;
+- OpenETR provides signed transferable-record evidence; and
+- external services remain useful, but not always required for local
+  continuity.
+
+## Related repositories
+
+- [Safebox Acorn](https://github.com/trbouma/safebox-acorn)
+- [Grove](https://github.com/trbouma/grove)
+- [Spurline](https://github.com/trbouma/spurline)
+- [Safebox Web](https://github.com/trbouma/safebox-web)
+- [OpenETR](https://github.com/trbouma/openetr)

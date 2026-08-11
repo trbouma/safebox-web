@@ -3,6 +3,9 @@
 Safebox Web is a minimal FastAPI interface for the installable
 [Safebox Acorn](https://github.com/trbouma/safebox-acorn) component.
 
+The user-facing project site is built with MkDocs in
+[`website/`](website/index.md).
+
 The browser interface follows a documented
 [server-rendered hypermedia architecture](docs/HYPERMEDIA-ARCHITECTURE.md).
 Application and wallet logic remains in FastAPI and Acorn; browser JavaScript
