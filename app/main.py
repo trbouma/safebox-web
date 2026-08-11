@@ -170,14 +170,23 @@ def _page(title: str, body: str) -> str:
 
 
 def _login_form(
-    default_relay: str, csrf_token: str, error: str | None = None
+    default_relay: str,
+    csrf_token: str,
+    error: str | None = None,
+    *,
+    show_page_navigation: bool | None = None,
 ) -> str:
+    context = {
+        "title": "Connect an Acorn",
+        "default_relay": default_relay,
+        "csrf_token": csrf_token,
+        "error": error,
+    }
+    if show_page_navigation is not None:
+        context["show_page_navigation"] = show_page_navigation
     return render_template(
         "login.html",
-        title="Connect an Acorn",
-        default_relay=default_relay,
-        csrf_token=csrf_token,
-        error=error,
+        **context,
     )
 
 
@@ -865,7 +874,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 pass
             else:
                 return RedirectResponse("/wallet", status_code=303)
-        return RedirectResponse("/onboard", status_code=303)
+        response = HTMLResponse(
+            _login_form(
+                settings.default_bootstrap_relay,
+                CsrfProtector(settings).issue(),
+                show_page_navigation=False,
+            )
+        )
+        if session_token:
+            response.delete_cookie(
+                SECURE_COOKIE_NAME,
+                path="/",
+                secure=True,
+                httponly=True,
+            )
+            response.delete_cookie(LOOPBACK_COOKIE_NAME, path="/", httponly=True)
+        return response
 
     @app.get("/onboard", response_class=HTMLResponse)
     async def onboard(request: Request):
@@ -879,7 +903,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except ValueError:
                 pass
             else:
-                return RedirectResponse("/wallet", status_code=303)
+                return RedirectResponse("/", status_code=303)
         return render_template(
             "onboard.html",
             title="Welcome to Safebox",
@@ -1645,7 +1669,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # An explicit disconnect normally means the user may want to reconnect
         # an existing Acorn. Do not send them through the one-click new-wallet
         # onboarding path.
-        response = RedirectResponse("/login", status_code=303)
+        response = RedirectResponse("/", status_code=303)
         response.delete_cookie(SECURE_COOKIE_NAME, path="/", secure=True, httponly=True)
         response.delete_cookie(LOOPBACK_COOKIE_NAME, path="/", httponly=True)
         return response

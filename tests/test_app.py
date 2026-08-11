@@ -575,7 +575,17 @@ def test_root_redirects_valid_existing_session_to_wallet() -> None:
     assert response.headers["location"] == "/wallet"
 
 
-def test_root_sends_invalid_session_to_fast_onboarding() -> None:
+def test_root_renders_existing_acorn_login_without_a_session() -> None:
+    response = make_https_client().get("/", follow_redirects=False)
+
+    assert response.status_code == 200
+    assert "Connect an Acorn" in response.text
+    assert 'action="/login"' in response.text
+    assert 'class="page-navigation"' not in response.text
+    assert "Create a new Acorn" in response.text
+
+
+def test_root_clears_invalid_session_and_renders_existing_acorn_login() -> None:
     client = make_https_client()
     client.cookies.set(
         SECURE_COOKIE_NAME,
@@ -586,11 +596,12 @@ def test_root_sends_invalid_session_to_fast_onboarding() -> None:
 
     response = client.get("/", follow_redirects=False)
 
-    assert response.status_code == 303
-    assert response.headers["location"] == "/onboard"
+    assert response.status_code == 200
+    assert "Connect an Acorn" in response.text
+    assert SECURE_COOKIE_NAME not in client.cookies
 
 
-def test_logout_disconnects_and_redirects_to_existing_acorn_login() -> None:
+def test_logout_disconnects_and_redirects_to_root_login() -> None:
     client = make_https_client()
     client.cookies.set(
         SECURE_COOKIE_NAME,
@@ -611,7 +622,7 @@ def test_logout_disconnects_and_redirects_to_existing_acorn_login() -> None:
     )
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/login"
+    assert response.headers["location"] == "/"
     assert SECURE_COOKIE_NAME not in client.cookies
 
 
@@ -772,7 +783,7 @@ def test_default_handle_collision_advances_numeric_suffix(
     assert handles == [("abandonabandon0",), ("abandonabandon1",)]
 
 
-def test_onboard_redirects_valid_existing_session_to_wallet() -> None:
+def test_onboard_redirects_valid_existing_session_through_root() -> None:
     client = make_https_client()
     client.cookies.set(
         SECURE_COOKIE_NAME,
@@ -789,7 +800,7 @@ def test_onboard_redirects_valid_existing_session_to_wallet() -> None:
     response = client.get("/onboard", follow_redirects=False)
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/wallet"
+    assert response.headers["location"] == "/"
 
 
 def test_onboard_ignores_invalid_session_and_offers_fast_creation() -> None:
