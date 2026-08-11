@@ -2435,6 +2435,47 @@ def test_scanned_lightning_address_prefills_payment_review() -> None:
     assert 'value="alice@example.com"' in response.text
 
 
+def test_scanned_lnurl_pay_qr_derives_lightning_address() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    lnurl = main_module.encode_lnurl(
+        "https://safebox.example/.well-known/lnurlp/alice"
+    )
+
+    response = client.post(
+        "/scan/lightning",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_payment": lnurl,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Pay a Lightning address" in response.text
+    assert 'value="alice@safebox.example"' in response.text
+    assert lnurl not in response.text
+
+
+def test_scanned_arbitrary_lnurl_endpoint_is_not_treated_as_address() -> None:
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_payment_acorn] = lambda: FakeLoadedAcorn()
+    client = TestClient(app, base_url="https://safebox.example")
+    lnurl = main_module.encode_lnurl("https://example.com/custom/callback")
+
+    response = client.post(
+        "/scan/lightning",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_payment": lnurl,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "supported Lightning address" in response.text
+
+
 def test_scanner_recognizes_record_transfer_descriptor() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()

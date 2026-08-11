@@ -64,7 +64,11 @@ from app.dependencies import (
 from app.models import ClaimedHandle
 from app.handles import default_handle_from_pubkey
 from app.openetr import query_openetr_history
-from app.lnurl_pay import encode_lnurl, router as lnurl_pay_router
+from app.lnurl_pay import (
+    encode_lnurl,
+    lightning_address_from_lnurl,
+    router as lnurl_pay_router,
+)
 from app.security import (
     LOOPBACK_COOKIE_NAME,
     SECURE_COOKIE_NAME,
@@ -2504,7 +2508,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Cache-Control": "no-store"},
             )
 
-        recipient = _normalize_lightning_address(lightning_payment)
+        recipient_input = str(lightning_payment).strip()
+        lightning_payload = recipient_input
+        if lightning_payload[:10].lower() == "lightning:":
+            lightning_payload = lightning_payload[10:].strip()
+        if lightning_payload.lower().startswith("lnurl1"):
+            try:
+                recipient_input = lightning_address_from_lnurl(lightning_payload)
+            except ValueError:
+                recipient_input = ""
+        recipient = _normalize_lightning_address(recipient_input)
         invoice = _decode_lightning_invoice(lightning_payment)
         if recipient is None and invoice is None:
             return scan_error(
