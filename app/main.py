@@ -1642,7 +1642,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 status_code=403,
             )
-        response = RedirectResponse("/", status_code=303)
+        # An explicit disconnect normally means the user may want to reconnect
+        # an existing Acorn. Do not send them through the one-click new-wallet
+        # onboarding path.
+        response = RedirectResponse("/login", status_code=303)
         response.delete_cookie(SECURE_COOKIE_NAME, path="/", secure=True, httponly=True)
         response.delete_cookie(LOOPBACK_COOKIE_NAME, path="/", httponly=True)
         return response

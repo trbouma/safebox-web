@@ -590,6 +590,31 @@ def test_root_sends_invalid_session_to_fast_onboarding() -> None:
     assert response.headers["location"] == "/onboard"
 
 
+def test_logout_disconnects_and_redirects_to_existing_acorn_login() -> None:
+    client = make_https_client()
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        SessionCipher(TEST_SETTINGS).encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+            )
+        ),
+        domain="safebox.example",
+        path="/",
+    )
+
+    response = client.post(
+        "/logout",
+        data={"csrf_token": valid_csrf_token()},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+    assert SECURE_COOKIE_NAME not in client.cookies
+
+
 def test_onboard_offers_single_confirmed_fast_creation_path() -> None:
     response = make_https_client().get("/onboard")
 
