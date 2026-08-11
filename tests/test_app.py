@@ -631,16 +631,18 @@ def test_onboard_offers_single_confirmed_fast_creation_path() -> None:
 
     assert response.status_code == 200
     assert "Welcome to Safebox" in response.text
-    assert 'action="/create"' in response.text
-    assert 'name="defer_recovery" value="yes"' in response.text
-    assert 'name="assign_default_handle" value="yes"' in response.text
-    assert 'name="mnemonic_words" value="12"' in response.text
-    assert 'name="confirmed" value="yes"' in response.text
+    assert 'action="/onboard"' in response.text
+    assert 'name="defer_recovery"' not in response.text
+    assert 'name="assign_default_handle"' not in response.text
+    assert 'name="mnemonic_words"' in response.text
+    assert '<option value="12" selected>12 words</option>' in response.text
+    assert '<option value="24">24 words</option>' in response.text
+    assert 'name="confirmed"' not in response.text
     assert 'name="confirmed" type="checkbox"' not in response.text
     assert "Create My Acorn" in response.text
     assert 'href="/login"' not in response.text
     assert "Use an Existing Acorn" not in response.text
-    assert "12-word recovery mnemonic" in response.text
+    assert "12- or 24-word recovery mnemonic" in response.text
     assert "defers the backup ceremony" in response.text
     assert "Protected Records can be enabled" in response.text
 
@@ -674,15 +676,8 @@ def test_quick_onboarding_assigns_available_default_handle(
 
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.post(
-            "/create",
-            data={
-                "csrf_token": CsrfProtector(settings).issue(),
-                "home_relay": "relay.example.com",
-                "home_mint": "mint.example.com",
-                "defer_recovery": "yes",
-                "assign_default_handle": "yes",
-                "confirmed": "yes",
-            },
+            "/onboard",
+            data={"csrf_token": CsrfProtector(settings).issue()},
             follow_redirects=False,
         )
 
@@ -694,8 +689,71 @@ def test_quick_onboarding_assigns_available_default_handle(
     assert row == (
         "abandonabandon0",
         "npub1newcomponent",
-        "wss://relay.example.com",
+        settings.default_bootstrap_relay,
     )
+
+
+def test_quick_onboarding_error_stays_on_streamlined_page() -> None:
+    response = make_https_client().post(
+        "/onboard",
+        data={"csrf_token": "invalid"},
+    )
+
+    assert response.status_code == 403
+    assert "Welcome to Safebox" in response.text
+    assert "form token is invalid or expired" in response.text
+    assert 'action="/onboard"' in response.text
+    assert 'name="home_relay"' not in response.text
+    assert 'name="home_mint"' not in response.text
+
+
+def test_quick_onboarding_passes_selected_24_word_mnemonic_strength(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    generated_strengths: list[int] = []
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+
+    def generate_mnemonic(*, strength: int):
+        generated_strengths.append(strength)
+        return TEST_MNEMONIC, TEST_NSEC
+
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        generate_mnemonic,
+    )
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/onboard",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "mnemonic_words": "24",
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/wallet"
+    assert generated_strengths == [256]
+
+
+def test_quick_onboarding_rejects_invalid_mnemonic_length() -> None:
+    response = make_https_client().post(
+        "/onboard",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "mnemonic_words": "18",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Choose a 12- or 24-word Safebox Acorn mnemonic" in response.text
+    assert 'action="/onboard"' in response.text
 
 
 def test_ordinary_creation_assigns_default_handle(

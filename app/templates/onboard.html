@@ -2,24 +2,25 @@
 {% block content %}
 <p>Create a new Acorn using the Safebox defaults. Your wallet will open as soon
 as its relay state and default handle have been verified.</p>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
 
 <section class="onboard-actions" aria-label="Create a new Acorn">
-  <form method="post" action="/create">
+  <form method="post" action="/onboard" data-progress-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="home_relay" value="{{ default_relay }}">
-    <input type="hidden" name="home_mint" value="{{ default_mint }}">
-    <input type="hidden" name="mnemonic_words" value="12">
-    <input type="hidden" name="defer_recovery" value="yes">
-    <input type="hidden" name="assign_default_handle" value="yes">
-    <input type="hidden" name="confirmed" value="yes">
+    <label for="onboard-mnemonic-words">Safebox Acorn mnemonic</label>
+    <select id="onboard-mnemonic-words" name="mnemonic_words">
+      <option value="12"{% if mnemonic_words | default('12') == '12' %} selected{% endif %}>12 words</option>
+      <option value="24"{% if mnemonic_words | default('12') == '24' %} selected{% endif %}>24 words</option>
+    </select>
     <p>By selecting <strong>Create My Acorn</strong>, I agree to create a new
     Acorn and complete its recovery backup later.</p>
-    <button type="submit">Create My Acorn</button>
+    <button type="submit" data-progress-label="Creating your Acorn…">Create My Acorn</button>
+    <p class="progress" data-progress-message hidden>Creating and verifying your Acorn. Please wait…</p>
   </form>
 </section>
 
 <aside class="onboard-advisory">
-  <p>Safebox uses a 12-word recovery mnemonic, defers the backup ceremony, and
+  <p>Safebox uses the selected 12- or 24-word recovery mnemonic, defers the backup ceremony, and
   assigns a public handle derived from the Acorn public key. The mnemonic is
   temporarily held in this browser's encrypted session. Complete the recovery
   backup before the session expires or is cleared. The handle can be changed

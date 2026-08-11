@@ -966,6 +966,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         form_token = CsrfProtector(settings)
 
         def creation_error(message: str, status_code: int = 400) -> HTMLResponse:
+            if getattr(request.state, "streamlined_onboarding", False):
+                return HTMLResponse(
+                    render_template(
+                        "onboard.html",
+                        title="Welcome to Safebox",
+                        csrf_token=form_token.issue(),
+                        default_relay=settings.default_bootstrap_relay,
+                        default_mint=settings.default_home_mint,
+                        mnemonic_words=mnemonic_words,
+                        error=message,
+                    ),
+                    status_code=status_code,
+                )
             return HTMLResponse(
                 _create_form(
                     settings.default_bootstrap_relay,
@@ -1181,6 +1194,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             credentials=credentials,
         )
         return response
+
+    @app.post("/onboard", response_class=HTMLResponse)
+    async def create_streamlined_onboarded_acorn(
+        request: Request,
+        csrf_token: str = Form(...),
+        mnemonic_words: str = Form("12"),
+    ):
+        """Create an Acorn using server-selected onboarding defaults."""
+
+        settings = request.app.state.settings
+        request.state.streamlined_onboarding = True
+        return await create_acorn(
+            request=request,
+            csrf_token=csrf_token,
+            home_relay=settings.default_bootstrap_relay,
+            home_mint=settings.default_home_mint,
+            mnemonic_words=mnemonic_words,
+            use_external_entropy=None,
+            entropy_hex="",
+            entropy_confirmation="",
+            defer_recovery="yes",
+            assign_default_handle="yes",
+            confirmed="yes",
+        )
 
     @app.post("/login")
     async def login(
