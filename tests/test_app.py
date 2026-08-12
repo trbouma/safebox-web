@@ -170,6 +170,7 @@ class FakeLoadedAcorn:
         self.preview_calls = 0
         self.incoming_preview = {"previewed_count": 0, "previewed_amount": 0}
         self.repair_calls = 0
+        self.repair_force_values: list[bool] = []
         self.delayed_transaction_history = list(delayed_transaction_history or [])
         self.record_transfer_create_calls: list[dict] = []
         self.record_transfer_inspect_calls: list[dict] = []
@@ -218,8 +219,9 @@ class FakeLoadedAcorn:
             },
         }
 
-    async def repair_proofs(self) -> str:
+    async def repair_proofs(self, force_prune_stale: bool = False) -> str:
         self.repair_calls += 1
+        self.repair_force_values.append(force_prune_stale)
         self.verification_status = "clean"
         self.verified_balance = self.balance
         return "repair-proofs completed"
@@ -2940,8 +2942,77 @@ def test_receive_incoming_ecash_stale_proofs_repairs_and_requires_fresh_check() 
     assert acorn.receive_calls == 1
     assert acorn.receive_finalize_values == [False]
     assert acorn.repair_calls == 1
+    assert acorn.repair_force_values == [False]
     assert "Safebox repaired stale proofs" in response.text
     assert "Finalize pending transactions again" in response.text
+
+
+def test_transaction_history_offers_explicit_force_finalization() -> None:
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/transactions")
+
+    assert response.status_code == 200
+    assert '<input type="hidden" name="force" value="true">' in response.text
+    assert 'name="force_confirm" value="acknowledged" required' in response.text
+    assert "Force Finalization" in response.text
+    assert "may permanently remove proofs reported as spent or stale" in response.text
+
+
+def test_force_finalization_repairs_all_proofs_before_receiving() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(
+        receive_result={
+            "queried": 1,
+            "accepted_count": 1,
+            "accepted_amount": 3,
+        },
+        transaction_history=[
+            {
+                "create_time": "2026-08-12 12:00:00",
+                "tx_type": "C",
+                "amount": 3,
+                "comment": "ecash transfer received",
+                "current_balance": 324,
+            }
+        ],
+    )
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/transactions/receive",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "force": "true",
+            "force_confirm": "acknowledged",
+        },
+    )
+
+    assert response.status_code == 200
+    assert acorn.repair_calls == 1
+    assert acorn.repair_force_values == [True]
+    assert acorn.receive_calls == 1
+    assert "Force finalization completed. Finalized 3 sats." in response.text
+
+
+def test_force_finalization_requires_explicit_acknowledgement() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/transactions/receive",
+        data={"csrf_token": valid_csrf_token(), "force": "true"},
+    )
+
+    assert response.status_code == 400
+    assert acorn.repair_calls == 0
+    assert acorn.receive_calls == 0
+    assert "Force finalization can permanently remove" in response.text
 
 
 def test_receive_incoming_ecash_rejects_invalid_csrf() -> None:

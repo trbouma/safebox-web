@@ -3495,6 +3495,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         acorn: ReceiveAcornDependency,
         csrf_token: str = Form(...),
+        force: bool = Form(False),
+        force_confirm: str | None = Form(None),
     ):
         settings = request.app.state.settings
         if not CsrfProtector(settings).verify(csrf_token):
@@ -3506,6 +3508,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 status_code=403,
             )
+
+        if force and force_confirm != "acknowledged":
+            return HTMLResponse(
+                _page(
+                    "Force finalization not confirmed",
+                    '<p class="error">Force finalization can permanently remove '
+                    "proofs that the mint reports as spent or stale. Confirm the "
+                    "warning before continuing.</p>"
+                    '<p><a href="/transactions">Return to transaction history</a></p>',
+                ),
+                status_code=400,
+            )
+
+        force_repair_result: str | None = None
+        if force:
+            try:
+                force_repair_result = await asyncio.wait_for(
+                    acorn.repair_proofs(force_prune_stale=True),
+                    timeout=settings.payment_timeout_seconds,
+                )
+            except TimeoutError:
+                return HTMLResponse(
+                    _page(
+                        "Force finalization timed out",
+                        '<p class="error">Proof reconciliation timed out. Wallet state '
+                        "may have changed before the timeout. Review the wallet and "
+                        "transaction history before trying again.</p>"
+                        '<p><a href="/transactions">Return to transaction history</a></p>',
+                    ),
+                    status_code=504,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "forced proof reconciliation failed error_type=%s error=%s",
+                    type(exc).__name__,
+                    str(exc),
+                )
+                return HTMLResponse(
+                    _page(
+                        "Force finalization stopped safely",
+                        '<p class="error">Safebox could not establish a conclusive proof '
+                        "state, so pending transactions were not finalized.</p>"
+                        f"<p><strong>Reason:</strong> {escape(str(exc))}</p>"
+                        '<p><a href="/transactions">Return to transaction history</a></p>',
+                    ),
+                    status_code=409,
+                )
 
         try:
             result = await asyncio.wait_for(
@@ -3632,6 +3681,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             notice = f"{provisional_amount:,} sats remain pending."
         else:
             notice = "No pending transactions were found."
+        if force and force_repair_result:
+            notice = f"Force finalization completed. {notice}"
 
         try:
             history = await _read_receive_history_with_retry(
