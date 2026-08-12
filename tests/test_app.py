@@ -166,6 +166,7 @@ class FakeLoadedAcorn:
             "accepted_amount": 0,
         }
         self.receive_calls = 0
+        self.repair_calls = 0
         self.delayed_transaction_history = list(delayed_transaction_history or [])
         self.record_transfer_create_calls: list[dict] = []
         self.record_transfer_inspect_calls: list[dict] = []
@@ -206,6 +207,12 @@ class FakeLoadedAcorn:
                 "proof_count": len(self.proofs) if self.verified_balance else 0,
             },
         }
+
+    async def repair_proofs(self) -> str:
+        self.repair_calls += 1
+        self.verification_status = "clean"
+        self.verified_balance = self.balance
+        return "repair-proofs completed"
 
     def get_balance(self) -> int:
         return self.balance
@@ -2656,6 +2663,31 @@ def test_receive_incoming_ecash_retries_until_credit_history_is_visible() -> Non
     assert "wallet balance may already reflect the accepted funds" not in response.text
 
 
+def test_receive_incoming_ecash_stale_proofs_repairs_and_requires_fresh_check() -> None:
+    class StaleReceiveAcorn(FakeLoadedAcorn):
+        async def sweep_ecash_transfers(self) -> dict:
+            self.receive_calls += 1
+            raise RuntimeError(
+                "Unable to accept token safely: Local wallet proof state is stale"
+            )
+
+    app = create_app(TEST_SETTINGS)
+    acorn = StaleReceiveAcorn()
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/transactions/receive",
+        data={"csrf_token": valid_csrf_token()},
+    )
+
+    assert response.status_code == 409
+    assert acorn.receive_calls == 1
+    assert acorn.repair_calls == 1
+    assert "Safebox repaired stale proofs" in response.text
+    assert "Check for incoming funds again" in response.text
+
+
 def test_receive_incoming_ecash_rejects_invalid_csrf() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
@@ -3359,6 +3391,58 @@ def test_lightning_payment_failure_shows_safe_reason(monkeypatch) -> None:
     assert "<inspect>" not in response.text
     assert acorn.ecash_transfers == []
     assert len(acorn.payments) == 1
+
+
+def test_lightning_payment_stale_proofs_repairs_and_returns_to_review(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            raise main_module.httpx.HTTPError("not found")
+
+    class StaleProofAcorn(FakeLoadedAcorn):
+        async def pay_multi(self, amount: int, lnaddress: str, comment: str):
+            self.payments.append(
+                {"amount": amount, "lnaddress": lnaddress, "comment": comment}
+            )
+            raise RuntimeError(
+                "Payment could not proceed because the wallet contains stale proofs."
+            )
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(TEST_SETTINGS)
+    acorn = StaleProofAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "lightning please",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 409
+    assert acorn.repair_calls == 1
+    assert len(acorn.payments) == 1
+    assert "Safebox repaired stale proofs" in response.text
+    assert "confirm the payment again" in response.text
+    assert 'value="alice@example.com"' in response.text
+    assert 'value="21"' in response.text
+    assert 'value="lightning please"' in response.text
+    assert "<code>acorn reconcile-payments</code>" not in response.text
+    assert "wallet contains stale proofs" in response.text
 
 
 def test_payment_requires_explicit_confirmation_before_calling_acorn() -> None:

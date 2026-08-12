@@ -11,10 +11,11 @@
          value="{{ lightning_address }}" placeholder="alice@example.com" required
          spellcheck="false" autocapitalize="none" autocomplete="off">
   <label for="amount">Amount in sats</label>
-  <input id="amount" name="amount" type="number" min="1" step="1" required>
+  <input id="amount" name="amount" type="number" min="1" step="1"
+         value="{{ amount }}" required>
   <label for="comment">Comment</label>
   <input id="comment" name="comment" type="text" maxlength="200"
-         value="Paid from Safebox Web">
+         value="{{ comment }}">
   <label>
     <input name="confirmed" type="checkbox" value="yes" required>
     I confirm the recipient and amount and understand that this spends funds.

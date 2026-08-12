@@ -226,6 +226,8 @@ def _payment_form(
     error: str | None = None,
     balance_status: str | None = None,
     lightning_address: str = "",
+    amount: str = "",
+    comment: str = "Paid from Safebox Web",
 ) -> str:
     if balance_status is None:
         balance_status = (
@@ -238,6 +240,8 @@ def _payment_form(
         csrf_token=csrf_token,
         error=error,
         lightning_address=lightning_address,
+        amount=amount,
+        comment=comment,
     )
 
 
@@ -558,6 +562,11 @@ def _history_has_receive_credit(
         if "ecash transfer received" in comment:
             return True
     return False
+
+
+def _is_stale_proof_error(message: str) -> bool:
+    normalized = str(message or "").lower()
+    return "stale proofs" in normalized or "proof state is stale" in normalized
 
 
 async def _read_receive_history_with_retry(
@@ -2995,8 +3004,70 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     form_token.issue(),
                     message,
                     balance_status,
+                    lightning_address=lightning_address,
+                    amount=amount,
+                    comment=comment,
                 ),
                 status_code=status_code,
+            )
+
+        async def repair_stale_proofs_for_review(error_reason: str) -> HTMLResponse:
+            try:
+                repair_result = await asyncio.wait_for(
+                    acorn.repair_proofs(),
+                    timeout=settings.payment_timeout_seconds,
+                )
+            except TimeoutError:
+                return payment_error(
+                    "Safebox found stale proofs, but proof repair timed out. "
+                    "Run proof maintenance before trying again.",
+                    504,
+                )
+            except Exception as repair_exc:
+                return payment_error(
+                    "Safebox found stale proofs, but proof repair could not be "
+                    f"completed: {repair_exc}",
+                    502,
+                )
+
+            repaired_verification, repaired_error = await _read_proof_verification(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
+            repaired_balance_status = _balance_status_html(
+                acorn.get_balance(),
+                len(acorn.proofs),
+                repaired_verification,
+                repaired_error,
+            )
+            if repaired_verification is None or repaired_verification.get("status") != "clean":
+                return HTMLResponse(
+                    _payment_form(
+                        acorn.get_balance(),
+                        form_token.issue(),
+                        "Safebox repaired stale proofs, but the wallet proof "
+                        "state is still not clean. Review proof maintenance "
+                        "before trying again.",
+                        repaired_balance_status,
+                        lightning_address=lightning_address,
+                        amount=amount,
+                        comment=comment,
+                    ),
+                    status_code=409,
+                )
+            return HTMLResponse(
+                _payment_form(
+                    acorn.get_balance(),
+                    form_token.issue(),
+                    "Safebox repaired stale proofs. Review the recipient, "
+                    "amount, and updated balance, then confirm the payment again. "
+                    f"Previous attempt stopped before confirmation: {error_reason}",
+                    repaired_balance_status,
+                    lightning_address=lightning_address,
+                    amount=amount,
+                    comment=comment,
+                ),
+                status_code=409,
             )
 
         if not form_token.verify(csrf_token):
@@ -3075,6 +3146,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             except Exception as exc:
                 error_reason = str(exc).strip()
+                if _is_stale_proof_error(error_reason):
+                    return await repair_stale_proofs_for_review(error_reason)
                 logger.warning(
                     "direct safebox ecash payment failed recipient=%s relay=%s error_type=%s error=%s",
                     direct_recipient["npub"],
@@ -3152,6 +3225,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except Exception as exc:
             error_reason = str(exc).strip()
+            stale_proofs = _is_stale_proof_error(error_reason)
+            if stale_proofs:
+                return await repair_stale_proofs_for_review(error_reason)
+            recovery_guidance = (
+                "<p>The wallet proof state needs maintenance before another "
+                "payment. Run <code>acorn check-proofs</code>, then "
+                "<code>acorn repair-proofs</code> if repair is recommended, "
+                "and confirm the balance with <code>acorn balance --verify</code>.</p>"
+                if stale_proofs
+                else "<p>Do not retry blindly. Review transaction history and run "
+                "<code>acorn reconcile-payments</code> before deciding whether "
+                "another payment is safe.</p>"
+            )
             logger.warning(
                 "lightning payment did not return success error_type=%s error=%s",
                 type(exc).__name__,
@@ -3160,10 +3246,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse(
                 _page(
                     "Payment not confirmed",
-                    "<p>Safebox did not receive a confirmed successful result. "
-                    "Do not retry blindly. Review transaction history and run "
-                    "<code>acorn reconcile-payments</code> before deciding whether "
-                    "another payment is safe.</p>"
+                    "<p>Safebox did not receive a confirmed successful result.</p>"
+                    + recovery_guidance
                     + (
                         f"<p><strong>Reason:</strong> {escape(error_reason)}</p>"
                         if error_reason
@@ -3274,16 +3358,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=504,
             )
         except Exception as exc:
+            error_reason = str(exc).strip()
+            if _is_stale_proof_error(error_reason):
+                try:
+                    await asyncio.wait_for(
+                        acorn.repair_proofs(),
+                        timeout=settings.payment_timeout_seconds,
+                    )
+                except TimeoutError:
+                    return HTMLResponse(
+                        _page(
+                            "Unable to receive ecash",
+                            '<p class="error">Safebox found stale proofs, but '
+                            "proof repair timed out. Review wallet balance and "
+                            "transaction history before trying again.</p>"
+                            '<p><a href="/transactions">Return to transaction history</a></p>',
+                        ),
+                        status_code=504,
+                    )
+                except Exception as repair_exc:
+                    return HTMLResponse(
+                        _page(
+                            "Unable to receive ecash",
+                            '<p class="error">Safebox found stale proofs, but '
+                            "proof repair could not be completed.</p>"
+                            f"<p><strong>Reason:</strong> {escape(str(repair_exc))}</p>"
+                            '<p><a href="/transactions">Return to transaction history</a></p>',
+                        ),
+                        status_code=502,
+                    )
+                return HTMLResponse(
+                    _page(
+                        "Proofs repaired",
+                        "<p>Safebox repaired stale proofs before accepting "
+                        "incoming ecash. Check for incoming funds again to "
+                        "complete the receive operation.</p>"
+                        '<p><a href="/transactions">Return to transaction history</a></p>',
+                    ),
+                    status_code=409,
+                )
             logger.warning(
-                "incoming ecash receive failed error_type=%s",
+                "incoming ecash receive failed error_type=%s error=%s",
                 type(exc).__name__,
+                str(exc),
             )
             return HTMLResponse(
                 _page(
                     "Unable to receive ecash",
                     '<p class="error">Safebox could not complete the incoming ecash '
                     "check. No unverified balance has been displayed.</p>"
-                    '<p><a href="/transactions">Return to transaction history</a></p>',
+                    + (
+                        f"<p><strong>Reason:</strong> {escape(error_reason)}</p>"
+                        if error_reason
+                        else ""
+                    )
+                    + '<p><a href="/transactions">Return to transaction history</a></p>',
                 ),
                 status_code=502,
             )
