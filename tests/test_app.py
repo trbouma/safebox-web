@@ -3213,6 +3213,64 @@ def test_safebox_direct_ecash_transfer_requires_confirmed_result(
     assert len(acorn.ecash_transfers) == 1
 
 
+def test_safebox_direct_ecash_transfer_exception_shows_safe_reason(
+    monkeypatch,
+) -> None:
+    recipient_hex = "11" * 32
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "names": {"alice": recipient_hex},
+                "relays": {recipient_hex: ["wss://recipient-relay.example"]},
+            }
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            return FakeResponse()
+
+    class FailingDirectAcorn(FakeLoadedAcorn):
+        async def send_ecash_transfer(self, **kwargs):
+            self.ecash_transfers.append(kwargs)
+            raise RuntimeError("Mint swap unavailable <retry later>")
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(TEST_SETTINGS)
+    acorn = FailingDirectAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "direct please",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 502
+    assert "ecash delivery could not be completed" in response.text
+    assert "Mint swap unavailable &lt;retry later&gt;" in response.text
+    assert "<retry later>" not in response.text
+    assert acorn.payments == []
+    assert len(acorn.ecash_transfers) == 1
+
+
 def test_lightning_payment_falls_back_when_nip05_is_not_safebox(
     monkeypatch,
 ) -> None:
@@ -3255,6 +3313,52 @@ def test_lightning_payment_falls_back_when_nip05_is_not_safebox(
             "comment": "lightning please",
         }
     ]
+
+
+def test_lightning_payment_failure_shows_safe_reason(monkeypatch) -> None:
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            raise main_module.httpx.HTTPError("not found")
+
+    class FailingLightningAcorn(FakeLoadedAcorn):
+        async def pay_multi(self, amount: int, lnaddress: str, comment: str):
+            self.payments.append(
+                {"amount": amount, "lnaddress": lnaddress, "comment": comment}
+            )
+            raise RuntimeError("Melt quote failed <inspect>")
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(TEST_SETTINGS)
+    acorn = FailingLightningAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "lightning please",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 502
+    assert "Safebox did not receive a confirmed successful result" in response.text
+    assert "Melt quote failed &lt;inspect&gt;" in response.text
+    assert "<inspect>" not in response.text
+    assert acorn.ecash_transfers == []
+    assert len(acorn.payments) == 1
 
 
 def test_payment_requires_explicit_confirmation_before_calling_acorn() -> None:

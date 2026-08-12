@@ -3074,6 +3074,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=504,
                 )
             except Exception as exc:
+                error_reason = str(exc).strip()
                 logger.warning(
                     "direct safebox ecash payment failed recipient=%s relay=%s error_type=%s error=%s",
                     direct_recipient["npub"],
@@ -3088,7 +3089,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "ecash delivery could not be completed. Review "
                         "transaction history before deciding whether another "
                         "payment is safe.</p>"
-                        '<p><a href="/wallet">Return to wallet</a></p>',
+                        + (
+                            f"<p><strong>Reason:</strong> {escape(error_reason)}</p>"
+                            if error_reason
+                            else ""
+                        )
+                        + '<p><a href="/wallet">Return to wallet</a></p>',
                     ),
                     status_code=502,
                 )
@@ -3145,9 +3151,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=504,
             )
         except Exception as exc:
+            error_reason = str(exc).strip()
             logger.warning(
-                "lightning payment did not return success error_type=%s",
+                "lightning payment did not return success error_type=%s error=%s",
                 type(exc).__name__,
+                str(exc),
             )
             return HTMLResponse(
                 _page(
@@ -3156,7 +3164,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "Do not retry blindly. Review transaction history and run "
                     "<code>acorn reconcile-payments</code> before deciding whether "
                     "another payment is safe.</p>"
-                    '<p><a href="/wallet">Return to wallet</a></p>',
+                    + (
+                        f"<p><strong>Reason:</strong> {escape(error_reason)}</p>"
+                        if error_reason
+                        else ""
+                    )
+                    + '<p><a href="/wallet">Return to wallet</a></p>',
                 ),
                 status_code=502,
             )
