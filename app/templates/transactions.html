@@ -1,19 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
-<section aria-labelledby="receive-ecash-heading">
-  <h2 id="receive-ecash-heading">Incoming ecash</h2>
-  <p>Check this Acorn's home relay for incoming ecash transfers and accept any
-  valid proofs into the wallet balance.</p>
-  {{ retention_notice | safe }}
+<section class="incoming-funds" aria-label="Incoming funds">
   <form method="post" action="/transactions/receive"
-        data-progress-message="Checking for incoming ecash and refreshing accepted proofs. Please wait."
-        data-progress-button="Receiving ecash…">
+        data-progress-message="Checking for incoming funds and refreshing accepted proofs. Please wait."
+        data-progress-button="Checking for funds…">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit">Check and receive ecash</button>
+    <button type="submit">Check for incoming funds</button>
   </form>
 </section>
-<hr>
 {% if entries %}
 <section class="transaction-list" aria-label="Transaction history">
   {% for entry in entries %}
@@ -35,4 +30,12 @@
 {% else %}
 <p>No transaction history was found.</p>
 {% endif %}
+<details class="transaction-advisories">
+  <summary>Advisories</summary>
+  <div class="transaction-advisories-content">
+    <p>Safebox can check this Acorn's home relay for incoming ecash transfers and
+    accept valid proofs into the wallet balance.</p>
+    {{ retention_notice | safe }}
+  </div>
+</details>
 {% endblock %}

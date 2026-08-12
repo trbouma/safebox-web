@@ -2474,6 +2474,8 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
     response = client.get("/transactions")
 
     assert response.status_code == 200
+    assert '<h1 class="transaction-headline">Transaction History</h1>' in response.text
+    assert "Incoming ecash" not in response.text
     assert response.text.index(">Home</a>") < response.text.index(
         'aria-label="Transaction history"'
     )
@@ -2493,8 +2495,14 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
     assert 'href="/static/styles.css"' in response.text
     assert 'action="/transactions/receive"' in response.text
     assert 'name="csrf_token"' in response.text
-    assert "Check and receive ecash" in response.text
-    assert "Receiving ecash…" in response.text
+    assert "Check for incoming funds" in response.text
+    assert "Check and receive ecash" not in response.text
+    assert "Checking for funds…" in response.text
+    assert '<details class="transaction-advisories">' in response.text
+    assert "<summary>Advisories</summary>" in response.text
+    assert response.text.index('aria-label="Transaction history"') < response.text.index(
+        "Safebox can check this Acorn"
+    )
 
 
 def test_transaction_history_has_an_empty_state() -> None:

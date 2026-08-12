@@ -458,11 +458,12 @@ def _transactions_page(
     notice: str | None = None,
     retention_notice: str = "",
 ) -> str:
-    """Render transaction history together with explicit incoming-ecash receipt."""
+    """Render transaction history with an explicit incoming funds check."""
 
     return render_template(
         "transactions.html",
-        title="Transaction history",
+        title="Transaction History",
+        headline_class="transaction-headline",
         entries=_transaction_history_view(entries),
         csrf_token=csrf_token,
         notice=notice,
