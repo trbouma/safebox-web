@@ -233,7 +233,7 @@ def _payment_form(
         )
     return render_template(
         "pay.html",
-        title="Pay a Lightning address",
+        title="Pay to an Address",
         balance_status=balance_status,
         csrf_token=csrf_token,
         error=error,

@@ -66,7 +66,7 @@ button:disabled { cursor: wait; opacity: .65; }
 .wallet-address-actions { display: grid; gap: .75rem; margin: .75rem 0 0; }
 .wallet-address-actions > a { display: flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; padding: .6rem; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); font-weight: 650; text-align: center; text-decoration: none; }
 .wallet-address-actions > a:hover, .wallet-address-actions > a:focus-visible { border-color: var(--link); color: var(--link); }
-.wallet-address-disclosure { margin: 0 auto; }
+.wallet-address-disclosure { box-sizing: border-box; width: 100%; margin: 0; }
 .wallet-address-disclosure > summary { display: flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; padding: .6rem; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); font-weight: 650; cursor: pointer; list-style: none; text-align: center; }
 .wallet-address-disclosure > summary::marker { content: ""; }
 .wallet-address-disclosure > summary::-webkit-details-marker { display: none; }
@@ -232,12 +232,12 @@ figure.blob-preview { padding: .75rem; }
 .transaction-details dt { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
 .transaction-details dd { margin: .1rem 0 0; overflow-wrap: anywhere; }
 .transaction-note { margin: .85rem 0 0; padding-top: .75rem; border-top: 1px solid var(--note-border); overflow-wrap: anywhere; }
-.transaction-advisories { margin-top: 2.5rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
-.transaction-advisories > summary { display: flex; min-height: 2.75rem; align-items: center; justify-content: center; cursor: pointer; padding: .6rem 1rem; font-weight: 700; list-style: none; text-align: center; }
-.transaction-advisories > summary::marker { content: ""; }
-.transaction-advisories > summary::-webkit-details-marker { display: none; }
-.transaction-advisories[open] > summary { border-bottom: 1px solid var(--note-border); }
-.transaction-advisories-content { padding: 0 1rem 1rem; }
+.transaction-advisories, .payment-advisories { margin-top: 2.5rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
+.transaction-advisories > summary, .payment-advisories > summary { display: flex; min-height: 2.75rem; align-items: center; justify-content: center; cursor: pointer; padding: .6rem 1rem; font-weight: 700; list-style: none; text-align: center; }
+.transaction-advisories > summary::marker, .payment-advisories > summary::marker { content: ""; }
+.transaction-advisories > summary::-webkit-details-marker, .payment-advisories > summary::-webkit-details-marker { display: none; }
+.transaction-advisories[open] > summary, .payment-advisories[open] > summary { border-bottom: 1px solid var(--note-border); }
+.transaction-advisories-content, .payment-advisories-content { padding: 0 1rem 1rem; }
 .transaction-advisories .retention-notice { margin-top: .75rem; }
 @media (max-width: 36rem) {
   body { margin: 1.25rem auto 2rem; padding: 0 .875rem; }

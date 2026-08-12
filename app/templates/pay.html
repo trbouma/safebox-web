@@ -2,18 +2,14 @@
 {% block content %}
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 {{ balance_status | safe }}
-<p>The payment amount and the mint's fee reserve must fit within one spendable
-keyset. The displayed total balance may therefore be greater than the amount
-available for one payment.</p>
 <form method="post" action="/pay" autocomplete="off"
       data-progress-message="Payment in progress. Please wait and do not refresh this page."
       data-progress-button="Sending payment…">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <label for="lightning_address">Lightning address</label>
+  <label for="lightning_address">Payment Address</label>
   <input id="lightning_address" name="lightning_address" type="text"
          value="{{ lightning_address }}" placeholder="alice@example.com" required
          spellcheck="false" autocapitalize="none" autocomplete="off">
-  <p><a class="nav-button" href="/scan/lightning">Scan a Lightning address or invoice QR code</a></p>
   <label for="amount">Amount in sats</label>
   <input id="amount" name="amount" type="number" min="1" step="1" required>
   <label for="comment">Comment</label>
@@ -25,4 +21,15 @@ available for one payment.</p>
   </label>
   <button type="submit">Send payment</button>
 </form>
+<details class="payment-advisories">
+  <summary>Advisories</summary>
+  <div class="payment-advisories-content">
+    <p>The payment amount and the mint's fee reserve must fit within one
+    spendable keyset. The displayed total balance may therefore be greater than
+    the amount available for one payment.</p>
+    <p>Safebox can pay a supported address directly when it resolves to another
+    Safebox recipient. Otherwise it uses the available Lightning payment path.</p>
+    <p>Scanning is available from the wallet home page.</p>
+  </div>
+</details>
 {% endblock %}

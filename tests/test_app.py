@@ -1165,6 +1165,7 @@ def test_pages_include_mobile_layout_safeguards() -> None:
     assert ".transaction-details { grid-template-columns: 1fr; }" in stylesheet.text
     assert ".safekeeping-message" in stylesheet.text
     assert ".page-navigation .nav-button { width: 100%; }" in stylesheet.text
+    assert ".wallet-address-disclosure { box-sizing: border-box; width: 100%; margin: 0; }" in stylesheet.text
 
 
 def test_secondary_pages_have_consistent_top_level_navigation() -> None:
@@ -2631,11 +2632,16 @@ def test_payment_form_displays_balance_and_confirmation() -> None:
     response = client.get("/pay")
 
     assert response.status_code == 200
+    assert "Pay to an Address" in response.text
     assert "500 sats" in response.text
+    assert "Payment Address" in response.text
     assert 'name="csrf_token"' in response.text
     assert 'name="confirmed"' in response.text
     assert "Payment in progress. Please wait" in response.text
     assert "Sending payment…" in response.text
+    assert "<summary>Advisories</summary>" in response.text
+    assert "fee reserve" in response.text
+    assert "Scan a Lightning address or invoice QR code" not in response.text
 
 
 def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None:
@@ -2672,7 +2678,7 @@ def test_scanned_lightning_address_prefills_payment_review() -> None:
     )
 
     assert response.status_code == 200
-    assert "Pay a Lightning address" in response.text
+    assert "Pay to an Address" in response.text
     assert 'value="alice@example.com"' in response.text
 
 
@@ -2694,7 +2700,7 @@ def test_scanned_lnurl_pay_qr_derives_lightning_address() -> None:
     )
 
     assert response.status_code == 200
-    assert "Pay a Lightning address" in response.text
+    assert "Pay to an Address" in response.text
     assert 'value="alice@safebox.example"' in response.text
     assert lnurl not in response.text
 
