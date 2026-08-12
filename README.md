@@ -153,6 +153,12 @@ and receipt reconciliation. It does not swap or refresh usable proofs and does
 not bypass unreachable mints, unknown keysets,
 unresolved Lightning payments, invalid tokens, or other inconclusive states.
 
+An incoming bearer token rejected by its issuing mint with Cashu error `11001`
+(`Token already spent`) is terminal rather than indefinitely pending. Acorn
+writes an idempotent `X` error entry to transaction history, credits no value,
+removes the bearer token from the encrypted pending receipt, and advances past
+that receipt. Other mint and network failures remain pending and retryable.
+
 When the standalone Lightning provider is enabled and the connected Acorn has
 claimed a handle, the wallet page also presents its Lightning address as a QR
 code. The QR payload is the uppercase Bech32 `LNURL1...` encoding of the

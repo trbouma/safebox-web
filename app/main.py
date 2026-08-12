@@ -495,7 +495,7 @@ def _transaction_history_view(entries: list[dict]) -> list[dict]:
         direction, sign, style = {
             "C": ("Credit", "+", "credit"),
             "D": ("Debit", "−", "debit"),
-            "X": ("Advisory", "", "advisory"),
+            "X": ("Error", "", "advisory"),
         }.get(tx_type, (tx_type or "Transaction", "", "advisory"))
         amount = str(entry.get("amount", 0))
         created = str(entry.get("create_time") or "Unknown time")
@@ -3682,6 +3682,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if reconciliation.get("supported")
             else result.get("provisional_amount", 0)
         )
+        terminal_error_count = int(reconciliation.get("terminal_error_count", 0))
+        terminal_error_amount = int(reconciliation.get("terminal_error_amount", 0))
         if confirmed_count and provisional_count:
             notice = (
                 f"Finalized {accepted_amount:,} sats. "
@@ -3693,6 +3695,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             notice = f"{provisional_amount:,} sats remain pending."
         else:
             notice = "No pending transactions were found."
+        if terminal_error_count:
+            terminal_notice = (
+                f"Recorded {terminal_error_count:,} failed transaction"
+                f"{'s' if terminal_error_count != 1 else ''} totaling "
+                f"{terminal_error_amount:,} sats; no balance was credited."
+            )
+            notice = (
+                terminal_notice
+                if not confirmed_count and not provisional_count
+                else f"{notice} {terminal_notice}"
+            )
         if force and stale_reconciliation is not None:
             removed = int(stale_reconciliation.get("removed", 0))
             removed_amount = int(stale_reconciliation.get("amount", 0))

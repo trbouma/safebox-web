@@ -196,6 +196,8 @@ class FakeLoadedAcorn:
             "confirmed_amount": 0,
             "pending_count": 0,
             "pending_amount": 0,
+            "terminal_error_count": 0,
+            "terminal_error_amount": 0,
         }
 
     async def load_data(self) -> None:
@@ -2894,6 +2896,53 @@ def test_receive_continuity_payment_confirms_pending_proofs() -> None:
     assert "Finalized 5 sats." in response.text
     assert "+5 sats" in response.text
     assert "continuity payment confirmed: market" in response.text
+
+
+def test_receive_records_terminal_spent_token_error_and_clears_pending_notice() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(
+        balance=100,
+        receive_result={
+            "queried": 0,
+            "accepted_count": 0,
+            "accepted_amount": 0,
+            "provisional_count": 0,
+            "provisional_amount": 0,
+        },
+        transaction_history=[
+            {
+                "create_time": "2026-08-12 17:56:28",
+                "tx_type": "X",
+                "amount": 21,
+                "comment": (
+                    "Incoming ecash was not credited: the issuing mint reports "
+                    "the token was already spent."
+                ),
+                "current_balance": 100,
+            }
+        ],
+    )
+    acorn.continuity_reconciliation = {
+        "confirmed_count": 0,
+        "confirmed_amount": 0,
+        "pending_count": 0,
+        "pending_amount": 0,
+        "terminal_error_count": 1,
+        "terminal_error_amount": 21,
+    }
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/transactions/receive",
+        data={"csrf_token": valid_csrf_token()},
+    )
+
+    assert response.status_code == 200
+    assert "Recorded 1 failed transaction totaling 21 sats" in response.text
+    assert "no balance was credited" in response.text
+    assert '<span class="transaction-kind">Error</span>' in response.text
+    assert "21 sats remain pending" not in response.text
 
 
 def test_receive_incoming_ecash_retries_until_credit_history_is_visible() -> None:
