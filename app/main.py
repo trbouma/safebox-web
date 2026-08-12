@@ -17,7 +17,13 @@ from urllib.parse import quote, urlencode
 
 import bolt11
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 import httpx
 from monstr.encrypt import Keys
@@ -1027,6 +1033,7 @@ def _deposit_invoice_page(
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     runtime_settings = settings or Settings.from_env()
+    static_directory = Path(__file__).resolve().parent / "static"
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -1044,7 +1051,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(lnurl_pay_router)
     app.mount(
         "/static",
-        StaticFiles(directory=Path(__file__).resolve().parent / "static"),
+        StaticFiles(directory=static_directory),
         name="static",
     )
 
@@ -1130,6 +1137,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health", response_class=JSONResponse)
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> FileResponse:
+        return FileResponse(static_directory / "favicon.ico", media_type="image/x-icon")
 
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request):

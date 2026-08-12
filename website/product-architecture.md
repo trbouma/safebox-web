@@ -1,6 +1,6 @@
 ---
 title: Product Architecture
-description: How Safebox Web fits with Acorn, Grove, Spurline, and Lockbox.
+description: How Safebox Web fits with Acorn, Grove, Spurline, Mainstay, and Lockbox.
 ---
 
 # Product Architecture
@@ -10,8 +10,10 @@ Each component has a narrow responsibility and can be developed, tested, and
 operated independently.
 
 The user-facing promise is simpler than the component diagram: Safebox Web is
-the wallet app; the other pieces help preserve funds, records, and evidence
-without making one hosted service permanent.
+the wallet app available today. It is also the practical foundation for
+Mainstay, the future unified application for records, identity, and payments.
+The other pieces preserve state and evidence without making one hosted service
+permanent.
 
 ```text
               Safebox Web
@@ -22,6 +24,14 @@ without making one hosted service permanent.
          v     v      v
     Spurline  Grove  OpenETR
    local relay blobs  evidence
+
+        proven workflows
+              |
+              v
+           Mainstay  -> unified application
+              |
+              v
+           Lockbox   -> hardware-first appliance
 ```
 
 ## Component roles
@@ -73,17 +83,44 @@ events, control history, and verifier policy.
 
 </article>
 
+<article class="safebox-card" markdown>
+
+### Mainstay
+
+The future unified application and primary entry point. Safebox Web supplies
+practical wallet, record, and payment workflows that Mainstay can carry across
+continuity modes.
+
+</article>
+
+<article class="safebox-card" markdown>
+
+### Lockbox
+
+The hardware-first appliance for running Mainstay, Acorn, Spurline, Grove, and
+supporting services locally.
+
+</article>
+
 </div>
 
-## Toward Lockbox
+## Toward Mainstay and Lockbox
 
-Lockbox is the future appliance-like product profile for running this family
-locally. The initial target is FreeBSD on a Raspberry Pi 4, with
-hardware-backed trust boundaries such as a keypad and TROPIC01 HSM.
+The product distinction is deliberate:
+
+> **Mainstay is the application. Lockbox is the appliance. Continuity is the
+> capability.**
+
+Mainstay is intended to give people one calm experience across the product
+family. Lockbox is the future appliance-like product profile for running that
+experience and its services locally. The initial target is FreeBSD on a
+Raspberry Pi 4, with hardware-backed trust boundaries such as a keypad and
+TROPIC01 HSM.
 
 In that model:
 
-- Safebox Web is the local user interface;
+- Mainstay is the unified local user application;
+- Safebox Web contributes the proven wallet, record, and payment workflows;
 - Acorn is the controlled protocol state;
 - Spurline is the local evidence relay;
 - Grove is the local encrypted blob store;
@@ -91,18 +128,18 @@ In that model:
 - external services remain useful, but not always required for local
   continuity.
 
-Safebox Web should be able to describe this in plain continuity modes:
+Mainstay should describe changing conditions in plain continuity modes:
 **Connected Mode**, **Local Mode**, **Mobile Mode**, and **Community Mode**.
-The current app can start with Connected Mode and later determine the active
-mode from service reachability, local pairing, bridge state, and community
-mesh participation.
+Safebox Web already establishes Connected Mode and the confirmed-versus-pending
+language. Later modes can be determined from service reachability, local
+pairing, bridge state, and community mesh participation.
 
-Continuity Payments are the payment expression of those modes. In Connected
-Mode, Safebox Web can prefer direct ecash delivery when a Lightning address
-resolves to another Safebox recipient. In Local or Community Mode, the future
-Lockbox behavior should support provisional in-kind proof transfers with clear
-user approval, explicit non-final status, and mint reconciliation when external
-infrastructure returns.
+Continuity Payments are the payment expression of those modes. Safebox Web now
+demonstrates direct ecash delivery to another Safebox address and keeps
+unfinalized value visible as pending. If the mint is unreachable, finalization
+can wait without changing the confirmed balance. Mainstay can carry that same
+interaction into Local, Mobile, and Community modes while Lockbox supplies the
+local services and storage.
 
 ## Related repositories
 

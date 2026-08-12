@@ -7,14 +7,15 @@ description: Current status of Safebox Web.
 
 Safebox Web is developer-stage software. It should be used with small test
 balances and non-critical records while the surrounding Acorn, Grove,
-Spurline, and Lockbox release gates continue to mature.
+Spurline, Mainstay, and Lockbox release gates continue to mature.
 
 ## Implemented direction
 
 Safebox Web currently provides a FastAPI, server-rendered wallet app for
 onboarding, login, wallet views, private records, record sharing and
 presentation, handles, Lightning deposits, Lightning payments, incoming ecash,
-and selected evidence-verification workflows.
+Continuity Payments, confirmed-versus-pending balance signals, pending
+transaction finalization, and selected evidence-verification workflows.
 
 The application is intentionally modest in browser-side authority. JavaScript
 is used for progressive interaction and device input such as QR acquisition;
@@ -27,7 +28,8 @@ workflow authority remains server-side and Acorn-centered.
 - local relay and blob-store integration through Spurline and Grove;
 - hardening payment and proof maintenance workflows;
 - preserving the hypermedia boundary as PWA features are explored; and
-- preparing the family for a future Lockbox appliance profile.
+- carrying the proven Safebox workflows into the future Mainstay application
+  and Lockbox appliance profile.
 
 ## Related technical notes
 

@@ -1212,6 +1212,41 @@ def test_theme_defaults_to_dark_and_script_is_served() -> None:
     assert "safebox_theme=" in script.text
 
 
+def test_pages_declare_web_app_icons_and_manifest() -> None:
+    client = make_https_client()
+    page = client.get("/")
+
+    assert page.status_code == 200
+    assert '<meta name="theme-color" content="#151915">' in page.text
+    assert '<link rel="icon" href="/favicon.ico" sizes="any">' in page.text
+    assert 'href="/static/favicon-32.png"' in page.text
+    assert 'href="/static/apple-touch-icon.png"' in page.text
+    assert 'href="/static/site.webmanifest"' in page.text
+
+
+def test_web_app_icons_and_manifest_are_served() -> None:
+    client = make_https_client()
+
+    favicon = client.get("/favicon.ico")
+    png_icon = client.get("/static/favicon-32.png")
+    touch_icon = client.get("/static/apple-touch-icon.png")
+    app_icon = client.get("/static/safebox-icon-192.png")
+    manifest = client.get("/static/site.webmanifest")
+
+    assert favicon.status_code == 200
+    assert favicon.headers["content-type"].startswith("image/x-icon")
+    assert png_icon.status_code == 200
+    assert png_icon.headers["content-type"].startswith("image/png")
+    assert touch_icon.status_code == 200
+    assert touch_icon.headers["content-type"].startswith("image/png")
+    assert app_icon.status_code == 200
+    assert app_icon.headers["content-type"].startswith("image/png")
+    assert manifest.status_code == 200
+    assert manifest.headers["content-type"].startswith("application/manifest+json")
+    assert manifest.json()["name"] == "Safebox"
+    assert {icon["sizes"] for icon in manifest.json()["icons"]} == {"192x192", "512x512"}
+
+
 def test_pages_include_mobile_layout_safeguards() -> None:
     client = make_https_client()
     response = client.get("/")
@@ -2625,7 +2660,7 @@ def test_transaction_history_has_an_empty_state() -> None:
     assert "No transaction history was found" in response.text
 
 
-def test_wallet_links_to_incoming_funds_check(tmp_path) -> None:
+def test_wallet_uses_balance_as_the_transaction_history_link(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
     app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
@@ -2633,7 +2668,8 @@ def test_wallet_links_to_incoming_funds_check(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert '<a href="/transactions">Pending Transactions</a>' in response.text
+    assert '<a class="wallet-balance" href="/transactions"' in response.text
+    assert '<a href="/transactions">Pending Transactions</a>' not in response.text
 
 
 def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:

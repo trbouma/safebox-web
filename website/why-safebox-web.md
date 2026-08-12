@@ -61,27 +61,40 @@ In that situation, Safebox Web can fall back to local services:
 
 Payment continuity follows the same pattern. In ordinary connected use,
 Safebox Web can use mints, Lightning, and direct Safebox-to-Safebox ecash
-transfers. In future Lockbox modes, Continuity Payments should let nearby
-Acorns transfer previously issued ecash locally, mark the result as
-provisional, and reconcile with the mint when connectivity returns.
+transfers. It now also demonstrates Continuity Payments between Safebox
+addresses using previously issued ecash. The recipient sees the same simple
+result whether the sender had full connectivity or not: received value is
+pending until it can be finalized with the mint.
 
-This is where Lockbox enters the product story. Lockbox is the appliance-like
-form of that local fallback: a small local home for the same components people
-may normally reach through a web-connected service.
+This creates a useful distinction on the wallet screen:
+
+- **Confirmed** is mint-confirmed and spendable.
+- **Pending** has been received and preserved but still awaits finalization.
+
+The user can finalize pending transactions from the transaction page. When the
+mint is unavailable, those transactions remain pending and the confirmed
+balance stays unchanged. Connectivity can return later without hiding what was
+received or overstating what is final.
+
+Safebox Web proves this experience today. Mainstay is the future unified
+application that will carry it across records, identity, and payments.
+Lockbox is the hardware-first form of the local fallback: a small local home
+for Mainstay, Acorn, Spurline, Grove, and related services people may normally
+reach through a web-connected service.
 
 <figure class="safebox-continuity-figure" markdown>
 ![Concept illustration of a phone running Safebox Web beside a compact Lockbox-style Safebox appliance with an integrated keypad, NFC tap point, short LoRa-style antenna, and physical Wi-Fi control, ready beside a small emergency bag, passports, keys, and an emergency folder](assets/images/lockbox-appliance-concept.jpg)
-<figcaption>Safebox Web is the user app. Lockbox lets the same app work across different continuity modes: useful in ordinary life, and ready to come with the household or community when circumstances change.</figcaption>
+<figcaption>Safebox Web proves the user experience today. Mainstay will unify that experience across continuity modes, while Lockbox provides a portable local home for the application and its services.</figcaption>
 </figure>
 
 The long-term goal remains simple:
 
 > Lockbox preserves local authority, continuity, and evidence.
 
-Safebox Web is the app a person touches. Acorn is the portable wallet and
+Safebox Web is the app a person can use now. Acorn is the portable wallet and
 record state underneath it. Spurline preserves local relay events. Grove
-preserves encrypted blob availability. Lockbox brings those pieces together so
-the user has a web-enabled experience in ordinary conditions and a local-first
-fallback when continuity matters.
+preserves encrypted blob availability. Mainstay will bring those pieces into
+one unified application, and Lockbox will provide the appliance that keeps
+them available locally when continuity matters.
 
 [Read the records-first architecture](radical-rewrite-of-architecture.md){ .md-button .md-button--primary }

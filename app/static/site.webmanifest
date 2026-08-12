@@ -1,0 +1,22 @@
+{
+  "name": "Safebox",
+  "short_name": "Safebox",
+  "description": "A local-first wallet app for individuals and communities.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#151915",
+  "theme_color": "#151915",
+  "icons": [
+    {
+      "src": "/static/safebox-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/safebox-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

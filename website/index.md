@@ -14,8 +14,9 @@ description: A local-first wallet app for individuals and communities.
 <figure class="safebox-phone" markdown>
   <div class="safebox-phone-frame">
     <span class="safebox-phone-speaker" aria-hidden="true"></span>
-    <img src="assets/images/safebox-phone-app.png" alt="Safebox Web mobile app screen showing Safebox is Connected in Connected Mode">
+    <img src="assets/images/safebox-phone-app.png" alt="Safebox Web mobile app in Connected Mode showing a mint-confirmed balance and pending transactions">
   </div>
+  <figcaption>The large balance is mint-confirmed and spendable. Incoming value stays visible as pending until it can be finalized.</figcaption>
 </figure>
 
 [Why Safebox Web?](why-safebox-web.md){ .md-button .md-button--primary }
@@ -107,10 +108,17 @@ Safebox Web is a sibling product in the Acorn family:
 ```text
 Safebox Web -> Acorn -> Spurline
                       -> Grove
+
+        practical foundation for
+                 Mainstay
+                    |
+             Lockbox appliance
 ```
 
-It is useful as a hosted or self-hosted web app today, and it is shaped to
-become one of the local applications inside the future Lockbox appliance.
+It is useful as a hosted or self-hosted web app today, and it is the practical
+foundation for Mainstay, the future unified application. Lockbox is the
+hardware-first appliance intended to run Mainstay and its supporting services
+locally.
 
 <div class="safebox-family" markdown>
 
@@ -123,8 +131,8 @@ Blossom storage for opaque, content-addressed blobs.](https://github.com/trbouma
 [**Spurline**  
 A local-first relay for individuals and communities.](https://github.com/trbouma/spurline)
 
-[**Lockbox**  
-The future appliance profile for local authority and continuity.](product-architecture.md)
+[**Mainstay + Lockbox**<br>
+The future unified app and its hardware-first local appliance.](product-architecture.md)
 
 </div>
 
@@ -136,12 +144,18 @@ progressive interactions. Acorn performs wallet and record operations. Relays,
 mints, Grove servers, and later local Lockbox services remain explicit
 replaceable dependencies.
 
-Continuity Payments extend that direction into local commerce. Today, Safebox
-Web can prefer a direct ecash transfer when a Lightning address resolves to
-another Safebox recipient and mint verification is available. The longer-term
-Lockbox path is provisional local proof transfer when mints or wider payment
-infrastructure are unavailable, followed by mint reconciliation when
-connectivity returns.
+Safebox Web uses two simple payment signals. The large balance is
+**mint-confirmed and spendable**. Incoming ecash from connected payment flows
+and Continuity Payments can remain **pending** until the user finalizes them.
+If a mint cannot be reached, the value stays pending rather than being
+presented as final.
+
+Continuity Payments extend that model into local commerce. Safebox can transfer
+previously issued ecash directly to another Safebox address, including when
+mint access is interrupted. The recipient does not need a different receiving
+workflow: the payment appears as pending and can be finalized when the mint is
+available again. This working experiment is an important foundation for
+Mainstay across Connected, Local, Mobile, and Community modes.
 
 [Read the radical rewrite](radical-rewrite-of-architecture.md){ .md-button .md-button--primary }
 [Read the product architecture](product-architecture.md){ .md-button .md-button--primary }

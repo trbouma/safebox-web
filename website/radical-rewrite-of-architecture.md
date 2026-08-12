@@ -210,6 +210,9 @@ systems:
 - evidence that remains useful after the original application disappears; and
 - verifier policies that can explain why evidence is or is not recognized.
 
-Safebox Web is one app in that architecture. The larger goal is Lockbox:
+Safebox Web is one working app in that architecture and the practical
+foundation for Mainstay, the future unified application. Lockbox is the
+hardware-first appliance intended to run Mainstay and its supporting services
+locally:
 
 > Lockbox preserves local authority, continuity, and evidence.
