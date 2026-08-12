@@ -58,7 +58,8 @@ a compatible private key.
 ### Use
 
 Work with relay-backed records, protected originals, handles, transaction
-history, deposits, payments, and record sharing flows.
+history, deposits, direct Safebox payments, Lightning payments, and record
+sharing flows.
 
 </article>
 
@@ -134,6 +135,13 @@ what it asks the browser to do. The browser provides the session and
 progressive interactions. Acorn performs wallet and record operations. Relays,
 mints, Grove servers, and later local Lockbox services remain explicit
 replaceable dependencies.
+
+Continuity Payments extend that direction into local commerce. Today, Safebox
+Web can prefer a direct ecash transfer when a Lightning address resolves to
+another Safebox recipient and mint verification is available. The longer-term
+Lockbox path is provisional local proof transfer when mints or wider payment
+infrastructure are unavailable, followed by mint reconciliation when
+connectivity returns.
 
 [Read the radical rewrite](radical-rewrite-of-architecture.md){ .md-button .md-button--primary }
 [Read the product architecture](product-architecture.md){ .md-button .md-button--primary }

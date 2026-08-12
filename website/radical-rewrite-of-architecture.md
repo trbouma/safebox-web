@@ -205,7 +205,8 @@ systems:
 - private records with public proof of origin;
 - transferable records with signed control history;
 - community recognition during limited connectivity;
-- in-kind local payment clearing using transferable proofs;
+- Continuity Payments: in-kind local payment clearing using transferable
+  proofs, with finality deferred until mint reconciliation;
 - evidence that remains useful after the original application disappears; and
 - verifier policies that can explain why evidence is or is not recognized.
 

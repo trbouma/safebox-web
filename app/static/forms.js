@@ -48,6 +48,9 @@ document.addEventListener("submit", (event) => {
 });
 
 window.addEventListener("pageshow", () => {
+  const pageProgress = document.getElementById("page-progress");
+  if (pageProgress) pageProgress.hidden = true;
+
   document
     .querySelectorAll("form[data-progress-message], form[data-progress-form]")
     .forEach((form) => {
@@ -63,6 +66,44 @@ window.addEventListener("pageshow", () => {
         }
       });
     });
+});
+
+document.addEventListener("click", (event) => {
+  if (
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  ) {
+    return;
+  }
+
+  const link = event.target.closest("a[href]");
+  if (
+    !link ||
+    link.target ||
+    link.hasAttribute("download") ||
+    link.getAttribute("href").startsWith("#")
+  ) {
+    return;
+  }
+
+  const destination = new URL(link.href, window.location.href);
+  if (
+    destination.origin !== window.location.origin ||
+    destination.href === window.location.href
+  ) {
+    return;
+  }
+
+  const pageProgress = document.getElementById("page-progress");
+  if (pageProgress) {
+    pageProgress.hidden = false;
+    pageProgress.textContent = "Opening…";
+  }
+  link.setAttribute("aria-busy", "true");
 });
 
 document.addEventListener("click", async (event) => {

@@ -4,27 +4,30 @@
 {% if lightning_lnurl %}
 <section class="wallet-address" aria-label="Lightning payment address">
   <p class="wallet-address-value">{{ nip05_address | lower }}</p>
-  <details class="wallet-address-disclosure">
-    <summary>
-      <span class="wallet-address-summary-show">Show QR Code</span>
-      <span class="wallet-address-summary-hide">Hide QR</span>
-    </summary>
-    <div class="wallet-address-panel">
-      <div class="wallet-address-qr" aria-label="Lightning payment QR code">
-      {{ address_qr | safe }}
+  <div class="wallet-address-actions">
+    <a href="/scan/lightning">Scan</a>
+    <details class="wallet-address-disclosure">
+      <summary>
+        <span class="wallet-address-summary-show">Show QR Code</span>
+        <span class="wallet-address-summary-hide">Hide QR</span>
+      </summary>
+      <div class="wallet-address-panel">
+        <div class="wallet-address-qr" aria-label="Lightning payment QR code">
+        {{ address_qr | safe }}
+        </div>
+        <p>Scan for Lightning Payment.</p>
+        <p class="breakable"><code>{{ nip05_address | lower }}</code></p>
+        <button type="button"
+                data-address-copy="{{ nip05_address | lower }}"
+                data-address-copy-status="wallet-address-copy-status"
+                aria-label="Copy {{ nip05_address | lower }}">
+          Copy payment address
+        </button>
+        <p id="wallet-address-copy-status" class="wallet-address-copy-status muted"
+           role="status" aria-live="polite" hidden></p>
       </div>
-      <p>Scan for Lightning Payment.</p>
-      <p class="breakable"><code>{{ nip05_address | lower }}</code></p>
-      <button type="button"
-              data-address-copy="{{ nip05_address | lower }}"
-              data-address-copy-status="wallet-address-copy-status"
-              aria-label="Copy {{ nip05_address | lower }}">
-        Copy payment address
-      </button>
-      <p id="wallet-address-copy-status" class="wallet-address-copy-status muted"
-         role="status" aria-live="polite" hidden></p>
-    </div>
-  </details>
+    </details>
+  </div>
 </section>
 {% endif %}
 {% if recovery_backup_pending %}
@@ -51,9 +54,8 @@
 <nav class="wallet-actions" aria-label="Wallet actions">
   <a href="/deposit">Deposit funds</a>
   <a href="/pay">Pay a Lightning address</a>
-  <a href="/scan/lightning">Scan a Code</a>
   <a href="/records">Manage Records</a>
-  <a href="/handle">Claim or view a NIP-05 handle</a>
+  <a href="/handle">Claim a Custom Address</a>
   <a href="{{ onboard_invite_path }}">Invite</a>
 </nav>
 {% if silent_payment_address %}

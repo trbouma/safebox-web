@@ -63,6 +63,9 @@ button:disabled { cursor: wait; opacity: .65; }
 .wallet-actions a:hover, .wallet-actions a:focus-visible { border-color: var(--link); color: var(--link); }
 .wallet-address { margin: 0 0 1rem; text-align: center; }
 .wallet-address-value { margin: 0 0 .6rem; color: var(--link); font-weight: 700; text-transform: lowercase; overflow-wrap: anywhere; }
+.wallet-address-actions { display: grid; gap: .75rem; margin: .75rem 0 0; }
+.wallet-address-actions > a { display: flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; padding: .6rem; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); font-weight: 650; text-align: center; text-decoration: none; }
+.wallet-address-actions > a:hover, .wallet-address-actions > a:focus-visible { border-color: var(--link); color: var(--link); }
 .wallet-address-disclosure { margin: 0 auto; }
 .wallet-address-disclosure > summary { display: flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; padding: .6rem; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); font-weight: 650; cursor: pointer; list-style: none; text-align: center; }
 .wallet-address-disclosure > summary::marker { content: ""; }
@@ -92,6 +95,19 @@ button:disabled { cursor: wait; opacity: .65; }
 .wallet-balance-state { margin: .6rem 0 0; color: var(--muted); font-size: .9rem; }
 .error { color: var(--error); }
 .progress { margin-top: 1rem; color: var(--progress); font-weight: 650; }
+.page-progress { position: fixed; left: 50%; top: .75rem; z-index: 10; transform: translateX(-50%); margin: 0; padding: .5rem .85rem; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--progress); box-shadow: 0 .5rem 1.5rem rgb(0 0 0 / .28); font-size: .9rem; font-weight: 700; }
+.page-progress:not([hidden])::before {
+  display: inline-block;
+  width: .75rem;
+  height: .75rem;
+  margin-right: .5rem;
+  border: .16rem solid currentcolor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  vertical-align: -.1rem;
+  animation: safebox-progress-spin .8s linear infinite;
+}
 form[aria-busy="true"] .progress:not([hidden])::before {
   display: inline-block;
   width: .85rem;
@@ -107,6 +123,7 @@ form[aria-busy="true"] .progress:not([hidden])::before {
 @keyframes safebox-progress-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   form[aria-busy="true"] .progress:not([hidden])::before { animation: none; }
+  .page-progress:not([hidden])::before { animation: none; }
 }
 a, code { overflow-wrap: anywhere; }
 pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-wrap; word-break: break-word; }

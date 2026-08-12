@@ -59,6 +59,12 @@ In that situation, Safebox Web can fall back to local services:
 - later, nearby community infrastructure or mesh transport when wider
   connectivity is unavailable.
 
+Payment continuity follows the same pattern. In ordinary connected use,
+Safebox Web can use mints, Lightning, and direct Safebox-to-Safebox ecash
+transfers. In future Lockbox modes, Continuity Payments should let nearby
+Acorns transfer previously issued ecash locally, mark the result as
+provisional, and reconcile with the mint when connectivity returns.
+
 This is where Lockbox enters the product story. Lockbox is the appliance-like
 form of that local fallback: a small local home for the same components people
 may normally reach through a web-connected service.

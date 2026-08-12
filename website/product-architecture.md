@@ -97,6 +97,13 @@ The current app can start with Connected Mode and later determine the active
 mode from service reachability, local pairing, bridge state, and community
 mesh participation.
 
+Continuity Payments are the payment expression of those modes. In Connected
+Mode, Safebox Web can prefer direct ecash delivery when a Lightning address
+resolves to another Safebox recipient. In Local or Community Mode, the future
+Lockbox behavior should support provisional in-kind proof transfers with clear
+user approval, explicit non-final status, and mint reconciliation when external
+infrastructure returns.
+
 ## Related repositories
 
 - [Safebox Acorn](https://github.com/trbouma/safebox-acorn)

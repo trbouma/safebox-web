@@ -19,6 +19,8 @@ import bolt11
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+import httpx
+from monstr.encrypt import Keys
 import qrcode
 import qrcode.image.svg
 from sqlalchemy.exc import IntegrityError
@@ -282,6 +284,66 @@ def _normalize_lightning_address(value: str) -> str | None:
     ):
         return None
     return f"{local_part}@{domain.lower()}"
+
+
+async def _resolve_safebox_lightning_recipient(
+    lightning_address: str,
+    *,
+    timeout: float,
+) -> dict[str, str] | None:
+    """Resolve a Lightning address to a Safebox NIP-05 recipient if possible."""
+
+    try:
+        local_part, domain = lightning_address.split("@", 1)
+    except ValueError:
+        return None
+    if not local_part or not domain:
+        return None
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout, connect=min(timeout, 5.0)),
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(
+                f"https://{domain}/.well-known/nostr.json",
+                params={"name": local_part},
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except Exception as exc:
+        logger.info(
+            "safebox recipient nip05 resolution skipped address=%s error_type=%s",
+            lightning_address,
+            type(exc).__name__,
+        )
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    names = payload.get("names")
+    relays = payload.get("relays")
+    if not isinstance(names, dict) or not isinstance(relays, dict):
+        return None
+
+    pubkey_hex = names.get(local_part) or names.get(local_part.lower())
+    if not isinstance(pubkey_hex, str) or not re.fullmatch(
+        r"[0-9a-fA-F]{64}",
+        pubkey_hex,
+    ):
+        return None
+    recipient_relays = relays.get(pubkey_hex) or relays.get(pubkey_hex.lower())
+    if not isinstance(recipient_relays, list) or not recipient_relays:
+        return None
+    relay = str(recipient_relays[0]).strip()
+    if not relay.startswith(("wss://", "ws://")):
+        return None
+
+    try:
+        recipient_npub = Keys.hex_to_bech32(pubkey_hex.lower(), prefix="npub")
+    except Exception:
+        return None
+    return {"npub": recipient_npub, "relay": relay}
 
 
 def _decode_lightning_invoice(value: str) -> dict[str, object] | None:
@@ -2892,8 +2954,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return payment_error("Explicit payment confirmation is required.")
         if verification is None:
             return payment_error(
-                "Payment is blocked because Safebox could not verify the proofs "
-                "with their mints.",
+                "Payment is blocked because a mint is unavailable. Continuity "
+                "Payments for provisional in-kind ecash transfer are not "
+                "implemented yet.",
                 503,
             )
         if verification.get("status") != "clean":
@@ -2924,6 +2987,68 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payment_comment = str(comment).strip() or "Paid from Safebox Web"
         if len(payment_comment) > 200:
             return payment_error("Payment comment must be 200 characters or fewer.")
+
+        direct_recipient = await _resolve_safebox_lightning_recipient(
+            recipient,
+            timeout=settings.payment_timeout_seconds,
+        )
+        if direct_recipient is not None:
+            try:
+                delivery = await asyncio.wait_for(
+                    acorn.send_ecash_transfer(
+                        amount=amount_sats,
+                        recipient=direct_recipient["npub"],
+                        relay=direct_recipient["relay"],
+                        comment=payment_comment,
+                    ),
+                    timeout=settings.payment_timeout_seconds,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "direct safebox ecash payment timed out outcome=unknown recipient=%s relay=%s",
+                    direct_recipient["npub"],
+                    direct_recipient["relay"],
+                )
+                return HTMLResponse(
+                    _page(
+                        "Payment status unresolved",
+                        "<p>The direct Safebox transfer timed out before Safebox "
+                        "received a final result. Do not retry it blindly. Review "
+                        "transaction history before attempting another payment.</p>"
+                        '<p><a href="/wallet">Return to wallet</a></p>',
+                    ),
+                    status_code=504,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "direct safebox ecash payment failed recipient=%s relay=%s error_type=%s",
+                    direct_recipient["npub"],
+                    direct_recipient["relay"],
+                    type(exc).__name__,
+                )
+                return HTMLResponse(
+                    _page(
+                        "Payment not confirmed",
+                        "<p>Safebox found a recipient Safebox address, but direct "
+                        "ecash delivery did not return a confirmed successful "
+                        "result. Review transaction history before deciding "
+                        "whether another payment is safe.</p>"
+                        '<p><a href="/wallet">Return to wallet</a></p>',
+                    ),
+                    status_code=502,
+                )
+            event_id = str(delivery.get("event_id") or delivery.get("event") or "")
+            message = "Direct Safebox ecash transfer sent."
+            if event_id:
+                message += f" Event: {event_id}."
+            return render_template(
+                "payment_result.html",
+                title="Payment successful",
+                amount=f"{amount_sats:,}",
+                fees="0",
+                recipient=recipient,
+                message=message,
+            )
 
         try:
             message, fees = await asyncio.wait_for(

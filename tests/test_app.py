@@ -146,6 +146,7 @@ class FakeLoadedAcorn:
         self.verification_status = verification_status
         self.loaded = False
         self.payments: list[dict] = []
+        self.ecash_transfers: list[dict] = []
         self.invoice_payments: list[dict] = []
         self.deposit_calls: list[int] = []
         self.quote_checks: list[tuple[str, int]] = []
@@ -297,6 +298,27 @@ class FakeLoadedAcorn:
         )
         self.balance -= amount + 1
         return f"Payment of {amount} sats successful!", 1
+
+    async def send_ecash_transfer(
+        self,
+        *,
+        amount: int,
+        recipient: str,
+        relay: str,
+        comment: str,
+        **kwargs,
+    ):
+        self.ecash_transfers.append(
+            {
+                "amount": amount,
+                "recipient": recipient,
+                "relay": relay,
+                "comment": comment,
+                **kwargs,
+            }
+        )
+        self.balance -= amount
+        return {"event_id": "ecash-event-1"}
 
     async def pay_multi_invoice(self, lninvoice: str, comment: str):
         self.invoice_payments.append(
@@ -1084,12 +1106,19 @@ def test_onboard_ignores_invalid_session_and_offers_fast_creation() -> None:
 
 
 def test_progress_script_is_served_from_same_origin() -> None:
-    response = make_https_client().get("/static/forms.js")
+    client = make_https_client()
+    response = client.get("/static/forms.js")
+    page = client.get("/")
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/javascript")
+    assert '<p id="page-progress" class="page-progress"' in page.text
     assert 'form.setAttribute("aria-busy", "true")' in response.text
     assert 'form.hasAttribute("data-progress-form")' in response.text
+    assert 'document.getElementById("page-progress")' in response.text
+    assert 'event.target.closest("a[href]")' in response.text
+    assert 'destination.origin !== window.location.origin' in response.text
+    assert 'pageProgress.textContent = "Opening…"' in response.text
     assert 'button.dataset.progressLabel' in response.text
     assert 'status.hidden = false' in response.text
     assert "button.disabled = true" in response.text
@@ -1189,7 +1218,9 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert 'class="page-navigation"' not in response.text
     assert '<a href="/deposit">Deposit funds</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text
+    assert '<a href="/handle">Claim a Custom Address</a>' in response.text
     assert '<a href="/invite">Invite</a>' in response.text
+    assert "Scan a Code" not in response.text
     assert 'href="/record-protection/enable"' in response.text
     assert "Protected Records" in response.text
     assert '<a class="wallet-balance" href="/transactions"' in response.text
@@ -2298,9 +2329,12 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
     assert "alice@safebox.example" in wallet_page.text
     assert '<section class="wallet-address" aria-label="Lightning payment address">' in wallet_page.text
     assert '<p class="wallet-address-value">alice@safebox.example</p>' in wallet_page.text
+    assert '<div class="wallet-address-actions">' in wallet_page.text
+    assert '<a href="/scan/lightning">Scan</a>' in wallet_page.text
     assert '<details class="wallet-address-disclosure">' in wallet_page.text
     assert "Show QR Code" in wallet_page.text
     assert "Hide QR" in wallet_page.text
+    assert wallet_page.text.index('href="/scan/lightning">Scan') < wallet_page.text.index("Show QR Code")
     assert 'class="wallet-address-qr"' in wallet_page.text
     assert 'aria-label="Lightning payment QR code"' in wallet_page.text
     assert 'data-address-copy="alice@safebox.example"' in wallet_page.text
@@ -2982,6 +3016,113 @@ def test_confirmed_lightning_payment_delegates_to_acorn() -> None:
     ]
 
 
+def test_safebox_lightning_address_prefers_direct_ecash_transfer(
+    monkeypatch,
+) -> None:
+    recipient_hex = "11" * 32
+    recipient_npub = main_module.Keys.hex_to_bech32(recipient_hex, prefix="npub")
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "names": {"alice": recipient_hex},
+                "relays": {recipient_hex: ["wss://recipient-relay.example"]},
+            }
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            assert url == "https://example.com/.well-known/nostr.json"
+            assert params == {"name": "alice"}
+            return FakeResponse()
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "direct please",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Payment successful" in response.text
+    assert "Direct Safebox ecash transfer sent" in response.text
+    assert "Fee: <strong>0 sats" in response.text
+    assert acorn.payments == []
+    assert acorn.ecash_transfers == [
+        {
+            "amount": 21,
+            "recipient": recipient_npub,
+            "relay": "wss://recipient-relay.example",
+            "comment": "direct please",
+        }
+    ]
+
+
+def test_lightning_payment_falls_back_when_nip05_is_not_safebox(
+    monkeypatch,
+) -> None:
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            raise main_module.httpx.HTTPError("not found")
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "lightning please",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert acorn.ecash_transfers == []
+    assert acorn.payments == [
+        {
+            "amount": 21,
+            "lnaddress": "alice@example.com",
+            "comment": "lightning please",
+        }
+    ]
+
+
 def test_payment_requires_explicit_confirmation_before_calling_acorn() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
@@ -3027,6 +3168,37 @@ def test_payment_is_blocked_when_mint_verification_is_not_clean() -> None:
     assert response.status_code == 409
     assert "Payment is blocked" in response.text
     assert acorn.payments == []
+
+
+def test_payment_blocks_for_continuity_flow_when_mint_is_unavailable(
+    monkeypatch,
+) -> None:
+    async def unavailable_mint(_acorn, _timeout):
+        return None, "Mint verification was unavailable."
+
+    monkeypatch.setattr(main_module, "_read_proof_verification", unavailable_mint)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "must not run",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 503
+    assert "a mint is unavailable" in response.text
+    assert "Continuity Payments" in response.text
+    assert "not implemented yet" in response.text
+    assert acorn.payments == []
+    assert acorn.ecash_transfers == []
 
 
 def test_record_index_links_encoded_labels() -> None:

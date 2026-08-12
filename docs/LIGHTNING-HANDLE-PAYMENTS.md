@@ -161,6 +161,31 @@ The domain and application operator remain authoritative for that mapping. The
 callback copies the current mapping into the payment row so a subsequent handle
 change cannot redirect an already-issued invoice.
 
+## Direct Safebox recipients and Continuity Payments
+
+When a connected user pays a Lightning address from Safebox Web, the app first
+checks whether the address also resolves as a Safebox/NIP-05 recipient. It
+looks up the address name through the recipient domain's NIP-05 document. If
+that document supplies a recipient public key and relay, Safebox Web can ask
+Acorn to send ecash directly to that Acorn instead of melting proofs through
+Lightning.
+
+This is still a connected-mode path. Before sending, Safebox Web verifies the
+wallet's proof state with the issuing mint. If the mint cannot be reached, the
+app blocks the payment for now and reports that Continuity Payments are not
+implemented yet.
+
+The future Continuity Payments path is different. When mints or wider payment
+infrastructure are unavailable, Acorn should be able to preview a provisional
+in-kind transfer of already issued proofs, show any non-exact amount, and ask
+for explicit user approval. The receiving Acorn would treat those funds as
+pending mint finality until connectivity returns and the proofs can be checked,
+refreshed, or reconciled.
+
+Safebox Web's role is to present the mode, confirmation, warning, and result.
+Acorn remains responsible for proof selection, transfer construction, mint
+verification, refresh, repair, and finality-sensitive wallet state.
+
 ## Durable states
 
 The web process never calls the service Acorn directly. For ordinary payments,

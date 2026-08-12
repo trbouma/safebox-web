@@ -152,6 +152,14 @@ address's HTTPS `/.well-known/lnurlp/{handle}` endpoint, matching the
 interoperable format used by Safebox 2. The QR is omitted when no handle is
 claimed or the provider feature is disabled.
 
+When paying a Lightning address, Safebox Web first checks whether the address
+also resolves as a Safebox/NIP-05 recipient. If it resolves to a recipient
+Acorn and relay, and the user's mint-confirmed proof state is available,
+Safebox sends ecash directly to that Acorn instead of routing through
+Lightning. If mint verification is unavailable, the current app blocks the
+payment; future Continuity Payments will offer provisional in-kind proof
+transfers with mint finality later.
+
 Deposit quote state is not kept in a database or server-side session. The quote
 identifier, amount, mint, and invoice are encrypted and authenticated in a
 short-lived hidden form token. This prevents a browser from altering the amount
@@ -177,6 +185,12 @@ or the proof report is not clean. Deposits remain possible because they add new
 proofs, but a deposit never authorizes automatic swapping or consolidation of
 the existing wallet. `RECEIVE_PROOF_MAINTENANCE_ENABLED=false` is passed
 explicitly by the Docker deployment as defense in depth.
+
+This block is also the first guardrail for Continuity Payments. The product
+direction is to let nearby Acorns transfer previously issued ecash locally when
+mints or wider payment infrastructure are unavailable, but only after the app
+can show the provisional status, any non-exact amount, and the later
+reconciliation step plainly.
 
 ## KEM experimentation boundary
 
@@ -343,7 +357,7 @@ Anyone who obtains that key and a session cookie can decrypt the contained
 
 ## NIP-05 handle directory
 
-After connecting an Acorn, select **Claim or view a NIP-05 handle** on the
+After connecting an Acorn, select **Claim a Custom Address** on the
 wallet page. Possession of the session's Acorn private key establishes control
 of the component public key. Safebox normalizes the requested handle to
 lowercase and stores only:
