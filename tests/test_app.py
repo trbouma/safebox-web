@@ -171,6 +171,14 @@ class FakeLoadedAcorn:
         self.incoming_preview = {"previewed_count": 0, "previewed_amount": 0}
         self.repair_calls = 0
         self.repair_force_values: list[bool] = []
+        self.stale_reconciliation_calls = 0
+        self.stale_reconciliation_result = {
+            "status": "OK",
+            "operation": "reconcile-stale-proofs",
+            "removed": 0,
+            "amount": 0,
+            "balance": balance,
+        }
         self.delayed_transaction_history = list(delayed_transaction_history or [])
         self.record_transfer_create_calls: list[dict] = []
         self.record_transfer_inspect_calls: list[dict] = []
@@ -225,6 +233,10 @@ class FakeLoadedAcorn:
         self.verification_status = "clean"
         self.verified_balance = self.balance
         return "repair-proofs completed"
+
+    async def reconcile_stale_proofs(self) -> dict:
+        self.stale_reconciliation_calls += 1
+        return dict(self.stale_reconciliation_result)
 
     def get_balance(self) -> int:
         return self.balance
@@ -2958,7 +2970,8 @@ def test_transaction_history_offers_explicit_force_finalization() -> None:
     assert '<input type="hidden" name="force" value="true">' in response.text
     assert 'name="force_confirm" value="acknowledged" required' in response.text
     assert "Force Finalization" in response.text
-    assert "may permanently remove proofs reported as spent or stale" in response.text
+    assert "remove only those the mint" in response.text
+    assert "Usable proofs are not refreshed or swapped" in response.text
 
 
 def test_force_finalization_repairs_all_proofs_before_receiving() -> None:
@@ -2979,6 +2992,13 @@ def test_force_finalization_repairs_all_proofs_before_receiving() -> None:
             }
         ],
     )
+    acorn.stale_reconciliation_result = {
+        "status": "OK",
+        "operation": "reconcile-stale-proofs",
+        "removed": 2,
+        "amount": 5,
+        "balance": 316,
+    }
     app.dependency_overrides[get_receive_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
@@ -2992,10 +3012,10 @@ def test_force_finalization_repairs_all_proofs_before_receiving() -> None:
     )
 
     assert response.status_code == 200
-    assert acorn.repair_calls == 1
-    assert acorn.repair_force_values == [True]
+    assert acorn.repair_calls == 0
+    assert acorn.stale_reconciliation_calls == 1
     assert acorn.receive_calls == 1
-    assert "Force finalization completed. Finalized 3 sats." in response.text
+    assert "Removed 5 sats in 2 stale proofs. Finalized 3 sats." in response.text
 
 
 def test_force_finalization_requires_explicit_acknowledgement() -> None:
@@ -3011,6 +3031,7 @@ def test_force_finalization_requires_explicit_acknowledgement() -> None:
 
     assert response.status_code == 400
     assert acorn.repair_calls == 0
+    assert acorn.stale_reconciliation_calls == 0
     assert acorn.receive_calls == 0
     assert "Force finalization can permanently remove" in response.text
 

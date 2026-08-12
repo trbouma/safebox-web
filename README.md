@@ -147,10 +147,10 @@ mutation initiated by the user.
 
 If ordinary pending-transaction finalization remains blocked by stale proof
 state, the transaction page exposes a separately confirmed **Force
-Finalization** mode. It first runs Acorn proof repair with stale-proof pruning
-enabled, then performs the normal incoming-transfer scan and receipt
-reconciliation. The mode may permanently remove proofs the mint reports as
-spent or stale. It does not bypass unreachable mints, unknown keysets,
+Finalization** mode. It first asks Acorn to remove only existing proofs the mint
+conclusively reports as spent, then performs the normal incoming-transfer scan
+and receipt reconciliation. It does not swap or refresh usable proofs and does
+not bypass unreachable mints, unknown keysets,
 unresolved Lightning payments, invalid tokens, or other inconclusive states.
 
 When the standalone Lightning provider is enabled and the connected Acorn has

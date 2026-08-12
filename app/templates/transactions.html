@@ -19,8 +19,8 @@
     <summary>Force Finalization</summary>
     <div class="transaction-advisories-content">
       <p>Use this only when ordinary finalization remains blocked by stale proof
-      state. Safebox will reconcile every existing proof with its mint first and
-      may permanently remove proofs reported as spent or stale.</p>
+      state. Safebox will check existing proofs and remove only those the mint
+      conclusively reports as spent. Usable proofs are not refreshed or swapped.</p>
       <p>Force mode does not bypass an unreachable mint, an unknown keyset, an
       unresolved Lightning payment, or an invalid incoming token.</p>
       <form method="post" action="/transactions/receive"
@@ -30,7 +30,7 @@
         <input type="hidden" name="force" value="true">
         <label class="confirmation-option">
           <input type="checkbox" name="force_confirm" value="acknowledged" required>
-          I understand that mint-confirmed stale or spent proofs may be removed.
+          I understand that proofs conclusively reported as spent will be removed.
         </label>
         <button type="submit">Force Finalization</button>
       </form>

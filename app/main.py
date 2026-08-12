@@ -3521,11 +3521,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=400,
             )
 
-        force_repair_result: str | None = None
+        stale_reconciliation: dict | None = None
         if force:
+            reconciler = getattr(acorn, "reconcile_stale_proofs", None)
+            if reconciler is None:
+                return HTMLResponse(
+                    _page(
+                        "Force finalization unavailable",
+                        '<p class="error">This Safebox Acorn installation does not '
+                        "provide targeted stale-proof reconciliation. Update the "
+                        "component before using force finalization.</p>"
+                        '<p><a href="/transactions">Return to transaction history</a></p>',
+                    ),
+                    status_code=409,
+                )
             try:
-                force_repair_result = await asyncio.wait_for(
-                    acorn.repair_proofs(force_prune_stale=True),
+                stale_reconciliation = await asyncio.wait_for(
+                    reconciler(),
                     timeout=settings.payment_timeout_seconds,
                 )
             except TimeoutError:
@@ -3541,15 +3553,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             except Exception as exc:
                 logger.warning(
-                    "forced proof reconciliation failed error_type=%s error=%s",
+                    "targeted stale-proof reconciliation failed error_type=%s error=%s",
                     type(exc).__name__,
                     str(exc),
                 )
                 return HTMLResponse(
                     _page(
                         "Force finalization stopped safely",
-                        '<p class="error">Safebox could not establish a conclusive proof '
-                        "state, so pending transactions were not finalized.</p>"
+                        '<p class="error">Safebox could not conclusively identify stale '
+                        "spent proofs, so pending transactions were not finalized.</p>"
                         f"<p><strong>Reason:</strong> {escape(str(exc))}</p>"
                         '<p><a href="/transactions">Return to transaction history</a></p>',
                     ),
@@ -3681,8 +3693,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             notice = f"{provisional_amount:,} sats remain pending."
         else:
             notice = "No pending transactions were found."
-        if force and force_repair_result:
-            notice = f"Force finalization completed. {notice}"
+        if force and stale_reconciliation is not None:
+            removed = int(stale_reconciliation.get("removed", 0))
+            removed_amount = int(stale_reconciliation.get("amount", 0))
+            if removed:
+                notice = (
+                    f"Removed {removed_amount:,} sats in {removed:,} stale proof"
+                    f"{'s' if removed != 1 else ''}. {notice}"
+                )
+            else:
+                notice = f"No mint-confirmed stale proofs were found. {notice}"
 
         try:
             history = await _read_receive_history_with_retry(
