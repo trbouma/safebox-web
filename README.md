@@ -265,6 +265,9 @@ wallet opens immediately after initialization and relay readback. Connecting an
 existing Acorn remains available at `/login`, but that alternative is
 deliberately omitted from the fast onboarding page.
 
+For an already connected wallet, the **Invite** action opens `/invite`, which
+displays a QR code for the first configured invite path.
+
 Onboarding also assigns a default public handle derived deterministically from
 the first 32 bits of the Acorn public key: two BIP39 English words followed by
 a number from 0 through 999 (for example, `abandonabandon0`). If that name is

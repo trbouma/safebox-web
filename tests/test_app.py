@@ -947,6 +947,44 @@ def test_friend_can_only_work_as_configured_invite_code() -> None:
     assert 'action="/onboard/FRIEND"' in response.text
 
 
+def test_connected_wallet_can_show_invite_qr(monkeypatch) -> None:
+    qr_payloads: list[tuple[str, bool]] = []
+
+    def recording_qr_svg(payload: str, *, include_acorn: bool = False) -> str:
+        qr_payloads.append((payload, include_acorn))
+        return "<svg id=\"invite-qr\"></svg>"
+
+    monkeypatch.setattr(main_module, "_qr_svg", recording_qr_svg)
+    client = make_https_client()
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        SessionCipher(TEST_SETTINGS).encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+            )
+        ),
+        domain="safebox.example",
+        path="/",
+    )
+
+    response = client.get("/invite")
+
+    assert response.status_code == 200
+    assert "Invite" in response.text
+    assert 'id="invite-qr"' in response.text
+    assert "https://safebox.example/onboard/INVITEME" in response.text
+    assert qr_payloads == [("https://safebox.example/onboard/INVITEME", True)]
+    assert "not included in" in response.text
+    assert "only the public Safebox onboarding link" in response.text
+
+
+def test_invite_qr_requires_connected_acorn() -> None:
+    response = make_https_client().get("/invite")
+
+    assert response.status_code == 401
+
+
 def test_onboard_redirects_valid_existing_session_to_wallet() -> None:
     client = make_https_client()
     client.cookies.set(
@@ -1089,7 +1127,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert 'class="page-navigation"' not in response.text
     assert '<a href="/deposit">Deposit funds</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text
-    assert '<a href="/onboard/INVITEME">Onboard a Friend</a>' in response.text
+    assert '<a href="/invite">Invite</a>' in response.text
     assert 'href="/record-protection/enable"' in response.text
     assert "Protected Records" in response.text
     assert '<section class="wallet-balance"' in response.text

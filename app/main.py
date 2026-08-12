@@ -946,6 +946,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings = request.app.state.settings
         return RedirectResponse(_onboard_path(settings), status_code=303)
 
+    @app.get("/invite", response_class=HTMLResponse)
+    async def onboard_invite(
+        request: Request,
+        credentials: CredentialsDependency,
+    ) -> HTMLResponse:
+        """Present the configured onboarding entry point as a scannable QR code."""
+
+        _ = credentials
+        settings = request.app.state.settings
+        onboarding_url = str(
+            request.url_for(
+                "onboard",
+                invite_code=settings.onboard_invite_code,
+            )
+        )
+        return HTMLResponse(
+            render_template(
+                "onboard_invite.html",
+                title="Invite",
+                onboarding_url=onboarding_url,
+                onboarding_qr=_qr_svg(onboarding_url, include_acorn=True),
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.get("/onboard/{invite_code}", response_class=HTMLResponse)
     async def onboard(request: Request, invite_code: str):
         """Provide the invite-code entry point for creating a new Acorn."""
@@ -1878,7 +1903,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             balance_status=balance_status,
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
-            onboard_path=_onboard_path(settings),
+            onboard_invite_path="/invite",
             csrf_token=csrf_token,
         )
 

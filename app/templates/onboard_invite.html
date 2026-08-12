@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Share this code with someone you want to invite. It opens Safebox where they
+can create a new Acorn.</p>
+
+<div class="invoice-qr" aria-label="Safebox onboarding QR code">
+  {{ onboarding_qr | safe }}
+</div>
+
+<p class="muted">Onboarding link</p>
+<p class="breakable"><a href="{{ onboarding_url }}">{{ onboarding_url }}</a></p>
+<p class="advisory">Your Acorn, keys, funds, and records are not included in
+this code. It contains only the public Safebox onboarding link.</p>
+{% endblock %}
