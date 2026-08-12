@@ -318,7 +318,7 @@ class FakeLoadedAcorn:
             }
         )
         self.balance -= amount
-        return {"event_id": "ecash-event-1"}
+        return {"status": "OK", "event_id": "ecash-event-1"}
 
     async def pay_multi_invoice(self, lninvoice: str, comment: str):
         self.invoice_payments.append(
@@ -2583,6 +2583,30 @@ def test_transaction_history_can_receive_incoming_ecash() -> None:
     assert "ecash transfer received" in response.text
 
 
+def test_receive_incoming_ecash_warns_when_credit_history_is_missing() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(
+        receive_result={
+            "queried": 1,
+            "accepted_count": 1,
+            "accepted_amount": 3,
+        },
+        transaction_history=[],
+    )
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/transactions/receive",
+        data={"csrf_token": valid_csrf_token()},
+    )
+
+    assert response.status_code == 200
+    assert "Received 3 sats from 1 incoming ecash transfer(s)." in response.text
+    assert "wallet balance may already reflect the accepted funds" in response.text
+    assert "Reload transaction history before relying on the journal" in response.text
+
+
 def test_receive_incoming_ecash_rejects_invalid_csrf() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
@@ -3077,6 +3101,62 @@ def test_safebox_lightning_address_prefers_direct_ecash_transfer(
             "comment": "direct please",
         }
     ]
+
+
+def test_safebox_direct_ecash_transfer_requires_confirmed_result(
+    monkeypatch,
+) -> None:
+    recipient_hex = "11" * 32
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "names": {"alice": recipient_hex},
+                "relays": {recipient_hex: ["wss://recipient-relay.example"]},
+            }
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            return FakeResponse()
+
+    class UnconfirmedDirectAcorn(FakeLoadedAcorn):
+        async def send_ecash_transfer(self, **kwargs):
+            self.ecash_transfers.append(kwargs)
+            return {"status": "ERROR", "error": "relay publish not verified"}
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(TEST_SETTINGS)
+    acorn = UnconfirmedDirectAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "direct please",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 502
+    assert "did not return a confirmed successful result" in response.text
+    assert acorn.payments == []
+    assert len(acorn.ecash_transfers) == 1
 
 
 def test_lightning_payment_falls_back_when_nip05_is_not_safebox(

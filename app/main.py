@@ -533,6 +533,29 @@ def _transactions_page(
     )
 
 
+def _history_has_receive_credit(
+    entries: list[dict],
+    *,
+    accepted_amount: int,
+    accepted_count: int,
+) -> bool:
+    """Return whether a post-receive history lookup includes the expected credit."""
+
+    if accepted_count <= 0:
+        return True
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("tx_type") or "").upper() != "C":
+            continue
+        if int(entry.get("amount") or 0) != accepted_amount:
+            continue
+        comment = str(entry.get("comment") or "").lower()
+        if "ecash transfer received" in comment:
+            return True
+    return False
+
+
 def _record_form(
     csrf_token: str,
     max_blob_bytes: int,
@@ -3021,10 +3044,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             except Exception as exc:
                 logger.warning(
-                    "direct safebox ecash payment failed recipient=%s relay=%s error_type=%s",
+                    "direct safebox ecash payment failed recipient=%s relay=%s error_type=%s error=%s",
                     direct_recipient["npub"],
                     direct_recipient["relay"],
                     type(exc).__name__,
+                    str(exc),
+                )
+                return HTMLResponse(
+                    _page(
+                        "Payment not completed",
+                        "<p>Safebox found a recipient Safebox address, but direct "
+                        "ecash delivery could not be completed. Review "
+                        "transaction history before deciding whether another "
+                        "payment is safe.</p>"
+                        '<p><a href="/wallet">Return to wallet</a></p>',
+                    ),
+                    status_code=502,
+                )
+            if not isinstance(delivery, dict) or delivery.get("status") != "OK":
+                logger.warning(
+                    "direct safebox ecash payment returned unconfirmed result recipient=%s relay=%s result=%r",
+                    direct_recipient["npub"],
+                    direct_recipient["relay"],
+                    delivery,
                 )
                 return HTMLResponse(
                     _page(
@@ -3234,6 +3276,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             reverse=True,
         )
+        if not _history_has_receive_credit(
+            entries,
+            accepted_amount=accepted_amount,
+            accepted_count=accepted_count,
+        ):
+            notice += (
+                " The wallet balance may already reflect the accepted funds, "
+                "but the matching transaction-history entry was not readable "
+                "yet. Reload transaction history before relying on the journal."
+            )
         return _transactions_page(
             entries,
             CsrfProtector(settings).issue(),
