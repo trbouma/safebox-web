@@ -130,20 +130,20 @@ def _ecash_retention_notice(settings: Settings) -> str:
     retention = settings.service_acorn_gift_wrap_retention_seconds
     if retention is None:
         message = (
-            "Safebox does not request automatic expiration for private ecash "
+            "Safebox does not request automatic expiration for private funds "
             "delivery messages. Relays may retain them according to their own policy."
         )
     else:
         duration = _humanize_retention(retention)
         message = (
-            "Safebox asks compatible relays to retain private ecash delivery "
+            "Safebox asks compatible relays to retain private funds delivery "
             f"messages for {duration} after publication, then expire and delete "
-            "them. Receive incoming ecash before this period ends. Relay "
+            "them. Receive incoming funds before this period ends. Relay "
             "enforcement and physical deletion can vary."
         )
     return (
         '<aside class="retention-notice" aria-labelledby="retention-heading">'
-        '<h3 id="retention-heading">Ecash message retention</h3>'
+        '<h3 id="retention-heading">Funds transfer message retention</h3>'
         f"<p>{escape(message)}</p>"
         "</aside>"
     )
@@ -510,6 +510,10 @@ def _transaction_history_view(entries: list[dict]) -> list[dict]:
             else f"{tendered_amount} {tendered_currency}"
         )
         comment = str(entry.get("comment") or "").strip()
+        # Preserve old journal data while presenting protocol-neutral language.
+        comment = comment.replace("ecash transfer received", "funds transfer received")
+        comment = comment.replace("Ecash transfer received", "Funds transfer received")
+        comment = comment.replace("Incoming ecash", "Incoming funds")
         cards.append(
             {
                 "direction": direction,
@@ -603,7 +607,10 @@ def _history_has_receive_credit(
         if int(entry.get("amount") or 0) != accepted_amount:
             continue
         comment = str(entry.get("comment") or "").lower()
-        if "ecash transfer received" in comment:
+        if (
+            "funds transfer received" in comment
+            or "ecash transfer received" in comment
+        ):
             return True
     return False
 
@@ -3289,7 +3296,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     _page(
                         "Payment not completed",
                         "<p>Safebox found a recipient Safebox address, but direct "
-                        "ecash delivery could not be completed. Review "
+                        "funds delivery could not be completed. Review "
                         "transaction history before deciding whether another "
                         "payment is safe.</p>"
                         + (
@@ -3312,7 +3319,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     _page(
                         "Payment not confirmed",
                         "<p>Safebox found a recipient Safebox address, but direct "
-                        "ecash delivery did not return a confirmed successful "
+                        "funds delivery did not return a confirmed successful "
                         "result. Review transaction history before deciding "
                         "whether another payment is safe.</p>"
                         '<p><a href="/wallet">Return to wallet</a></p>',
@@ -3326,7 +3333,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "contacted; the recipient must reconcile the proofs later."
                 )
             else:
-                message = "Direct Safebox ecash transfer sent."
+                message = "Direct Safebox funds transfer sent."
             if event_id:
                 message += f" Event: {event_id}."
             return render_template(
@@ -3502,7 +3509,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not CsrfProtector(settings).verify(csrf_token):
             return HTMLResponse(
                 _page(
-                    "Receive ecash",
+                    "Receive funds",
                     '<p class="error">The form expired or could not be verified.</p>'
                     '<p><a href="/transactions">Return to transaction history</a></p>',
                 ),
@@ -3576,7 +3583,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except TimeoutError:
             return HTMLResponse(
                 _page(
-                    "Receive ecash outcome uncertain",
+                    "Receive funds outcome uncertain",
                     '<p class="error">The receive operation timed out. It may have '
                     "accepted proofs before the timeout. Review the wallet balance and "
                     "transaction history before trying again.</p>"
@@ -3595,7 +3602,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 except TimeoutError:
                     return HTMLResponse(
                         _page(
-                            "Unable to receive ecash",
+                            "Unable to receive funds",
                             '<p class="error">Safebox found stale proofs, but '
                             "proof repair timed out. Review wallet balance and "
                             "transaction history before trying again.</p>"
@@ -3606,7 +3613,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 except Exception as repair_exc:
                     return HTMLResponse(
                         _page(
-                            "Unable to receive ecash",
+                            "Unable to receive funds",
                             '<p class="error">Safebox found stale proofs, but '
                             "proof repair could not be completed.</p>"
                             f"<p><strong>Reason:</strong> {escape(str(repair_exc))}</p>"
@@ -3631,8 +3638,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return HTMLResponse(
                 _page(
-                    "Unable to receive ecash",
-                    '<p class="error">Safebox could not complete the incoming ecash '
+                    "Unable to receive funds",
+                    '<p class="error">Safebox could not complete the incoming funds '
                     "check. No unverified balance has been displayed.</p>"
                     + (
                         f"<p><strong>Reason:</strong> {escape(error_reason)}</p>"
@@ -3731,7 +3738,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return HTMLResponse(
                 _page(
-                    "Ecash receive completed",
+                    "Funds receive completed",
                     f"<p><strong>{escape(notice)}</strong></p>"
                     "<p>The updated transaction history could not be loaded. "
                     "Reload it to verify the resulting credit.</p>"

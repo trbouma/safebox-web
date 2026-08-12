@@ -111,7 +111,7 @@ def test_ecash_retention_notice_explains_disabled_expiration() -> None:
 
     notice = main_module._ecash_retention_notice(settings)
 
-    assert "Ecash message retention" in notice
+    assert "Funds transfer message retention" in notice
     assert "does not request automatic expiration" in notice
     assert "own policy" in notice
 
@@ -2469,7 +2469,7 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
     assert 'id="acorn-qr-mark"' in wallet_page.text
     assert '<details class="general-advisories">' in wallet_page.text
     assert "<summary>Advisories</summary>" in wallet_page.text
-    assert "Ecash message retention" in wallet_page.text
+    assert "Funds transfer message retention" in wallet_page.text
     assert "for 1 week after publication" in wallet_page.text
     assert "Relay enforcement and physical deletion can vary" in wallet_page.text
     assert wallet_page.text.index("alice@safebox.example") < wallet_page.text.index("Balance")
@@ -2786,7 +2786,7 @@ def test_transaction_history_can_receive_incoming_ecash() -> None:
     assert "Finalized 3 sats." in response.text
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
     assert "+3 sats" in response.text
-    assert "ecash transfer received" in response.text
+    assert "funds transfer received" in response.text
 
 
 def test_receive_incoming_ecash_warns_when_credit_history_is_missing() -> None:
@@ -3576,7 +3576,7 @@ def test_safebox_lightning_address_prefers_direct_ecash_transfer(
 
     assert response.status_code == 200
     assert "Payment successful" in response.text
-    assert "Direct Safebox ecash transfer sent" in response.text
+    assert "Direct Safebox funds transfer sent" in response.text
     assert "Fee: <strong>0 sats" in response.text
     assert acorn.payments == []
     assert acorn.ecash_transfers == [
@@ -3696,7 +3696,7 @@ def test_safebox_direct_ecash_transfer_exception_shows_safe_reason(
     )
 
     assert response.status_code == 502
-    assert "ecash delivery could not be completed" in response.text
+    assert "funds delivery could not be completed" in response.text
     assert "Mint swap unavailable &lt;retry later&gt;" in response.text
     assert "<retry later>" not in response.text
     assert acorn.payments == []
