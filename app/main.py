@@ -520,32 +520,6 @@ def _transaction_history_view(entries: list[dict]) -> list[dict]:
     return cards
 
 
-def _continuity_receipt_view(receipts: list[dict]) -> list[dict]:
-    """Render provisional receipts without treating them as spendable credits."""
-
-    cards = []
-    for receipt in receipts:
-        if not isinstance(receipt, dict):
-            continue
-        timestamp = int(receipt.get("timestamp") or 0)
-        created = (
-            datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
-            if timestamp
-            else "Pending"
-        )
-        cards.append(
-            {
-                "event_id": str(receipt.get("event_id") or ""),
-                "amount": int(receipt.get("amount") or 0),
-                "amount_display": f"{int(receipt.get('amount') or 0):,}",
-                "created": created,
-                "comment": str(receipt.get("comment") or ""),
-                "status": "Confirmation pending",
-            }
-        )
-    return cards
-
-
 async def _read_continuity_receipts(acorn, timeout: float) -> list[dict]:
     reader = getattr(acorn, "get_continuity_receipts", None)
     if reader is None:
@@ -568,6 +542,18 @@ async def _reconcile_continuity_receipts(acorn, timeout: float) -> dict:
     return {**result, "supported": True}
 
 
+async def _preview_incoming_payments(acorn, timeout: float) -> dict:
+    scanner = getattr(acorn, "sweep_ecash_transfers", None)
+    if scanner is None:
+        return {"previewed_count": 0, "previewed_amount": 0}
+    try:
+        awaitable = scanner(preview_only=True)
+    except TypeError:
+        return {"previewed_count": 0, "previewed_amount": 0}
+    result = await asyncio.wait_for(awaitable, timeout=timeout)
+    return result if isinstance(result, dict) else {}
+
+
 def _transactions_page(
     entries: list[dict],
     csrf_token: str,
@@ -575,7 +561,7 @@ def _transactions_page(
     retention_notice: str = "",
     wallet_balance: int | None = None,
     wallet_balance_verified: bool = False,
-    continuity_receipts: list[dict] | None = None,
+    pending_amount: int = 0,
 ) -> str:
     """Render transaction history with an explicit incoming funds check."""
 
@@ -589,7 +575,7 @@ def _transactions_page(
         retention_notice=retention_notice,
         wallet_balance=wallet_balance,
         wallet_balance_verified=wallet_balance_verified,
-        continuity_receipts=_continuity_receipt_view(continuity_receipts or []),
+        pending_amount=int(pending_amount),
     )
 
 
@@ -2136,6 +2122,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for receipt in continuity_receipts
             if str(receipt.get("status") or "provisional") == "provisional"
         )
+        try:
+            incoming_preview = await _preview_incoming_payments(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "incoming payment preview failed error_type=%s",
+                type(exc).__name__,
+            )
+            incoming_preview = {}
+        pending_payment_amount = (
+            pending_continuity_amount
+            + int(incoming_preview.get("previewed_amount", 0))
+        )
         return render_template(
             "wallet.html",
             title="Safebox is Connected",
@@ -2163,8 +2164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             balance_status=balance_status,
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
-            pending_continuity_count=len(continuity_receipts),
-            pending_continuity_amount=pending_continuity_amount,
+            pending_payment_amount=pending_payment_amount,
             onboard_invite_path="/invite",
             csrf_token=csrf_token,
         )
@@ -3456,13 +3456,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
             continuity_receipts = []
+        try:
+            incoming_preview = await _preview_incoming_payments(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "incoming payment preview failed error_type=%s",
+                type(exc).__name__,
+            )
+            incoming_preview = {}
+        pending_amount = sum(
+            int(receipt.get("amount") or 0) for receipt in continuity_receipts
+        ) + int(incoming_preview.get("previewed_amount", 0))
         return _transactions_page(
             entries,
             CsrfProtector(settings).issue(),
             retention_notice=_ecash_retention_notice(settings),
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
-            continuity_receipts=continuity_receipts,
+            pending_amount=pending_amount,
         )
 
     @app.post("/transactions/receive", response_class=HTMLResponse)
@@ -3484,7 +3498,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         try:
             result = await asyncio.wait_for(
-                acorn.sweep_ecash_transfers(),
+                acorn.sweep_ecash_transfers(finalize=False),
                 timeout=settings.payment_timeout_seconds,
             )
         except TimeoutError:
@@ -3532,8 +3546,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     _page(
                         "Proofs repaired",
                         "<p>Safebox repaired stale proofs before accepting "
-                        "incoming ecash. Check for incoming funds again to "
-                        "complete the receive operation.</p>"
+                        "incoming payments. Finalize pending transactions again "
+                        "to complete the operation.</p>"
                         '<p><a href="/transactions">Return to transaction history</a></p>',
                     ),
                     status_code=409,
@@ -3596,27 +3610,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if reconciliation.get("supported")
             else result.get("provisional_amount", 0)
         )
-        queried = int(result.get("queried", 0))
         if confirmed_count and provisional_count:
             notice = (
-                f"Received and confirmed {accepted_amount:,} sats from "
-                f"{confirmed_count:,} incoming payment(s). "
-                f"{provisional_amount:,} sats from {provisional_count:,} payment(s) "
-                "still await confirmation."
+                f"Finalized {accepted_amount:,} sats. "
+                f"{provisional_amount:,} sats remain pending."
             )
         elif confirmed_count:
-            notice = (
-                f"Received and confirmed {accepted_amount:,} sats from "
-                f"{confirmed_count:,} incoming payment(s)."
-            )
+            notice = f"Finalized {accepted_amount:,} sats."
         elif provisional_count:
-            notice = (
-                f"Stored {provisional_amount:,} sats from "
-                f"{provisional_count:,} provisional Continuity Payment(s). "
-                "These funds are not spendable until mint reconciliation."
-            )
+            notice = f"{provisional_amount:,} sats remain pending."
         else:
-            notice = f"No incoming ecash was accepted ({queried:,} transfer event(s) checked)."
+            notice = "No pending transactions were found."
 
         try:
             history = await _read_receive_history_with_retry(
@@ -3672,6 +3676,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
             continuity_receipts = []
+        pending_amount = sum(
+            int(receipt.get("amount") or 0) for receipt in continuity_receipts
+        )
         if not _history_has_receive_credit(
             entries,
             accepted_amount=accepted_amount,
@@ -3689,7 +3696,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             retention_notice=_ecash_retention_notice(settings),
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
-            continuity_receipts=continuity_receipts,
+            pending_amount=pending_amount,
         )
 
     @app.get("/record/present", response_class=HTMLResponse)

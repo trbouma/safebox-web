@@ -5,33 +5,17 @@
 <a class="wallet-balance transaction-balance" href="/wallet" aria-labelledby="transaction-balance-heading">
   <h2 id="transaction-balance-heading">Balance</h2>
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
-  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance.{% else %}Balance requires verification—review the advisory below.{% endif %}{% if continuity_receipts %} {{ continuity_receipts | sum(attribute='amount', start=0) }} sats await confirmation.{% endif %}</p>
+  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance.{% else %}Balance requires verification—review the advisory below.{% endif %}{% if pending_amount %} {{ "{:,}".format(pending_amount) }} sats pending.{% endif %}</p>
 </a>
 {% endif %}
-<section class="incoming-funds" aria-label="Incoming funds">
+<section class="incoming-funds" aria-label="Pending transactions">
   <form method="post" action="/transactions/receive"
-        data-progress-message="Checking for incoming funds and confirming pending payments. Please wait."
-        data-progress-button="Checking for funds…">
+        data-progress-message="Finalizing pending transactions. Please wait."
+        data-progress-button="Finalizing…">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit">Check for incoming funds</button>
+    <button type="submit">Finalize Pending Transactions</button>
   </form>
 </section>
-{% if continuity_receipts %}
-<section class="transaction-list pending-payment-list" aria-label="Payments awaiting confirmation">
-  <h2>Awaiting Confirmation</h2>
-  {% for receipt in continuity_receipts %}
-  <article class="transaction-card advisory">
-    <header class="transaction-header">
-      <span class="transaction-kind">Incoming payment</span>
-      <time class="transaction-date">{{ receipt.created }}</time>
-    </header>
-    <div class="transaction-amount">+{{ receipt.amount_display }} sats</div>
-    <p class="transaction-note"><strong>Status:</strong> {{ receipt.status }}. These funds are not included in the spendable balance.</p>
-    {% if receipt.comment %}<p class="transaction-note"><strong>Note:</strong> {{ receipt.comment }}</p>{% endif %}
-  </article>
-  {% endfor %}
-</section>
-{% endif %}
 {% if entries %}
 <section class="transaction-list" aria-label="Transaction history">
   {% for entry in entries %}
@@ -51,13 +35,13 @@
   {% endfor %}
 </section>
 {% else %}
-<p>{% if continuity_receipts %}No confirmed transaction history was found.{% else %}No transaction history was found.{% endif %}</p>
+<p>No transaction history was found.</p>
 {% endif %}
 <details class="transaction-advisories">
   <summary>Advisories</summary>
   <div class="transaction-advisories-content">
-    <p>Safebox can check this Acorn's home relay for incoming ecash transfers and
-    accept valid proofs into the wallet balance.</p>
+    <p>Pending transactions are added to the confirmed balance and journal when
+    their proofs can be finalized with the mint.</p>
     {{ retention_notice | safe }}
   </div>
 </details>

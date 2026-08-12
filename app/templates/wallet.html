@@ -49,12 +49,12 @@
 <a class="wallet-balance" href="/transactions" aria-labelledby="wallet-balance-heading">
   <h2 id="wallet-balance-heading">Balance</h2>
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
-  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance.{% else %}Balance requires verification—review the advisory below.{% endif %}{% if pending_continuity_count %} {{ "{:,}".format(pending_continuity_amount) }} sats from {{ pending_continuity_count }} incoming payment{% if pending_continuity_count != 1 %}s{% endif %} await confirmation.{% endif %}</p>
+  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance.{% else %}Balance requires verification—review the advisory below.{% endif %}{% if pending_payment_amount %} {{ "{:,}".format(pending_payment_amount) }} sats pending.{% endif %}</p>
 </a>
 <nav class="wallet-actions" aria-label="Wallet actions">
   <a href="/deposit">Deposit funds</a>
   <a href="/pay">Pay to an Address</a>
-  <a href="/transactions">Check for Incoming Funds</a>
+  <a href="/transactions">Pending Transactions</a>
   <a href="/records">Manage Records</a>
   <a href="/handle">Claim a Custom Address</a>
   <a href="{{ onboard_invite_path }}">Invite</a>

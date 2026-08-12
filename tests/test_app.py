@@ -166,6 +166,9 @@ class FakeLoadedAcorn:
             "accepted_amount": 0,
         }
         self.receive_calls = 0
+        self.receive_finalize_values: list[bool] = []
+        self.preview_calls = 0
+        self.incoming_preview = {"previewed_count": 0, "previewed_amount": 0}
         self.repair_calls = 0
         self.delayed_transaction_history = list(delayed_transaction_history or [])
         self.record_transfer_create_calls: list[dict] = []
@@ -371,8 +374,17 @@ class FakeLoadedAcorn:
     async def reconcile_continuity_receipts(self) -> dict:
         return self.continuity_reconciliation
 
-    async def sweep_ecash_transfers(self) -> dict:
+    async def sweep_ecash_transfers(
+        self,
+        *,
+        preview_only: bool = False,
+        finalize: bool = True,
+    ) -> dict:
+        if preview_only:
+            self.preview_calls += 1
+            return self.incoming_preview
         self.receive_calls += 1
+        self.receive_finalize_values.append(finalize)
         return self.receive_result
 
 
@@ -2574,9 +2586,9 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
         'class="wallet-balance transaction-balance"'
     )
     assert response.text.index('class="wallet-balance transaction-balance"') < response.text.index(
-        'aria-label="Incoming funds"'
+        'aria-label="Pending transactions"'
     )
-    assert response.text.index('aria-label="Incoming funds"') < response.text.index(
+    assert response.text.index('aria-label="Pending transactions"') < response.text.index(
         'aria-label="Transaction history"'
     )
     assert 'aria-label="Transaction history"' in response.text
@@ -2592,13 +2604,13 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
     assert 'href="/static/styles.css"' in response.text
     assert 'action="/transactions/receive"' in response.text
     assert 'name="csrf_token"' in response.text
-    assert "Check for incoming funds" in response.text
+    assert "Finalize Pending Transactions" in response.text
     assert "Check and receive ecash" not in response.text
-    assert "Checking for funds…" in response.text
+    assert "Finalizing…" in response.text
     assert '<details class="transaction-advisories">' in response.text
     assert "<summary>Advisories</summary>" in response.text
     assert response.text.index('aria-label="Transaction history"') < response.text.index(
-        "Safebox can check this Acorn"
+        "Pending transactions are added to the confirmed balance"
     )
 
 
@@ -2621,7 +2633,7 @@ def test_wallet_links_to_incoming_funds_check(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert '<a href="/transactions">Check for Incoming Funds</a>' in response.text
+    assert '<a href="/transactions">Pending Transactions</a>' in response.text
 
 
 def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:
@@ -2642,11 +2654,29 @@ def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "5 sats from 1 incoming payment await confirmation" in response.text
+    assert "5 sats pending." in response.text
     assert "100 <span>sats</span>" in response.text
 
 
-def test_transaction_history_shows_persisted_payment_awaiting_confirmation() -> None:
+def test_wallet_balance_previews_unprocessed_incoming_payments_without_receiving(
+    tmp_path,
+) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn(balance=100)
+    acorn.incoming_preview = {"previewed_count": 2, "previewed_amount": 7}
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "7 sats pending." in response.text
+    assert "100 <span>sats</span>" in response.text
+    assert acorn.preview_calls == 1
+    assert acorn.receive_calls == 0
+
+
+def test_transaction_history_sums_all_pending_payments() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=100)
     acorn.continuity_receipts = [
@@ -2658,18 +2688,18 @@ def test_transaction_history_shows_persisted_payment_awaiting_confirmation() -> 
             "status": "provisional",
         }
     ]
+    acorn.incoming_preview = {"previewed_count": 2, "previewed_amount": 7}
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get("/transactions")
 
     assert response.status_code == 200
-    assert "Awaiting Confirmation" in response.text
-    assert "+5 sats" in response.text
-    assert "Confirmation pending" in response.text
-    assert "not included in the spendable balance" in response.text
-    assert "local market" in response.text
-    assert "No confirmed transaction history was found" in response.text
+    assert "12 sats pending." in response.text
+    assert "100 <span>sats</span>" in response.text
+    assert "Awaiting Confirmation" not in response.text
+    assert "local market" not in response.text
+    assert "No transaction history was found" in response.text
 
 
 def test_transaction_history_can_receive_incoming_ecash() -> None:
@@ -2700,7 +2730,8 @@ def test_transaction_history_can_receive_incoming_ecash() -> None:
 
     assert response.status_code == 200
     assert acorn.receive_calls == 1
-    assert "Received and confirmed 3 sats from 1 incoming payment(s)." in response.text
+    assert acorn.receive_finalize_values == [False]
+    assert "Finalized 3 sats." in response.text
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
     assert "+3 sats" in response.text
     assert "ecash transfer received" in response.text
@@ -2725,7 +2756,7 @@ def test_receive_incoming_ecash_warns_when_credit_history_is_missing() -> None:
     )
 
     assert response.status_code == 200
-    assert "Received and confirmed 3 sats from 1 incoming payment(s)." in response.text
+    assert "Finalized 3 sats." in response.text
     assert "wallet balance may already reflect the accepted funds" in response.text
     assert "Reload transaction history before relying on the journal" in response.text
 
@@ -2768,8 +2799,7 @@ def test_receive_continuity_payment_remains_pending_when_mint_is_unavailable(
     )
 
     assert response.status_code == 200
-    assert "Stored 5 sats from 1 provisional Continuity Payment(s)" in response.text
-    assert "not spendable until mint reconciliation" in response.text
+    assert "5 sats remain pending." in response.text
     assert "Received 0 sats" not in response.text
     assert "wallet balance may already reflect" not in response.text
 
@@ -2811,7 +2841,7 @@ def test_receive_continuity_payment_confirms_pending_proofs() -> None:
     )
 
     assert response.status_code == 200
-    assert "Received and confirmed 5 sats from 1 incoming payment(s)." in response.text
+    assert "Finalized 5 sats." in response.text
     assert "+5 sats" in response.text
     assert "continuity payment confirmed: market" in response.text
 
@@ -2846,15 +2876,16 @@ def test_receive_incoming_ecash_retries_until_credit_history_is_visible() -> Non
     )
 
     assert response.status_code == 200
-    assert "Received and confirmed 23 sats from 1 incoming payment(s)." in response.text
+    assert "Finalized 23 sats." in response.text
     assert "+23 sats" in response.text
     assert "wallet balance may already reflect the accepted funds" not in response.text
 
 
 def test_receive_incoming_ecash_stale_proofs_repairs_and_requires_fresh_check() -> None:
     class StaleReceiveAcorn(FakeLoadedAcorn):
-        async def sweep_ecash_transfers(self) -> dict:
+        async def sweep_ecash_transfers(self, *, finalize: bool = True) -> dict:
             self.receive_calls += 1
+            self.receive_finalize_values.append(finalize)
             raise RuntimeError(
                 "Unable to accept token safely: Local wallet proof state is stale"
             )
@@ -2871,9 +2902,10 @@ def test_receive_incoming_ecash_stale_proofs_repairs_and_requires_fresh_check() 
 
     assert response.status_code == 409
     assert acorn.receive_calls == 1
+    assert acorn.receive_finalize_values == [False]
     assert acorn.repair_calls == 1
     assert "Safebox repaired stale proofs" in response.text
-    assert "Check for incoming funds again" in response.text
+    assert "Finalize pending transactions again" in response.text
 
 
 def test_receive_incoming_ecash_rejects_invalid_csrf() -> None:

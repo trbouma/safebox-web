@@ -247,7 +247,6 @@ figure.blob-preview { padding: .75rem; }
 .payment-mode-options label:has(input:checked) { background: var(--surface-soft); color: var(--link); }
 .payment-mode-options input { width: auto; margin: 0; accent-color: currentColor; }
 .transaction-advisories .retention-notice { margin-top: .75rem; }
-.pending-payment-list > h2 { margin-top: 2rem; text-align: center; }
 @media (max-width: 36rem) {
   body { margin: 1.25rem auto 2rem; padding: 0 .875rem; }
   h1 { font-size: 1.75rem; }
