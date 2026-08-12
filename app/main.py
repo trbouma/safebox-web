@@ -1814,12 +1814,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     @app.post("/logout")
-    async def logout(request: Request, csrf_token: str = Form(...)):
+    async def logout(
+        request: Request,
+        csrf_token: str = Form(...),
+        confirmed: str | None = Form(None),
+    ):
         if not CsrfProtector(request.app.state.settings).verify(csrf_token):
             return HTMLResponse(
                 _page(
                     "Unable to disconnect",
                     '<p class="error">The form token is invalid or expired.</p>'
+                    '<p><a href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=403,
+            )
+        if confirmed != "yes":
+            return HTMLResponse(
+                _page(
+                    "Unable to disconnect",
+                    '<p class="error">Confirm that you have your recovery '
+                    "information before disconnecting.</p>"
                     '<p><a href="/wallet">Return to wallet</a></p>',
                 ),
                 status_code=403,

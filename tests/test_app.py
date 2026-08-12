@@ -640,13 +640,38 @@ def test_logout_disconnects_and_redirects_to_root_login() -> None:
 
     response = client.post(
         "/logout",
-        data={"csrf_token": valid_csrf_token()},
+        data={"csrf_token": valid_csrf_token(), "confirmed": "yes"},
         follow_redirects=False,
     )
 
     assert response.status_code == 303
     assert response.headers["location"] == "/"
     assert SECURE_COOKIE_NAME not in client.cookies
+
+
+def test_logout_requires_recovery_confirmation() -> None:
+    client = make_https_client()
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        SessionCipher(TEST_SETTINGS).encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+            )
+        ),
+        domain="safebox.example",
+        path="/",
+    )
+
+    response = client.post(
+        "/logout",
+        data={"csrf_token": valid_csrf_token()},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 403
+    assert "Confirm that you have your recovery information" in response.text
+    assert SECURE_COOKIE_NAME in client.cookies
 
 
 def test_onboard_offers_single_confirmed_fast_creation_path() -> None:
@@ -1167,10 +1192,15 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert '<a href="/invite">Invite</a>' in response.text
     assert 'href="/record-protection/enable"' in response.text
     assert "Protected Records" in response.text
-    assert '<section class="wallet-balance"' in response.text
+    assert '<a class="wallet-balance" href="/transactions"' in response.text
     assert "321 <span>sats</span>" in response.text
+    assert "View transaction history" not in response.text
+    assert "Before disconnecting, make sure you have your" in response.text
+    assert "recovery information" in response.text
+    assert 'name="confirmed" type="checkbox" value="yes" required' in response.text
     assert response.text.index("wallet-balance") < response.text.index("wallet-actions")
     assert response.text.index("wallet-actions") < response.text.index("Component public key")
+    assert response.text.index("Advisories") < response.text.index("Disconnect")
 
 
 def test_wallet_prominently_warns_while_recovery_backup_is_pending(tmp_path) -> None:
@@ -2292,7 +2322,7 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
     assert "Relay enforcement and physical deletion can vary" in wallet_page.text
     assert wallet_page.text.index("alice@safebox.example") < wallet_page.text.index("Balance")
     assert wallet_page.text.index("Balance") < wallet_page.text.index("Receive Silent Payment")
-    assert wallet_page.text.index("Disconnect") < wallet_page.text.index("Advisories")
+    assert wallet_page.text.index("Advisories") < wallet_page.text.index("Disconnect")
 
 
 def test_invoice_qr_is_black_and_white_without_centre_mark() -> None:

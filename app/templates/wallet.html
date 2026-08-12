@@ -43,16 +43,15 @@
   <a class="nav-button" href="/handle">Claim a Handle</a>
 </section>
 {% endif %}
-<section class="wallet-balance" aria-labelledby="wallet-balance-heading">
+<a class="wallet-balance" href="/transactions" aria-labelledby="wallet-balance-heading">
   <h2 id="wallet-balance-heading">Balance</h2>
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
   <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance{% else %}Balance requires verification—review the advisory below{% endif %}</p>
-</section>
+</a>
 <nav class="wallet-actions" aria-label="Wallet actions">
   <a href="/deposit">Deposit funds</a>
   <a href="/pay">Pay a Lightning address</a>
   <a href="/scan/lightning">Scan a Code</a>
-  <a href="/transactions">View transaction history</a>
   <a href="/records">Manage Records</a>
   <a href="/handle">Claim or view a NIP-05 handle</a>
   <a href="{{ onboard_invite_path }}">Invite</a>
@@ -84,10 +83,6 @@
   </div>
 </details>
 {% endif %}
-<form method="post" action="/logout">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <button type="submit">Disconnect</button>
-</form>
 <details class="general-advisories">
   <summary>Advisories</summary>
   <div class="general-advisories-content">
@@ -119,4 +114,15 @@
     {% endif %}
   </div>
 </details>
+<form class="disconnect-form" method="post" action="/logout">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <p class="disconnect-warning">Before disconnecting, make sure you have your
+  recovery information. Safebox does not store it, and it will be impossible to
+  get back in if it is lost.</p>
+  <label class="disconnect-confirmation">
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I have my recovery information and understand Safebox cannot restore it for me.
+  </label>
+  <button type="submit">Disconnect</button>
+</form>
 {% endblock %}
