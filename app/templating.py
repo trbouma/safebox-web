@@ -18,7 +18,6 @@ _PARENT_NAVIGATION = {
     "deferred_recovery.html": ("/recovery", "Back to Recovery"),
     "deferred_recovery_warning.html": ("/wallet", "Back to Wallet"),
     "handle.html": ("/wallet", "Back to Wallet"),
-    "onboard_friend.html": ("/wallet", "Back to Wallet"),
     "pay.html": ("/wallet", "Back to Wallet"),
     "pay_invoice.html": ("/scan/lightning", "Back to Scanner"),
     "payment_result.html": ("/wallet", "Back to Wallet"),

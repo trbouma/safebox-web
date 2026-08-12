@@ -5,7 +5,7 @@ as its relay state and default handle have been verified.</p>
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 
 <section class="onboard-actions" aria-label="Create a new Acorn">
-  <form method="post" action="/onboard" data-progress-form>
+  <form method="post" action="{{ onboard_path }}" data-progress-form>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="onboard-mnemonic-words">Safebox Acorn mnemonic</label>
     <select id="onboard-mnemonic-words" name="mnemonic_words">

@@ -61,8 +61,9 @@ security model, alternatives, compatibility gate, and decision criteria.
 
 This implementation intentionally provides:
 
-- a QR-friendly `/onboard` entry point optimized for one-confirmation creation
-  of a new Acorn and redirecting an already attached Acorn to its wallet;
+- a QR-friendly invite path, `/onboard/INVITEME` by default, optimized for
+  one-confirmation creation of a new Acorn and redirecting an already attached
+  Acorn to its wallet;
 - creation of a new Acorn with a selected home relay and home mint;
 - login with an `nsec` or BIP39 Safebox Acorn mnemonic;
 - a bootstrap relay;
@@ -251,13 +252,18 @@ asks Acorn not to persist the mnemonic in wallet metadata.
 Protected Records are not enabled during creation. No RPK or Protected record
 mnemonic exists, which keeps quick onboarding focused on the Acorn itself.
 
-For rapid onboarding, `/onboard` provides a one-click **Create a New Acorn**
-action using the configured default relay and mint. The page presents only a
-single **Create My Acorn** confirmation button: recovery is fixed at 12 words,
-backup is deferred, and the wallet opens immediately after initialization and
-relay readback. For a browser without a valid session, `/` redirects directly
-to this page. Connecting an existing Acorn remains available at `/login`, but
-that alternative is deliberately omitted from the fast onboarding page.
+For rapid onboarding, `/onboard/INVITEME` provides a one-click **Create a New
+Acorn** action using the configured default relay and mint. Invite codes
+default to `INVITEME` and can be changed with the comma-delimited
+`SAFEBOX_ONBOARD_INVITE_CODE` setting. The first configured invite code is used
+for app-generated links; the remaining codes can be shared with external
+parties and later deactivated by removing them from configuration. Invite-code
+matching is case-insensitive. The bare `/onboard` path redirects to the first
+configured invite path. The page presents only a single **Create My Acorn**
+confirmation button: recovery is fixed at 12 words, backup is deferred, and the
+wallet opens immediately after initialization and relay readback. Connecting an
+existing Acorn remains available at `/login`, but that alternative is
+deliberately omitted from the fast onboarding page.
 
 Onboarding also assigns a default public handle derived deterministically from
 the first 32 bits of the Acorn public key: two BIP39 English words followed by

@@ -433,6 +433,25 @@ def test_default_session_lifetime_is_30_days() -> None:
     assert DEFAULT_SESSION_TTL_HOURS == 720
     assert DEFAULT_SESSION_TTL_SECONDS == 2_592_000
     assert settings.session_ttl_seconds == DEFAULT_SESSION_TTL_SECONDS
+    assert settings.onboard_invite_code == "INVITEME"
+    assert settings.onboard_invite_codes == ("INVITEME",)
+
+
+def test_settings_load_onboard_invite_code_from_env(tmp_path, monkeypatch) -> None:
+    env_key = Fernet.generate_key().decode("ascii")
+    (tmp_path / ".env").write_text(
+        f"SAFEBOX_COOKIE_KEY={env_key}\n"
+        "SAFEBOX_ONBOARD_INVITE_CODE=COMMUNITY42,PARTNER7\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
+    monkeypatch.delenv("SAFEBOX_ONBOARD_INVITE_CODE", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.onboard_invite_code == "COMMUNITY42"
+    assert settings.onboard_invite_codes == ("COMMUNITY42", "PARTNER7")
 
 
 def test_settings_load_comma_delimited_ws_relay_allowlist(
@@ -542,7 +561,7 @@ def test_direct_127001_http_is_allowed() -> None:
 
 
 def test_onboard_page_displays_acorn_safebox_relationship_visual() -> None:
-    response = make_https_client().get("/onboard")
+    response = make_https_client().get("/onboard/INVITEME")
 
     assert response.status_code == 200
     assert 'aria-label="Safebox page tools"' in response.text
@@ -631,11 +650,11 @@ def test_logout_disconnects_and_redirects_to_root_login() -> None:
 
 
 def test_onboard_offers_single_confirmed_fast_creation_path() -> None:
-    response = make_https_client().get("/onboard")
+    response = make_https_client().get("/onboard/INVITEME")
 
     assert response.status_code == 200
     assert "Welcome to Safebox" in response.text
-    assert 'action="/onboard"' in response.text
+    assert 'action="/onboard/INVITEME"' in response.text
     assert 'name="defer_recovery"' not in response.text
     assert 'name="assign_default_handle"' not in response.text
     assert 'name="mnemonic_words"' in response.text
@@ -680,7 +699,7 @@ def test_quick_onboarding_assigns_available_default_handle(
 
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.post(
-            "/onboard",
+            "/onboard/INVITEME",
             data={"csrf_token": CsrfProtector(settings).issue()},
             follow_redirects=False,
         )
@@ -699,14 +718,14 @@ def test_quick_onboarding_assigns_available_default_handle(
 
 def test_quick_onboarding_error_stays_on_streamlined_page() -> None:
     response = make_https_client().post(
-        "/onboard",
+        "/onboard/INVITEME",
         data={"csrf_token": "invalid"},
     )
 
     assert response.status_code == 403
     assert "Welcome to Safebox" in response.text
     assert "form token is invalid or expired" in response.text
-    assert 'action="/onboard"' in response.text
+    assert 'action="/onboard/INVITEME"' in response.text
     assert 'name="home_relay"' not in response.text
     assert 'name="home_mint"' not in response.text
 
@@ -733,7 +752,7 @@ def test_quick_onboarding_passes_selected_24_word_mnemonic_strength(
 
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.post(
-            "/onboard",
+            "/onboard/INVITEME",
             data={
                 "csrf_token": CsrfProtector(settings).issue(),
                 "mnemonic_words": "24",
@@ -771,7 +790,7 @@ def test_quick_onboarding_retries_transient_relay_readback(
 
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.post(
-            "/onboard",
+            "/onboard/INVITEME",
             data={"csrf_token": CsrfProtector(settings).issue()},
             follow_redirects=False,
         )
@@ -784,7 +803,7 @@ def test_quick_onboarding_retries_transient_relay_readback(
 
 def test_quick_onboarding_rejects_invalid_mnemonic_length() -> None:
     response = make_https_client().post(
-        "/onboard",
+        "/onboard/INVITEME",
         data={
             "csrf_token": valid_csrf_token(),
             "mnemonic_words": "18",
@@ -793,7 +812,7 @@ def test_quick_onboarding_rejects_invalid_mnemonic_length() -> None:
 
     assert response.status_code == 400
     assert "Choose a 12- or 24-word Safebox Acorn mnemonic" in response.text
-    assert 'action="/onboard"' in response.text
+    assert 'action="/onboard/INVITEME"' in response.text
 
 
 def test_ordinary_creation_assigns_default_handle(
@@ -881,7 +900,54 @@ def test_default_handle_collision_advances_numeric_suffix(
     assert handles == [("abandonabandon0",), ("abandonabandon1",)]
 
 
-def test_onboard_redirects_valid_existing_session_through_root() -> None:
+def test_onboard_redirects_to_default_invite_path() -> None:
+    response = make_https_client().get("/onboard", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/onboard/INVITEME"
+
+
+def test_custom_onboard_invite_code_controls_onboarding_path() -> None:
+    settings = replace(TEST_SETTINGS, onboard_invite_codes=("COMMUNITY42", "PARTNER7"))
+    client = TestClient(create_app(settings), base_url="https://safebox.example")
+
+    response = client.get("/onboard", follow_redirects=False)
+    invited = client.get("/onboard/COMMUNITY42")
+    secondary = client.get("/onboard/partner7")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/onboard/COMMUNITY42"
+    assert invited.status_code == 200
+    assert 'action="/onboard/COMMUNITY42"' in invited.text
+    assert secondary.status_code == 200
+    assert 'action="/onboard/PARTNER7"' in secondary.text
+
+
+def test_unknown_onboard_invite_code_is_not_accepted() -> None:
+    response = make_https_client().get("/onboard/WRONGCODE")
+
+    assert response.status_code == 404
+    assert "Invite code not found." in response.text
+
+
+def test_friend_is_not_a_special_onboarding_route() -> None:
+    response = make_https_client().get("/onboard/friend")
+
+    assert response.status_code == 404
+    assert "Invite code not found." in response.text
+
+
+def test_friend_can_only_work_as_configured_invite_code() -> None:
+    settings = replace(TEST_SETTINGS, onboard_invite_codes=("INVITEME", "FRIEND"))
+    client = TestClient(create_app(settings), base_url="https://safebox.example")
+
+    response = client.get("/onboard/friend")
+
+    assert response.status_code == 200
+    assert 'action="/onboard/FRIEND"' in response.text
+
+
+def test_onboard_redirects_valid_existing_session_to_wallet() -> None:
     client = make_https_client()
     client.cookies.set(
         SECURE_COOKIE_NAME,
@@ -895,10 +961,10 @@ def test_onboard_redirects_valid_existing_session_through_root() -> None:
         path="/",
     )
 
-    response = client.get("/onboard", follow_redirects=False)
+    response = client.get("/onboard/INVITEME", follow_redirects=False)
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/"
+    assert response.headers["location"] == "/wallet"
 
 
 def test_onboard_ignores_invalid_session_and_offers_fast_creation() -> None:
@@ -910,49 +976,11 @@ def test_onboard_ignores_invalid_session_and_offers_fast_creation() -> None:
         path="/",
     )
 
-    response = client.get("/onboard", follow_redirects=False)
+    response = client.get("/onboard/INVITEME", follow_redirects=False)
 
     assert response.status_code == 200
     assert "Create My Acorn" in response.text
     assert "Use an Existing Acorn" not in response.text
-
-
-def test_connected_wallet_can_show_friend_onboarding_qr(monkeypatch) -> None:
-    qr_payloads: list[tuple[str, bool]] = []
-
-    def recording_qr_svg(payload: str, *, include_acorn: bool = False) -> str:
-        qr_payloads.append((payload, include_acorn))
-        return "<svg id=\"friend-onboarding-qr\"></svg>"
-
-    monkeypatch.setattr(main_module, "_qr_svg", recording_qr_svg)
-    client = make_https_client()
-    client.cookies.set(
-        SECURE_COOKIE_NAME,
-        SessionCipher(TEST_SETTINGS).encode(
-            SessionCredentials(
-                nsec=TEST_NSEC,
-                bootstrap_relay="wss://relay.example.com",
-            )
-        ),
-        domain="safebox.example",
-        path="/",
-    )
-
-    response = client.get("/onboard/friend")
-
-    assert response.status_code == 200
-    assert "Onboard a Friend" in response.text
-    assert 'id="friend-onboarding-qr"' in response.text
-    assert "https://safebox.example/onboard" in response.text
-    assert qr_payloads == [("https://safebox.example/onboard", True)]
-    assert "not included in" in response.text
-    assert "only the public Safebox onboarding link" in response.text
-
-
-def test_friend_onboarding_qr_requires_connected_acorn() -> None:
-    response = make_https_client().get("/onboard/friend")
-
-    assert response.status_code == 401
 
 
 def test_progress_script_is_served_from_same_origin() -> None:
@@ -1061,7 +1089,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert 'class="page-navigation"' not in response.text
     assert '<a href="/deposit">Deposit funds</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text
-    assert '<a href="/onboard/friend">Onboard a Friend</a>' in response.text
+    assert '<a href="/onboard/INVITEME">Onboard a Friend</a>' in response.text
     assert 'href="/record-protection/enable"' in response.text
     assert "Protected Records" in response.text
     assert '<section class="wallet-balance"' in response.text
@@ -1269,7 +1297,7 @@ def test_login_page_links_to_new_acorn_creation() -> None:
 
     assert response.status_code == 200
     assert response.text.index('value="mnemonic"') < response.text.index('value="nsec"')
-    assert 'href="/onboard"' in response.text
+    assert 'href="/onboard/INVITEME"' in response.text
     assert "Create a new Acorn" in response.text
     assert "Restore protected record access" in response.text
     assert 'name="record_protection_recovery"' in response.text

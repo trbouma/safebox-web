@@ -211,6 +211,7 @@ class Settings:
     allowed_ws_relays: tuple[str, ...] = ()
     default_bootstrap_relay: str = "wss://relay.getsafebox.app"
     default_home_mint: str = "https://mint.getsafebox.app"
+    onboard_invite_codes: tuple[str, ...] = ("INVITEME",)
     blossom_home_server: str = "https://blossom.getsafebox.app"
     max_blob_bytes: int = DEFAULT_MAX_BLOB_BYTES
     bitcoin_api_base: str = DEFAULT_BITCOIN_API_BASE
@@ -235,6 +236,12 @@ class Settings:
     service_acorn_shutdown_recipient: str | None = None
     service_acorn_shutdown_relay: str | None = None
 
+    @property
+    def onboard_invite_code(self) -> str:
+        """Return the primary invite code used for app-generated links."""
+
+        return self.onboard_invite_codes[0]
+
     def __post_init__(self) -> None:
         try:
             Fernet(self.cookie_key.encode("ascii"))
@@ -248,6 +255,23 @@ class Settings:
             raise ValueError("SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS must be positive")
         if self.payment_timeout_seconds <= 0:
             raise ValueError("SAFEBOX_PAYMENT_TIMEOUT_SECONDS must be positive")
+        if not self.onboard_invite_codes:
+            raise ValueError("SAFEBOX_ONBOARD_INVITE_CODE is required")
+        seen_invite_codes: set[str] = set()
+        for invite_code in self.onboard_invite_codes:
+            normalized_invite_code = str(invite_code).strip()
+            folded_invite_code = normalized_invite_code.casefold()
+            if not normalized_invite_code:
+                raise ValueError("SAFEBOX_ONBOARD_INVITE_CODE is required")
+            if "/" in normalized_invite_code or "?" in normalized_invite_code:
+                raise ValueError(
+                    "SAFEBOX_ONBOARD_INVITE_CODE values must be single path segments"
+                )
+            if folded_invite_code in seen_invite_codes:
+                raise ValueError(
+                    "SAFEBOX_ONBOARD_INVITE_CODE values must be unique ignoring case"
+                )
+            seen_invite_codes.add(folded_invite_code)
         if self.max_blob_bytes <= 0:
             raise ValueError("SAFEBOX_MAX_BLOB_BYTES must be positive")
         if not self.bitcoin_api_base.strip():
@@ -366,6 +390,14 @@ class Settings:
             allowed_ws_relays=_allowed_ws_relays_from_env(),
             default_bootstrap_relay=default_relay,
             default_home_mint=default_mint,
+            onboard_invite_codes=tuple(
+                code.strip()
+                for code in os.getenv(
+                    "SAFEBOX_ONBOARD_INVITE_CODE",
+                    "INVITEME",
+                ).split(",")
+                if code.strip()
+            ),
             blossom_home_server=os.getenv(
                 "SAFEBOX_BLOSSOM_HOME_SERVER",
                 "https://blossom.getsafebox.app",

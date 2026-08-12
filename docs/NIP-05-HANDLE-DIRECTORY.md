@@ -30,8 +30,10 @@ dots and the reserved `_` name are rejected.
 
 ## First-time onboarding name
 
-The one-click `/onboard` flow assigns the new Acorn a default handle so it is
-immediately reachable through the provider directory. Safebox follows the
+The one-click invite onboarding flow, `/onboard/INVITEME` by default, assigns
+the new Acorn a default handle so it is immediately reachable through the
+provider directory. The configured invite-code list controls which onboarding
+URLs are active, and matching is case-insensitive. Safebox follows the
 mnemonic-name pattern introduced in Safebox-2: it splits the first 32 bits of
 the Acorn public key into two 11-bit indexes into the BIP39 English word list
 and a numeric suffix. Safebox Web constrains the suffix to `0` through `999`,

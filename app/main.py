@@ -178,12 +178,14 @@ def _login_form(
     csrf_token: str,
     error: str | None = None,
     *,
+    onboard_path: str = "/onboard/INVITEME",
     show_page_navigation: bool | None = None,
 ) -> str:
     context = {
         "title": "Connect an Acorn",
         "default_relay": default_relay,
         "csrf_token": csrf_token,
+        "onboard_path": onboard_path,
         "error": error,
     }
     if show_page_navigation is not None:
@@ -764,6 +766,19 @@ def _invoice_svg(invoice: str) -> str:
     return _qr_svg(invoice)
 
 
+def _onboard_invite_code(settings: Settings, value: str) -> str | None:
+    folded = str(value or "").strip().casefold()
+    for invite_code in settings.onboard_invite_codes:
+        if invite_code.casefold() == folded:
+            return invite_code
+    return None
+
+
+def _onboard_path(settings: Settings, invite_code: str | None = None) -> str:
+    code = settings.onboard_invite_code if invite_code is None else invite_code
+    return f"/onboard/{quote(code, safe='')}"
+
+
 async def _load_new_acorn_with_retry(
     acorn: Acorn,
     *,
@@ -910,6 +925,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             _login_form(
                 settings.default_bootstrap_relay,
                 CsrfProtector(settings).issue(),
+                onboard_path=_onboard_path(settings),
                 show_page_navigation=False,
             )
         )
@@ -924,10 +940,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     @app.get("/onboard", response_class=HTMLResponse)
-    async def onboard(request: Request):
-        """Provide the one-action entry point for creating a new Acorn."""
+    async def onboard_default(request: Request):
+        """Redirect to the configured invite-code onboarding entry point."""
 
         settings = request.app.state.settings
+        return RedirectResponse(_onboard_path(settings), status_code=303)
+
+    @app.get("/onboard/{invite_code}", response_class=HTMLResponse)
+    async def onboard(request: Request, invite_code: str):
+        """Provide the invite-code entry point for creating a new Acorn."""
+
+        settings = request.app.state.settings
+        canonical_invite_code = _onboard_invite_code(settings, invite_code)
+        if canonical_invite_code is None:
+            return HTMLResponse("Invite code not found.", status_code=404)
         session_token = request.cookies.get(cookie_name_for_request(request))
         if session_token:
             try:
@@ -935,32 +961,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except ValueError:
                 pass
             else:
-                return RedirectResponse("/", status_code=303)
+                return RedirectResponse("/wallet", status_code=303)
         return render_template(
             "onboard.html",
             title="Welcome to Safebox",
             csrf_token=CsrfProtector(settings).issue(),
+            onboard_path=_onboard_path(settings, canonical_invite_code),
             default_relay=settings.default_bootstrap_relay,
             default_mint=settings.default_home_mint,
-        )
-
-    @app.get("/onboard/friend", response_class=HTMLResponse)
-    async def onboard_friend(
-        request: Request,
-        credentials: CredentialsDependency,
-    ) -> HTMLResponse:
-        """Present the public onboarding entry point as a scannable QR code."""
-
-        _ = credentials
-        onboarding_url = str(request.url_for("onboard"))
-        return HTMLResponse(
-            render_template(
-                "onboard_friend.html",
-                title="Onboard a Friend",
-                onboarding_url=onboarding_url,
-                onboarding_qr=_qr_svg(onboarding_url, include_acorn=True),
-            ),
-            headers={"Cache-Control": "no-store"},
         )
 
     @app.get("/login", response_class=HTMLResponse)
@@ -969,6 +977,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _login_form(
             settings.default_bootstrap_relay,
             CsrfProtector(settings).issue(),
+            onboard_path=_onboard_path(settings),
         )
 
     @app.get("/create", response_class=HTMLResponse)
@@ -1004,6 +1013,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "onboard.html",
                         title="Welcome to Safebox",
                         csrf_token=form_token.issue(),
+                        onboard_path=_onboard_path(settings),
                         default_relay=settings.default_bootstrap_relay,
                         default_mint=settings.default_home_mint,
                         mnemonic_words=mnemonic_words,
@@ -1228,14 +1238,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     @app.post("/onboard", response_class=HTMLResponse)
+    async def create_default_streamlined_onboarded_acorn(
+        request: Request,
+        csrf_token: str = Form(...),
+        mnemonic_words: str = Form("12"),
+    ):
+        """Accept legacy onboarding posts through the configured invite code."""
+
+        settings = request.app.state.settings
+        return await create_streamlined_onboarded_acorn(
+            request=request,
+            invite_code=settings.onboard_invite_code,
+            csrf_token=csrf_token,
+            mnemonic_words=mnemonic_words,
+        )
+
+    @app.post("/onboard/{invite_code}", response_class=HTMLResponse)
     async def create_streamlined_onboarded_acorn(
         request: Request,
+        invite_code: str,
         csrf_token: str = Form(...),
         mnemonic_words: str = Form("12"),
     ):
         """Create an Acorn using server-selected onboarding defaults."""
 
         settings = request.app.state.settings
+        canonical_invite_code = _onboard_invite_code(settings, invite_code)
+        if canonical_invite_code is None:
+            return HTMLResponse("Invite code not found.", status_code=404)
         request.state.streamlined_onboarding = True
         return await create_acorn(
             request=request,
@@ -1268,6 +1298,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     settings.default_bootstrap_relay,
                     CsrfProtector(settings).issue(),
                     "The form token is invalid or expired. Reload and try again.",
+                    onboard_path=_onboard_path(settings),
                 ),
                 status_code=403,
             )
@@ -1305,6 +1336,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     settings.default_bootstrap_relay,
                     CsrfProtector(settings).issue(),
                     str(exc),
+                    onboard_path=_onboard_path(settings),
                 ),
                 status_code=400,
             )
@@ -1846,6 +1878,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             balance_status=balance_status,
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
+            onboard_path=_onboard_path(settings),
             csrf_token=csrf_token,
         )
 
