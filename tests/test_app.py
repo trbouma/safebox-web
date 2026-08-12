@@ -138,6 +138,7 @@ class FakeLoadedAcorn:
         verification_status: str = "clean",
         transaction_history: list[dict] | None = None,
         receive_result: dict | None = None,
+        delayed_transaction_history: list[list[dict]] | None = None,
     ) -> None:
         self.balance = balance
         self.proofs = [object()] if balance else []
@@ -165,6 +166,7 @@ class FakeLoadedAcorn:
             "accepted_amount": 0,
         }
         self.receive_calls = 0
+        self.delayed_transaction_history = list(delayed_transaction_history or [])
         self.record_transfer_create_calls: list[dict] = []
         self.record_transfer_inspect_calls: list[dict] = []
         self.record_transfer_accept_calls: list[dict] = []
@@ -345,6 +347,8 @@ class FakeLoadedAcorn:
         self.history_entries.append(entry)
 
     async def get_tx_history(self) -> list[dict]:
+        if self.delayed_transaction_history:
+            self.history_entries = self.delayed_transaction_history.pop(0)
         return self.history_entries
 
     async def sweep_ecash_transfers(self) -> dict:
@@ -2510,11 +2514,19 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
 
     assert response.status_code == 200
     assert '<h1 class="transaction-headline">Transaction History</h1>' in response.text
+    assert '<section class="wallet-balance transaction-balance"' in response.text
+    assert "Mint-confirmed spendable balance" in response.text
     assert "Incoming ecash" not in response.text
     assert response.text.index(">Home</a>") < response.text.index(
-        'aria-label="Transaction history"'
+        'class="wallet-balance transaction-balance"'
     )
     assert response.text.index(">Back to Wallet</a>") < response.text.index(
+        'class="wallet-balance transaction-balance"'
+    )
+    assert response.text.index('class="wallet-balance transaction-balance"') < response.text.index(
+        'aria-label="Incoming funds"'
+    )
+    assert response.text.index('aria-label="Incoming funds"') < response.text.index(
         'aria-label="Transaction history"'
     )
     assert 'aria-label="Transaction history"' in response.text
@@ -2580,6 +2592,7 @@ def test_transaction_history_can_receive_incoming_ecash() -> None:
     assert response.status_code == 200
     assert acorn.receive_calls == 1
     assert "Received 3 sats from 1 incoming ecash transfer(s)." in response.text
+    assert '<section class="wallet-balance transaction-balance"' in response.text
     assert "+3 sats" in response.text
     assert "ecash transfer received" in response.text
 
@@ -2606,6 +2619,41 @@ def test_receive_incoming_ecash_warns_when_credit_history_is_missing() -> None:
     assert "Received 3 sats from 1 incoming ecash transfer(s)." in response.text
     assert "wallet balance may already reflect the accepted funds" in response.text
     assert "Reload transaction history before relying on the journal" in response.text
+
+
+def test_receive_incoming_ecash_retries_until_credit_history_is_visible() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(
+        receive_result={
+            "queried": 1,
+            "accepted_count": 1,
+            "accepted_amount": 23,
+        },
+        delayed_transaction_history=[
+            [],
+            [
+                {
+                    "create_time": "2026-08-04 12:00:00",
+                    "tx_type": "C",
+                    "amount": 23,
+                    "comment": "ecash transfer received",
+                    "current_balance": 344,
+                }
+            ],
+        ],
+    )
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/transactions/receive",
+        data={"csrf_token": valid_csrf_token()},
+    )
+
+    assert response.status_code == 200
+    assert "Received 23 sats from 1 incoming ecash transfer(s)." in response.text
+    assert "+23 sats" in response.text
+    assert "wallet balance may already reflect the accepted funds" not in response.text
 
 
 def test_receive_incoming_ecash_rejects_invalid_csrf() -> None:

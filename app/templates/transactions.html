@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
+{% if wallet_balance is not none %}
+<section class="wallet-balance transaction-balance" aria-labelledby="transaction-balance-heading">
+  <h2 id="transaction-balance-heading">Balance</h2>
+  <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
+  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance{% else %}Balance requires verification—review the advisory below{% endif %}</p>
+</section>
+{% endif %}
 <section class="incoming-funds" aria-label="Incoming funds">
   <form method="post" action="/transactions/receive"
         data-progress-message="Checking for incoming funds and refreshing accepted proofs. Please wait."

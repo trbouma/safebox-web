@@ -519,6 +519,8 @@ def _transactions_page(
     csrf_token: str,
     notice: str | None = None,
     retention_notice: str = "",
+    wallet_balance: int | None = None,
+    wallet_balance_verified: bool = False,
 ) -> str:
     """Render transaction history with an explicit incoming funds check."""
 
@@ -530,6 +532,8 @@ def _transactions_page(
         csrf_token=csrf_token,
         notice=notice,
         retention_notice=retention_notice,
+        wallet_balance=wallet_balance,
+        wallet_balance_verified=wallet_balance_verified,
     )
 
 
@@ -554,6 +558,33 @@ def _history_has_receive_credit(
         if "ecash transfer received" in comment:
             return True
     return False
+
+
+async def _read_receive_history_with_retry(
+    acorn,
+    *,
+    accepted_amount: int,
+    accepted_count: int,
+    timeout: float,
+    attempts: int = 4,
+    delay_seconds: float = 0.35,
+) -> list[dict]:
+    """Read transaction history, allowing brief relay read-after-write lag."""
+
+    last_history: list[dict] = []
+    for attempt in range(max(1, attempts)):
+        history = await asyncio.wait_for(acorn.get_tx_history(), timeout=timeout)
+        last_history = history if isinstance(history, list) else []
+        if _history_has_receive_credit(
+            last_history,
+            accepted_amount=accepted_amount,
+            accepted_count=accepted_count,
+        ):
+            return last_history
+        if accepted_count <= 0 or attempt == attempts - 1:
+            return last_history
+        await asyncio.sleep(delay_seconds)
+    return last_history
 
 
 def _record_form(
@@ -3142,6 +3173,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/transactions", response_class=HTMLResponse)
     async def transactions(request: Request, acorn: LoadedAcornDependency):
         settings = request.app.state.settings
+        verification, _verification_error = await _read_proof_verification(
+            acorn,
+            settings.wallet_load_timeout_seconds,
+        )
+        wallet_balance, wallet_balance_verified = _wallet_balance_summary(
+            acorn.get_balance(),
+            verification,
+        )
         try:
             history = await asyncio.wait_for(
                 acorn.get_tx_history(),
@@ -3184,6 +3223,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             entries,
             CsrfProtector(settings).issue(),
             retention_notice=_ecash_retention_notice(settings),
+            wallet_balance=wallet_balance,
+            wallet_balance_verified=wallet_balance_verified,
         )
 
     @app.post("/transactions/receive", response_class=HTMLResponse)
@@ -3246,8 +3287,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             notice = f"No incoming ecash was accepted ({queried:,} transfer event(s) checked)."
 
         try:
-            history = await asyncio.wait_for(
-                acorn.get_tx_history(),
+            history = await _read_receive_history_with_retry(
+                acorn,
+                accepted_amount=accepted_amount,
+                accepted_count=accepted_count,
                 timeout=settings.wallet_load_timeout_seconds,
             )
         except Exception as exc:
@@ -3266,6 +3309,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=200,
             )
 
+        verification, _verification_error = await _read_proof_verification(
+            acorn,
+            settings.wallet_load_timeout_seconds,
+        )
+        wallet_balance, wallet_balance_verified = _wallet_balance_summary(
+            acorn.get_balance(),
+            verification,
+        )
         entries = history if isinstance(history, list) else []
         entries = sorted(
             entries,
@@ -3291,6 +3342,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CsrfProtector(settings).issue(),
             notice=notice,
             retention_notice=_ecash_retention_notice(settings),
+            wallet_balance=wallet_balance,
+            wallet_balance_verified=wallet_balance_verified,
         )
 
     @app.get("/record/present", response_class=HTMLResponse)

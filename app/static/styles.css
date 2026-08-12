@@ -215,6 +215,7 @@ figure.blob-preview { padding: .75rem; }
 .danger-zone h2 { margin-top: 0; font-size: 1.15rem; }
 .danger-button { border-color: var(--error); color: var(--error); font-weight: 700; }
 .transaction-headline { text-align: center; }
+.transaction-balance { margin-top: 0; }
 .incoming-funds { margin: 0 0 1.25rem; }
 .transaction-list { display: grid; gap: 1rem; margin: 1.5rem 0; }
 .transaction-card { border: 1px solid var(--border); border-left: .35rem solid #777; border-radius: .8rem; padding: 1rem; background: var(--surface); min-width: 0; }
