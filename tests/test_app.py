@@ -178,6 +178,7 @@ class FakeLoadedAcorn:
         self.deferred_recovery = {"status": "ABSENT", "pending": False}
         self.deferred_recovery_complete_calls = 0
         self.record_protection_activation_calls: list[str] = []
+        self.continuity_receipts: list[dict] = []
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -357,6 +358,9 @@ class FakeLoadedAcorn:
         if self.delayed_transaction_history:
             self.history_entries = self.delayed_transaction_history.pop(0)
         return self.history_entries
+
+    async def get_continuity_receipts(self) -> list[dict]:
+        return self.continuity_receipts
 
     async def sweep_ecash_transfers(self) -> dict:
         self.receive_calls += 1
@@ -2551,7 +2555,7 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
 
     assert response.status_code == 200
     assert '<h1 class="transaction-headline">Transaction History</h1>' in response.text
-    assert '<section class="wallet-balance transaction-balance"' in response.text
+    assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
     assert "Mint-confirmed spendable balance" in response.text
     assert "Incoming ecash" not in response.text
     assert response.text.index(">Home</a>") < response.text.index(
@@ -2600,6 +2604,66 @@ def test_transaction_history_has_an_empty_state() -> None:
     assert "No transaction history was found" in response.text
 
 
+def test_wallet_links_to_incoming_funds_check(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert '<a href="/transactions">Check for Incoming Funds</a>' in response.text
+
+
+def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn(balance=100)
+    acorn.continuity_receipts = [
+        {
+            "event_id": "continuity-event-1",
+            "amount": 5,
+            "timestamp": 1_786_430_400,
+            "comment": "local market",
+            "status": "provisional",
+        }
+    ]
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "5 sats awaiting confirmation" in response.text
+    assert "1 incoming payment" in response.text
+    assert "100 <span>sats</span>" in response.text
+
+
+def test_transaction_history_shows_persisted_payment_awaiting_confirmation() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=100)
+    acorn.continuity_receipts = [
+        {
+            "event_id": "continuity-event-1",
+            "amount": 5,
+            "timestamp": 1_786_430_400,
+            "comment": "local market",
+            "status": "provisional",
+        }
+    ]
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/transactions")
+
+    assert response.status_code == 200
+    assert "Awaiting Confirmation" in response.text
+    assert "+5 sats" in response.text
+    assert "Confirmation pending" in response.text
+    assert "not included in the spendable balance" in response.text
+    assert "local market" in response.text
+    assert "No confirmed transaction history was found" in response.text
+
+
 def test_transaction_history_can_receive_incoming_ecash() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(
@@ -2629,7 +2693,7 @@ def test_transaction_history_can_receive_incoming_ecash() -> None:
     assert response.status_code == 200
     assert acorn.receive_calls == 1
     assert "Received 3 sats from 1 incoming ecash transfer(s)." in response.text
-    assert '<section class="wallet-balance transaction-balance"' in response.text
+    assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
     assert "+3 sats" in response.text
     assert "ecash transfer received" in response.text
 

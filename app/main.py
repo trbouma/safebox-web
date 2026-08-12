@@ -520,6 +520,39 @@ def _transaction_history_view(entries: list[dict]) -> list[dict]:
     return cards
 
 
+def _continuity_receipt_view(receipts: list[dict]) -> list[dict]:
+    """Render provisional receipts without treating them as spendable credits."""
+
+    cards = []
+    for receipt in receipts:
+        if not isinstance(receipt, dict):
+            continue
+        timestamp = int(receipt.get("timestamp") or 0)
+        created = (
+            datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+            if timestamp
+            else "Pending"
+        )
+        cards.append(
+            {
+                "event_id": str(receipt.get("event_id") or ""),
+                "amount": f"{int(receipt.get('amount') or 0):,}",
+                "created": created,
+                "comment": str(receipt.get("comment") or ""),
+                "status": "Confirmation pending",
+            }
+        )
+    return cards
+
+
+async def _read_continuity_receipts(acorn, timeout: float) -> list[dict]:
+    reader = getattr(acorn, "get_continuity_receipts", None)
+    if reader is None:
+        return []
+    receipts = await asyncio.wait_for(reader(), timeout=timeout)
+    return receipts if isinstance(receipts, list) else []
+
+
 def _transactions_page(
     entries: list[dict],
     csrf_token: str,
@@ -527,6 +560,7 @@ def _transactions_page(
     retention_notice: str = "",
     wallet_balance: int | None = None,
     wallet_balance_verified: bool = False,
+    continuity_receipts: list[dict] | None = None,
 ) -> str:
     """Render transaction history with an explicit incoming funds check."""
 
@@ -540,6 +574,7 @@ def _transactions_page(
         retention_notice=retention_notice,
         wallet_balance=wallet_balance,
         wallet_balance_verified=wallet_balance_verified,
+        continuity_receipts=_continuity_receipt_view(continuity_receipts or []),
     )
 
 
@@ -2070,6 +2105,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             acorn.get_balance(),
             verification,
         )
+        try:
+            continuity_receipts = await _read_continuity_receipts(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "continuity receipt lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            continuity_receipts = []
+        pending_continuity_amount = sum(
+            int(receipt.get("amount") or 0)
+            for receipt in continuity_receipts
+            if str(receipt.get("status") or "provisional") == "provisional"
+        )
         return render_template(
             "wallet.html",
             title="Safebox is Connected",
@@ -2097,6 +2148,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             balance_status=balance_status,
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
+            pending_continuity_count=len(continuity_receipts),
+            pending_continuity_amount=pending_continuity_amount,
             onboard_invite_path="/invite",
             csrf_token=csrf_token,
         )
@@ -3377,12 +3430,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             reverse=True,
         )
+        try:
+            continuity_receipts = await _read_continuity_receipts(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "continuity receipt lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            continuity_receipts = []
         return _transactions_page(
             entries,
             CsrfProtector(settings).issue(),
             retention_notice=_ecash_retention_notice(settings),
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
+            continuity_receipts=continuity_receipts,
         )
 
     @app.post("/transactions/receive", response_class=HTMLResponse)
@@ -3541,6 +3606,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             reverse=True,
         )
+        try:
+            continuity_receipts = await _read_continuity_receipts(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "continuity receipt lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            continuity_receipts = []
         if not _history_has_receive_credit(
             entries,
             accepted_amount=accepted_amount,
@@ -3558,6 +3634,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             retention_notice=_ecash_retention_notice(settings),
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
+            continuity_receipts=continuity_receipts,
         )
 
     @app.get("/record/present", response_class=HTMLResponse)
