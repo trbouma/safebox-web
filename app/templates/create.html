@@ -14,8 +14,8 @@ on the home relay, and start a user-controlled session.</p>
          value="{{ default_mint }}" required spellcheck="false">
   <label for="mnemonic_words">Safebox Acorn mnemonic length</label>
   <select id="mnemonic_words" name="mnemonic_words" required>
-    <option value="12"{% if mnemonic_words == "12" %} selected{% endif %}>12 words (default)</option>
-    <option value="24"{% if mnemonic_words == "24" %} selected{% endif %}>24 words</option>
+    <option value="24"{% if mnemonic_words == "24" %} selected{% endif %}>24 words (default)</option>
+    <option value="12"{% if mnemonic_words == "12" %} selected{% endif %}>12 words</option>
   </select>
   <p class="muted">Both options can recover the Acorn. The 24-word option uses
   256 bits of generated entropy instead of 128 bits.</p>

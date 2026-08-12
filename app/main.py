@@ -201,7 +201,7 @@ def _create_form(
     default_mint: str,
     csrf_token: str,
     error: str | None = None,
-    mnemonic_words: str = "12",
+    mnemonic_words: str = "24",
     use_external_entropy: bool = False,
     defer_recovery: bool = False,
 ) -> str:
@@ -783,9 +783,9 @@ async def _load_new_acorn_with_retry(
     acorn: Acorn,
     *,
     timeout: float,
-    attempts: int = 2,
+    attempts: int = 3,
 ) -> None:
-    """Verify a newly created Acorn, allowing one transient relay readback miss."""
+    """Verify a newly created Acorn, allowing transient relay readback misses."""
 
     last_error: BaseException | None = None
     for attempt in range(1, attempts + 1):
@@ -805,6 +805,43 @@ async def _load_new_acorn_with_retry(
             await asyncio.sleep(0.25)
     if last_error is not None:
         raise last_error
+
+
+async def _store_deferred_recovery_with_retry(
+    acorn: Acorn,
+    *,
+    timeout: float,
+    attempts: int = 3,
+) -> dict:
+    """Store deferred recovery, allowing transient relay verification misses."""
+
+    last_error: BaseException | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            deferred_state = await asyncio.wait_for(
+                acorn.store_deferred_recovery(),
+                timeout=timeout,
+            )
+            if not (
+                deferred_state.get("pending")
+                and deferred_state.get("verified")
+            ):
+                raise RuntimeError("deferred recovery readback was not verified")
+            return deferred_state
+        except Exception as exc:
+            last_error = exc
+            if attempt >= attempts:
+                break
+            logger.info(
+                "deferred recovery relay readback retrying attempt=%s max_attempts=%s error_type=%s",
+                attempt,
+                attempts,
+                type(exc).__name__,
+            )
+            await asyncio.sleep(0.25)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("deferred recovery readback was not verified")
 
 
 def _deposit_invoice_page(
@@ -1020,7 +1057,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         csrf_token: str = Form(...),
         home_relay: str = Form(...),
         home_mint: str = Form(...),
-        mnemonic_words: str = Form("12"),
+        mnemonic_words: str = Form("24"),
         use_external_entropy: str | None = Form(None),
         entropy_hex: str = Form(""),
         entropy_confirmation: str = Form(""),
@@ -1187,15 +1224,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         deferred_recovery_error = None
         if defer_recovery == "yes":
             try:
-                deferred_state = await asyncio.wait_for(
-                    acorn.store_deferred_recovery(),
+                await _store_deferred_recovery_with_retry(
+                    acorn,
                     timeout=settings.wallet_load_timeout_seconds,
                 )
-                if not (
-                    deferred_state.get("pending")
-                    and deferred_state.get("verified")
-                ):
-                    raise RuntimeError("deferred recovery readback was not verified")
             except TimeoutError:
                 logger.warning(
                     "deferred recovery storage timed out relay=%s",
@@ -1266,7 +1298,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def create_default_streamlined_onboarded_acorn(
         request: Request,
         csrf_token: str = Form(...),
-        mnemonic_words: str = Form("12"),
+        mnemonic_words: str = Form("24"),
     ):
         """Accept legacy onboarding posts through the configured invite code."""
 
@@ -1283,7 +1315,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         invite_code: str,
         csrf_token: str = Form(...),
-        mnemonic_words: str = Form("12"),
+        mnemonic_words: str = Form("24"),
     ):
         """Create an Acorn using server-selected onboarding defaults."""
 

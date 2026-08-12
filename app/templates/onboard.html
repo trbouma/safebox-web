@@ -9,8 +9,8 @@ as its relay state and default handle have been verified.</p>
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="onboard-mnemonic-words">Safebox Acorn mnemonic</label>
     <select id="onboard-mnemonic-words" name="mnemonic_words">
-      <option value="12"{% if mnemonic_words | default('12') == '12' %} selected{% endif %}>12 words</option>
-      <option value="24"{% if mnemonic_words | default('12') == '24' %} selected{% endif %}>24 words</option>
+      <option value="24"{% if mnemonic_words | default('24') == '24' %} selected{% endif %}>24 words</option>
+      <option value="12"{% if mnemonic_words | default('24') == '12' %} selected{% endif %}>12 words</option>
     </select>
     <p>By selecting <strong>Create My Acorn</strong>, I agree to create a new
     Acorn and complete its recovery backup later.</p>

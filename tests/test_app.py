@@ -658,8 +658,8 @@ def test_onboard_offers_single_confirmed_fast_creation_path() -> None:
     assert 'name="defer_recovery"' not in response.text
     assert 'name="assign_default_handle"' not in response.text
     assert 'name="mnemonic_words"' in response.text
-    assert '<option value="12" selected>12 words</option>' in response.text
-    assert '<option value="24">24 words</option>' in response.text
+    assert '<option value="24" selected>24 words</option>' in response.text
+    assert '<option value="12">12 words</option>' in response.text
     assert 'name="confirmed"' not in response.text
     assert 'name="confirmed" type="checkbox"' not in response.text
     assert "Create My Acorn" in response.text
@@ -799,6 +799,43 @@ def test_quick_onboarding_retries_transient_relay_readback(
     assert response.headers["location"] == "/wallet"
     assert FlakyReadbackAcorn.load_attempts == 2
     assert FakeCreatedAcorn.instances[0].loaded is True
+
+
+def test_quick_onboarding_retries_transient_deferred_recovery_readback(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    class FlakyDeferredRecoveryAcorn(FakeCreatedAcorn):
+        deferred_attempts = 0
+
+        async def store_deferred_recovery(self, **kwargs) -> dict:
+            self.__class__.deferred_attempts += 1
+            self.deferred_recovery_store_calls.append(kwargs)
+            if self.__class__.deferred_attempts == 1:
+                return {"status": "PENDING", "pending": True, "verified": False}
+            return {"status": "PENDING", "pending": True, "verified": True}
+
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FlakyDeferredRecoveryAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda strength=256: (TEST_MNEMONIC, TEST_NSEC),
+    )
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/onboard/INVITEME",
+            data={"csrf_token": CsrfProtector(settings).issue()},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/wallet"
+    assert FlakyDeferredRecoveryAcorn.deferred_attempts == 2
+    assert len(FakeCreatedAcorn.instances[0].deferred_recovery_store_calls) == 2
 
 
 def test_quick_onboarding_rejects_invalid_mnemonic_length() -> None:
@@ -1352,8 +1389,8 @@ def test_create_form_displays_default_relay_and_mint() -> None:
     assert 'name="home_mint"' in response.text
     assert TEST_SETTINGS.default_home_mint in response.text
     assert 'name="mnemonic_words"' in response.text
-    assert '<option value="12" selected>' in response.text
-    assert '<option value="24">' in response.text
+    assert '<option value="24" selected>' in response.text
+    assert '<option value="12">' in response.text
     assert "Bring your own entropy" in response.text
     assert 'name="use_external_entropy" type="checkbox"' in response.text
     assert 'name="entropy_hex" type="password"' in response.text
@@ -1761,7 +1798,7 @@ def test_create_acorn_requires_confirmation_before_generating(monkeypatch) -> No
     assert SECURE_COOKIE_NAME not in response.headers.get("set-cookie", "")
 
 
-def test_create_acorn_uses_12_words_by_default(monkeypatch) -> None:
+def test_create_acorn_uses_24_words_by_default(monkeypatch) -> None:
     FakeCreatedAcorn.instances.clear()
     generated_strengths = []
     monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
@@ -1784,7 +1821,7 @@ def test_create_acorn_uses_12_words_by_default(monkeypatch) -> None:
     )
 
     assert response.status_code == 201
-    assert generated_strengths == [128]
+    assert generated_strengths == [256]
 
 
 def test_create_acorn_ignores_unselected_autofilled_entropy(monkeypatch) -> None:
