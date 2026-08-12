@@ -203,10 +203,19 @@ figure.blob-preview { padding: .75rem; }
 .pdf-open-link { display: inline-flex; min-height: 2.75rem; align-items: center; padding: .55rem .8rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); font-weight: 700; }
 .record-actions { display: flex; justify-content: flex-end; margin: 1rem 0; }
 .record-add { display: inline-flex; min-height: 2.75rem; box-sizing: border-box; align-items: center; justify-content: center; padding: .55rem .85rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); font-weight: 700; text-decoration: none; }
+.record-view-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 1rem 0; }
+.record-view-switcher .active { border-color: var(--link); background: var(--surface-soft); color: var(--link); }
+.record-breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin: 1rem 0; color: var(--muted); }
+.record-breadcrumbs a { font-weight: 700; }
 .record-list { display: grid; gap: .75rem; margin: 1rem 0 1.5rem; }
 .record-list-item { display: flex; box-sizing: border-box; width: 100%; min-height: 3.25rem; align-items: center; padding: .8rem 1rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); color: var(--text); font-weight: 700; text-decoration: none; }
 .record-list-item::after { content: "\2192"; margin-left: auto; padding-left: 1rem; color: var(--link); font-size: 1.15rem; }
 .record-list-item:hover, .record-list-item:focus-visible { border-color: var(--link); color: var(--link); background: var(--surface-soft); }
+.record-folder-item { background: var(--surface-soft); }
+.record-folder-item > span { margin-right: .55rem; }
+.record-page-status { margin: -.5rem 0 1rem; color: var(--muted); text-align: center; }
+.record-pagination { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 1rem 0 1.5rem; }
+.record-pagination .nav-button:only-child { grid-column: 1 / -1; }
 .record-capabilities { display: grid; grid-template-columns: 1fr; gap: .65rem; margin: 1.25rem 0; }
 .record-capability { display: flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; margin: 0; padding: .55rem .6rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--control); color: var(--text); font: inherit; font-weight: 700; text-align: center; text-decoration: none; }
 .record-capability:hover, .record-capability:focus-visible { border-color: var(--link); color: var(--link); }
@@ -262,6 +271,8 @@ figure.blob-preview { padding: .75rem; }
   .blob-preview-pdf { min-height: 24rem; }
   .record-actions { justify-content: stretch; }
   .record-add { width: 100%; }
+  .record-pagination { grid-template-columns: 1fr; }
+  .record-pagination .nav-button { width: 100%; }
   .transaction-header { align-items: flex-start; flex-direction: column; gap: .2rem; }
   .transaction-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

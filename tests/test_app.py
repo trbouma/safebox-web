@@ -4054,6 +4054,140 @@ def test_record_index_links_encoded_labels() -> None:
     assert ">Open</a>" not in response.text
 
 
+def test_record_index_orders_unique_labels_by_last_modified_descending() -> None:
+    class TimestampedRecordAcorn(FakeLoadedAcorn):
+        async def get_user_records(self, **_kwargs) -> list[dict]:
+            return [
+                {"tag": ["Older Record"], "timestamp": 100},
+                {"tag": ["Recently Updated"], "timestamp": 200},
+                {"tag": ["Newest Record"], "timestamp": 300},
+                {"tag": ["Recently Updated"], "timestamp": 250},
+            ]
+
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: TimestampedRecordAcorn()
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/records")
+
+    assert response.status_code == 200
+    assert response.text.count("Recently Updated") == 1
+    newest_position = response.text.index("Newest Record")
+    updated_position = response.text.index("Recently Updated")
+    older_position = response.text.index("Older Record")
+    assert newest_position < updated_position < older_position
+
+
+def test_record_index_paginates_ten_clickable_panels_at_a_time() -> None:
+    class PaginatedRecordAcorn(FakeLoadedAcorn):
+        async def get_user_records(self, **_kwargs) -> list[dict]:
+            return [
+                {
+                    "tag": [f"Record {number:02d}"],
+                    "timestamp": number,
+                }
+                for number in range(1, 26)
+            ]
+
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: PaginatedRecordAcorn()
+    client = TestClient(app, base_url="https://safebox.example")
+
+    first = client.get("/records")
+    second = client.get("/records", params={"page": "2"})
+    third = client.get("/records", params={"page": "3"})
+
+    assert first.status_code == second.status_code == third.status_code == 200
+    assert first.text.count('class="record-list-item"') == 10
+    assert second.text.count('class="record-list-item"') == 10
+    assert third.text.count('class="record-list-item"') == 5
+    assert "Record 25" in first.text
+    assert "Record 16" in first.text
+    assert "Record 15" not in first.text
+    assert "Record 15" in second.text
+    assert "Record 06" in second.text
+    assert "Record 05" in third.text
+    assert "Page 1 of 3 · 25 records" in first.text
+    assert 'rel="next" href="/records?page=2"' in first.text
+    assert 'rel="prev" href="/records?page=1"' in second.text
+    assert 'rel="next" href="/records?page=3"' in second.text
+    assert 'rel="prev" href="/records?page=2"' in third.text
+    assert 'rel="next"' not in third.text
+
+
+def test_record_index_rejects_invalid_page_and_clamps_excessive_page() -> None:
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    client = TestClient(app, base_url="https://safebox.example")
+
+    invalid = client.get("/records", params={"page": "not-a-number"})
+    excessive = client.get("/records", params={"page": "999"})
+
+    assert invalid.status_code == 400
+    assert "requested records page is invalid" in invalid.text
+    assert excessive.status_code == 200
+    assert "Page 1 of 1 · 3 records" in excessive.text
+
+
+def test_record_index_folder_view_groups_paths_and_preserves_flat_records() -> None:
+    class FolderRecordAcorn(FakeLoadedAcorn):
+        async def get_user_records(self, **_kwargs) -> list[dict]:
+            return [
+                {"tag": ["Health/Passport"], "timestamp": 400},
+                {"tag": ["Health/Labs/2026"], "timestamp": 300},
+                {"tag": ["Finance/Taxes"], "timestamp": 200},
+                {"tag": ["Emergency Contacts"], "timestamp": 100},
+            ]
+
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FolderRecordAcorn()
+    client = TestClient(app, base_url="https://safebox.example")
+
+    root = client.get("/records", params={"view": "folders"})
+    health = client.get(
+        "/records",
+        params={"view": "folders", "folder": "Health"},
+    )
+    labs = client.get(
+        "/records",
+        params={"view": "folders", "folder": "Health/Labs"},
+    )
+
+    assert root.status_code == health.status_code == labs.status_code == 200
+    assert 'aria-current="page">Folders</a>' in root.text
+    assert 'href="/records?view=folders&amp;folder=Finance"' in root.text
+    assert 'href="/records?view=folders&amp;folder=Health"' in root.text
+    assert 'href="/record?label=Emergency+Contacts"' in root.text
+    assert "Passport" not in root.text
+    assert 'href="/record?label=Health%2FPassport"' in health.text
+    assert ">Passport</a>" in health.text
+    assert 'href="/records?view=folders&amp;folder=Health%2FLabs"' in health.text
+    assert "2026" not in health.text
+    assert 'aria-label="Record folder breadcrumbs"' in labs.text
+    assert 'href="/records?view=folders">Records</a>' in labs.text
+    assert 'href="/records?view=folders&amp;folder=Health">Health</a>' in labs.text
+    assert 'href="/record?label=Health%2FLabs%2F2026"' in labs.text
+    assert ">2026</a>" in labs.text
+    assert "Page 1 of" not in root.text
+
+
+def test_record_index_rejects_unknown_view_and_handles_empty_folder() -> None:
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    client = TestClient(app, base_url="https://safebox.example")
+
+    invalid = client.get("/records", params={"view": "grid"})
+    empty = client.get(
+        "/records",
+        params={"view": "folders", "folder": "Unknown"},
+    )
+
+    assert invalid.status_code == 400
+    assert "requested records view is invalid" in invalid.text
+    assert empty.status_code == 200
+    assert "No records or folders were found here." in empty.text
+
+
 def test_record_share_creates_base64url_qr_from_explicit_action() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()

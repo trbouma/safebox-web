@@ -95,11 +95,14 @@ from app.security import (
     normalize_home_mint,
     set_session_cookie,
 )
+
+
 from app.templating import render_template
 
 
 logger = logging.getLogger("safebox_web.security")
 BITCOIN_TXID_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
+RECORDS_PAGE_SIZE = 10
 
 
 def _humanize_retention(seconds: int) -> str:
@@ -587,6 +590,60 @@ def _transactions_page(
         wallet_balance_verified=wallet_balance_verified,
         pending_amount=int(pending_amount),
     )
+
+
+async def _record_index_entries(acorn, timeout: float) -> list[dict]:
+    """Load unique record labels ordered by newest relay event first."""
+
+    records_reader = getattr(acorn, "get_user_records", None)
+    if callable(records_reader):
+        records = await asyncio.wait_for(
+            records_reader(record_kind=37375, reverse=True),
+            timeout=timeout,
+        )
+        if isinstance(records, list):
+            newest_by_label: dict[str, int] = {}
+            for record in records:
+                if not isinstance(record, dict):
+                    continue
+                tag = record.get("tag")
+                if isinstance(tag, list) and tag:
+                    label = str(tag[0]).strip()
+                elif isinstance(tag, str):
+                    label = tag.strip()
+                else:
+                    continue
+                if not label:
+                    continue
+                try:
+                    modified_at = int(
+                        record.get("timestamp")
+                        or record.get("created_at")
+                        or 0
+                    )
+                except (TypeError, ValueError):
+                    modified_at = 0
+                newest_by_label[label] = max(
+                    newest_by_label.get(label, 0),
+                    modified_at,
+                )
+            return [
+                {"label": label, "modified_at": modified_at}
+                for label, modified_at in sorted(
+                    newest_by_label.items(),
+                    key=lambda item: (-item[1], item[0].casefold(), item[0]),
+                )
+            ]
+
+    labels = await asyncio.wait_for(
+        acorn.get_user_record_labels(),
+        timeout=timeout,
+    )
+    unique_labels = {str(label).strip() for label in labels if str(label).strip()}
+    return [
+        {"label": label, "modified_at": 0}
+        for label in sorted(unique_labels, key=lambda item: (item.casefold(), item))
+    ]
 
 
 def _history_has_receive_credit(
@@ -4228,12 +4285,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/records", response_class=HTMLResponse)
-    async def records(request: Request, acorn: LoadedAcornDependency):
+    async def records(
+        request: Request,
+        acorn: LoadedAcornDependency,
+        page: str | None = None,
+        view: str | None = None,
+        folder: str | None = None,
+    ):
         settings = request.app.state.settings
+        record_view = (view or "list").strip().lower()
+        if record_view not in {"list", "folders"}:
+            return HTMLResponse(
+                _page(
+                    "Manage Records",
+                    '<p class="error">The requested records view is invalid.</p>'
+                    '<p><a class="nav-button" href="/records">Return to records</a></p>',
+                ),
+                status_code=400,
+            )
+        current_folder = (folder or "").strip("/")
         try:
-            labels = await asyncio.wait_for(
-                acorn.get_user_record_labels(),
-                timeout=settings.wallet_load_timeout_seconds,
+            requested_page = int(page or "1")
+            if requested_page <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return HTMLResponse(
+                _page(
+                    "Manage Records",
+                    '<p class="error">The requested records page is invalid.</p>'
+                    '<p><a class="nav-button" href="/records">Return to records</a></p>',
+                ),
+                status_code=400,
+            )
+        try:
+            record_entries = await _record_index_entries(
+                acorn,
+                settings.wallet_load_timeout_seconds,
             )
         except TimeoutError:
             return HTMLResponse(
@@ -4258,17 +4345,116 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=502,
             )
 
-        unique_labels = list(dict.fromkeys(str(label) for label in labels))
+        if record_view == "folders":
+            folder_prefix = f"{current_folder}/" if current_folder else ""
+            folders: dict[str, int] = {}
+            folder_records: list[dict[str, object]] = []
+            for entry in record_entries:
+                label = str(entry["label"])
+                if current_folder:
+                    if not label.startswith(folder_prefix):
+                        continue
+                    relative_label = label[len(folder_prefix) :]
+                else:
+                    relative_label = label
+
+                child_name, separator, remainder = relative_label.partition("/")
+                if separator and child_name and remainder:
+                    child_path = (
+                        f"{current_folder}/{child_name}"
+                        if current_folder
+                        else child_name
+                    )
+                    folders[child_path] = max(
+                        folders.get(child_path, 0),
+                        int(entry["modified_at"]),
+                    )
+                    continue
+
+                folder_records.append(entry)
+
+            breadcrumbs = [{"label": "Records", "url": "/records?view=folders"}]
+            accumulated: list[str] = []
+            for segment in current_folder.split("/") if current_folder else []:
+                accumulated.append(segment)
+                breadcrumbs.append(
+                    {
+                        "label": segment,
+                        "url": f'/records?{urlencode({"view": "folders", "folder": "/".join(accumulated)})}',
+                    }
+                )
+
+            return render_template(
+                "records.html",
+                title="Manage Records",
+                record_view=record_view,
+                list_view_url="/records",
+                folder_view_url="/records?view=folders",
+                current_folder=current_folder,
+                breadcrumbs=breadcrumbs,
+                folders=[
+                    {
+                        "label": path.rsplit("/", 1)[-1],
+                        "url": f'/records?{urlencode({"view": "folders", "folder": path})}',
+                    }
+                    for path in sorted(
+                        folders,
+                        key=lambda item: item.rsplit("/", 1)[-1].casefold(),
+                    )
+                ],
+                labels=[
+                    {
+                        "label": str(entry["label"])[len(folder_prefix) :],
+                        "modified_at": entry["modified_at"],
+                        "url": f'/record?{urlencode({"label": entry["label"]})}',
+                    }
+                    for entry in folder_records
+                ],
+                total_records=len(record_entries),
+                current_page=None,
+                total_pages=None,
+                previous_url=None,
+                next_url=None,
+            )
+
+        total_records = len(record_entries)
+        total_pages = max(
+            1,
+            (total_records + RECORDS_PAGE_SIZE - 1) // RECORDS_PAGE_SIZE,
+        )
+        current_page = min(requested_page, total_pages)
+        page_start = (current_page - 1) * RECORDS_PAGE_SIZE
+        page_entries = record_entries[page_start : page_start + RECORDS_PAGE_SIZE]
         return render_template(
             "records.html",
             title="Manage Records",
+            record_view=record_view,
+            list_view_url="/records",
+            folder_view_url="/records?view=folders",
+            current_folder="",
+            breadcrumbs=[],
+            folders=[],
             labels=[
                 {
-                    "label": record_label,
-                    "url": f'/record?{urlencode({"label": record_label})}',
+                    "label": entry["label"],
+                    "modified_at": entry["modified_at"],
+                    "url": f'/record?{urlencode({"label": entry["label"]})}',
                 }
-                for record_label in unique_labels
+                for entry in page_entries
             ],
+            current_page=current_page,
+            total_pages=total_pages,
+            total_records=total_records,
+            previous_url=(
+                f'/records?{urlencode({"page": current_page - 1})}'
+                if current_page > 1
+                else None
+            ),
+            next_url=(
+                f'/records?{urlencode({"page": current_page + 1})}'
+                if current_page < total_pages
+                else None
+            ),
         )
 
     @app.get("/blob/upload", response_class=HTMLResponse)

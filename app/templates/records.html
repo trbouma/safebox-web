@@ -3,12 +3,39 @@
 <div class="record-actions">
   <a class="record-add" href="/record/edit">Add a Record</a>
 </div>
-{% if labels %}
+<nav class="record-view-switcher" aria-label="Record view">
+  <a class="nav-button{% if record_view == 'list' %} active{% endif %}" href="{{ list_view_url }}"{% if record_view == 'list' %} aria-current="page"{% endif %}>List</a>
+  <a class="nav-button{% if record_view == 'folders' %} active{% endif %}" href="{{ folder_view_url }}"{% if record_view == 'folders' %} aria-current="page"{% endif %}>Folders</a>
+</nav>
+{% if record_view == 'folders' and breadcrumbs|length > 1 %}
+<nav class="record-breadcrumbs" aria-label="Record folder breadcrumbs">
+  {% for crumb in breadcrumbs %}
+    {% if not loop.last %}<a href="{{ crumb.url }}">{{ crumb.label }}</a><span aria-hidden="true">/</span>{% else %}<span aria-current="page">{{ crumb.label }}</span>{% endif %}
+  {% endfor %}
+</nav>
+{% endif %}
+{% if folders or labels %}
 <nav class="record-list" aria-label="Records">
+  {% for folder in folders %}
+  <a class="record-list-item record-folder-item" href="{{ folder.url }}"><span aria-hidden="true">&#128193;</span> {{ folder.label }}</a>
+  {% endfor %}
   {% for record in labels %}
   <a class="record-list-item" href="{{ record.url }}">{{ record.label }}</a>
   {% endfor %}
 </nav>
+{% if record_view == 'list' %}
+<p class="record-page-status">
+  Page {{ current_page }} of {{ total_pages }} · {{ total_records }} record{% if total_records != 1 %}s{% endif %}
+</p>
+{% if previous_url or next_url %}
+<nav class="record-pagination" aria-label="Record pages">
+  {% if previous_url %}<a class="nav-button" rel="prev" href="{{ previous_url }}">Previous</a>{% endif %}
+  {% if next_url %}<a class="nav-button" rel="next" href="{{ next_url }}">Next</a>{% endif %}
+</nav>
+{% endif %}
+{% endif %}
+{% elif current_folder %}
+<p>No records or folders were found here.</p>
 {% else %}
 <p>No records were found.</p>
 {% endif %}
