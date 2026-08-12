@@ -5,12 +5,12 @@
 <a class="wallet-balance transaction-balance" href="/wallet" aria-labelledby="transaction-balance-heading">
   <h2 id="transaction-balance-heading">Balance</h2>
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
-  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance{% else %}Balance requires verification—review the advisory below{% endif %}</p>
+  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance.{% else %}Balance requires verification—review the advisory below.{% endif %}{% if continuity_receipts %} {{ continuity_receipts | sum(attribute='amount', start=0) }} sats await confirmation.{% endif %}</p>
 </a>
 {% endif %}
 <section class="incoming-funds" aria-label="Incoming funds">
   <form method="post" action="/transactions/receive"
-        data-progress-message="Checking for incoming funds and refreshing accepted proofs. Please wait."
+        data-progress-message="Checking for incoming funds and confirming pending payments. Please wait."
         data-progress-button="Checking for funds…">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit">Check for incoming funds</button>
@@ -25,7 +25,7 @@
       <span class="transaction-kind">Incoming payment</span>
       <time class="transaction-date">{{ receipt.created }}</time>
     </header>
-    <div class="transaction-amount">+{{ receipt.amount }} sats</div>
+    <div class="transaction-amount">+{{ receipt.amount_display }} sats</div>
     <p class="transaction-note"><strong>Status:</strong> {{ receipt.status }}. These funds are not included in the spendable balance.</p>
     {% if receipt.comment %}<p class="transaction-note"><strong>Note:</strong> {{ receipt.comment }}</p>{% endif %}
   </article>

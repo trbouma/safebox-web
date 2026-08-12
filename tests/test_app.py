@@ -179,6 +179,12 @@ class FakeLoadedAcorn:
         self.deferred_recovery_complete_calls = 0
         self.record_protection_activation_calls: list[str] = []
         self.continuity_receipts: list[dict] = []
+        self.continuity_reconciliation = {
+            "confirmed_count": 0,
+            "confirmed_amount": 0,
+            "pending_count": 0,
+            "pending_amount": 0,
+        }
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -361,6 +367,9 @@ class FakeLoadedAcorn:
 
     async def get_continuity_receipts(self) -> list[dict]:
         return self.continuity_receipts
+
+    async def reconcile_continuity_receipts(self) -> dict:
+        return self.continuity_reconciliation
 
     async def sweep_ecash_transfers(self) -> dict:
         self.receive_calls += 1
@@ -2633,8 +2642,7 @@ def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "5 sats awaiting confirmation" in response.text
-    assert "1 incoming payment" in response.text
+    assert "5 sats from 1 incoming payment await confirmation" in response.text
     assert "100 <span>sats</span>" in response.text
 
 
@@ -2692,7 +2700,7 @@ def test_transaction_history_can_receive_incoming_ecash() -> None:
 
     assert response.status_code == 200
     assert acorn.receive_calls == 1
-    assert "Received 3 sats from 1 incoming ecash transfer(s)." in response.text
+    assert "Received and confirmed 3 sats from 1 incoming payment(s)." in response.text
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
     assert "+3 sats" in response.text
     assert "ecash transfer received" in response.text
@@ -2717,18 +2725,22 @@ def test_receive_incoming_ecash_warns_when_credit_history_is_missing() -> None:
     )
 
     assert response.status_code == 200
-    assert "Received 3 sats from 1 incoming ecash transfer(s)." in response.text
+    assert "Received and confirmed 3 sats from 1 incoming payment(s)." in response.text
     assert "wallet balance may already reflect the accepted funds" in response.text
     assert "Reload transaction history before relying on the journal" in response.text
 
 
-def test_receive_continuity_payment_reports_provisional_without_mint_check(
+def test_receive_continuity_payment_remains_pending_when_mint_is_unavailable(
     monkeypatch,
 ) -> None:
-    async def mint_must_not_be_called(_acorn, _timeout):
-        raise AssertionError("A provisional-only receive must not contact the mint")
+    async def verification_must_not_run_after_failed_reconciliation(_acorn, _timeout):
+        raise AssertionError("Pending-only results should not verify the wallet balance")
 
-    monkeypatch.setattr(main_module, "_read_proof_verification", mint_must_not_be_called)
+    monkeypatch.setattr(
+        main_module,
+        "_read_proof_verification",
+        verification_must_not_run_after_failed_reconciliation,
+    )
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(
         receive_result={
@@ -2741,6 +2753,12 @@ def test_receive_continuity_payment_reports_provisional_without_mint_check(
         },
         transaction_history=[],
     )
+    acorn.continuity_reconciliation = {
+        "confirmed_count": 0,
+        "confirmed_amount": 0,
+        "pending_count": 1,
+        "pending_amount": 5,
+    }
     app.dependency_overrides[get_receive_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
@@ -2754,6 +2772,48 @@ def test_receive_continuity_payment_reports_provisional_without_mint_check(
     assert "not spendable until mint reconciliation" in response.text
     assert "Received 0 sats" not in response.text
     assert "wallet balance may already reflect" not in response.text
+
+
+def test_receive_continuity_payment_confirms_pending_proofs() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(
+        balance=105,
+        receive_result={
+            "queried": 0,
+            "accepted_count": 0,
+            "confirmed_count": 0,
+            "accepted_amount": 0,
+            "provisional_count": 0,
+            "provisional_amount": 0,
+        },
+        transaction_history=[
+            {
+                "create_time": "2026-08-12 12:00:00",
+                "tx_type": "C",
+                "amount": 5,
+                "comment": "continuity payment confirmed: market",
+                "current_balance": 105,
+            }
+        ],
+    )
+    acorn.continuity_reconciliation = {
+        "confirmed_count": 1,
+        "confirmed_amount": 5,
+        "pending_count": 0,
+        "pending_amount": 0,
+    }
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/transactions/receive",
+        data={"csrf_token": valid_csrf_token()},
+    )
+
+    assert response.status_code == 200
+    assert "Received and confirmed 5 sats from 1 incoming payment(s)." in response.text
+    assert "+5 sats" in response.text
+    assert "continuity payment confirmed: market" in response.text
 
 
 def test_receive_incoming_ecash_retries_until_credit_history_is_visible() -> None:
@@ -2786,7 +2846,7 @@ def test_receive_incoming_ecash_retries_until_credit_history_is_visible() -> Non
     )
 
     assert response.status_code == 200
-    assert "Received 23 sats from 1 incoming ecash transfer(s)." in response.text
+    assert "Received and confirmed 23 sats from 1 incoming payment(s)." in response.text
     assert "+23 sats" in response.text
     assert "wallet balance may already reflect the accepted funds" not in response.text
 

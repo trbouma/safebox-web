@@ -536,7 +536,8 @@ def _continuity_receipt_view(receipts: list[dict]) -> list[dict]:
         cards.append(
             {
                 "event_id": str(receipt.get("event_id") or ""),
-                "amount": f"{int(receipt.get('amount') or 0):,}",
+                "amount": int(receipt.get("amount") or 0),
+                "amount_display": f"{int(receipt.get('amount') or 0):,}",
                 "created": created,
                 "comment": str(receipt.get("comment") or ""),
                 "status": "Confirmation pending",
@@ -549,8 +550,22 @@ async def _read_continuity_receipts(acorn, timeout: float) -> list[dict]:
     reader = getattr(acorn, "get_continuity_receipts", None)
     if reader is None:
         return []
-    receipts = await asyncio.wait_for(reader(), timeout=timeout)
+    try:
+        awaitable = reader(status="provisional")
+    except TypeError:
+        awaitable = reader()
+    receipts = await asyncio.wait_for(awaitable, timeout=timeout)
     return receipts if isinstance(receipts, list) else []
+
+
+async def _reconcile_continuity_receipts(acorn, timeout: float) -> dict:
+    reconciler = getattr(acorn, "reconcile_continuity_receipts", None)
+    if reconciler is None:
+        return {"supported": False}
+    result = await asyncio.wait_for(reconciler(), timeout=timeout)
+    if not isinstance(result, dict):
+        return {"supported": False}
+    return {**result, "supported": True}
 
 
 def _transactions_page(
@@ -3540,19 +3555,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                     + '<p><a href="/transactions">Return to transaction history</a></p>',
                 ),
-                status_code=502,
+                    status_code=502,
+                )
+
+        try:
+            reconciliation = await _reconcile_continuity_receipts(
+                acorn,
+                settings.payment_timeout_seconds,
             )
+        except Exception as exc:
+            logger.warning(
+                "continuity reconciliation failed error_type=%s error=%s",
+                type(exc).__name__,
+                str(exc),
+            )
+            reconciliation = {
+                "supported": True,
+                "confirmed_count": 0,
+                "confirmed_amount": 0,
+                "pending_count": int(result.get("provisional_count", 0)),
+                "pending_amount": int(result.get("provisional_amount", 0)),
+            }
 
         accepted_count = int(result.get("accepted_count", 0))
-        confirmed_count = int(result.get("confirmed_count", accepted_count))
-        provisional_count = int(result.get("provisional_count", 0))
-        accepted_amount = int(result.get("accepted_amount", 0))
-        provisional_amount = int(result.get("provisional_amount", 0))
+        confirmed_count = (
+            int(result.get("confirmed_count", accepted_count))
+            + int(reconciliation.get("confirmed_count", 0))
+        )
+        provisional_count = int(
+            reconciliation.get("pending_count", 0)
+            if reconciliation.get("supported")
+            else result.get("provisional_count", 0)
+        )
+        accepted_amount = (
+            int(result.get("accepted_amount", 0))
+            + int(reconciliation.get("confirmed_amount", 0))
+        )
+        provisional_amount = int(
+            reconciliation.get("pending_amount", 0)
+            if reconciliation.get("supported")
+            else result.get("provisional_amount", 0)
+        )
         queried = int(result.get("queried", 0))
-        if confirmed_count:
+        if confirmed_count and provisional_count:
             notice = (
-                f"Received {accepted_amount:,} sats from "
-                f"{confirmed_count:,} incoming ecash transfer(s)."
+                f"Received and confirmed {accepted_amount:,} sats from "
+                f"{confirmed_count:,} incoming payment(s). "
+                f"{provisional_amount:,} sats from {provisional_count:,} payment(s) "
+                "still await confirmation."
+            )
+        elif confirmed_count:
+            notice = (
+                f"Received and confirmed {accepted_amount:,} sats from "
+                f"{confirmed_count:,} incoming payment(s)."
             )
         elif provisional_count:
             notice = (
@@ -3587,7 +3642,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         verification = None
-        if not provisional_count or confirmed_count:
+        if confirmed_count or not provisional_count:
             verification, _verification_error = await _read_proof_verification(
                 acorn,
                 settings.wallet_load_timeout_seconds,
