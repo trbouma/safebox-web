@@ -16,6 +16,21 @@
   <label for="comment">Comment</label>
   <input id="comment" name="comment" type="text" maxlength="200"
          value="{{ comment }}">
+  <fieldset class="payment-mode">
+    <legend>Payment mode</legend>
+    <div class="payment-mode-options">
+      <label>
+        <input name="payment_mode" type="radio" value="confirmed"
+               {% if payment_mode != "continuity" %}checked{% endif %}>
+        Confirmed
+      </label>
+      <label>
+        <input name="payment_mode" type="radio" value="continuity"
+               {% if payment_mode == "continuity" %}checked{% endif %}>
+        Continuity
+      </label>
+    </div>
+  </fieldset>
   <label>
     <input name="confirmed" type="checkbox" value="yes" required>
     I confirm the recipient and amount and understand that this spends funds.
@@ -28,8 +43,12 @@
     <p>The payment amount and the mint's fee reserve must fit within one
     spendable keyset. The displayed total balance may therefore be greater than
     the amount available for one payment.</p>
-    <p>Safebox can pay a supported address directly when it resolves to another
-    Safebox recipient. Otherwise it uses the available Lightning payment path.</p>
+    <p>Confirmed mode checks the mint and can use Lightning when the address is
+    outside Safebox.</p>
+    <p>Continuity mode does not contact the mint or use Lightning. It works only
+    with another Safebox address and only when the wallet already holds an exact
+    set of proofs for the amount. The recipient holds those proofs provisionally
+    until mint reconciliation is available.</p>
     <p>Scanning is available from the wallet home page.</p>
   </div>
 </details>

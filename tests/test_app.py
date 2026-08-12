@@ -2628,6 +2628,40 @@ def test_receive_incoming_ecash_warns_when_credit_history_is_missing() -> None:
     assert "Reload transaction history before relying on the journal" in response.text
 
 
+def test_receive_continuity_payment_reports_provisional_without_mint_check(
+    monkeypatch,
+) -> None:
+    async def mint_must_not_be_called(_acorn, _timeout):
+        raise AssertionError("A provisional-only receive must not contact the mint")
+
+    monkeypatch.setattr(main_module, "_read_proof_verification", mint_must_not_be_called)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(
+        receive_result={
+            "queried": 1,
+            "accepted_count": 1,
+            "confirmed_count": 0,
+            "accepted_amount": 0,
+            "provisional_count": 1,
+            "provisional_amount": 5,
+        },
+        transaction_history=[],
+    )
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/transactions/receive",
+        data={"csrf_token": valid_csrf_token()},
+    )
+
+    assert response.status_code == 200
+    assert "Stored 5 sats from 1 provisional Continuity Payment(s)" in response.text
+    assert "not spendable until mint reconciliation" in response.text
+    assert "Received 0 sats" not in response.text
+    assert "wallet balance may already reflect" not in response.text
+
+
 def test_receive_incoming_ecash_retries_until_credit_history_is_visible() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(
@@ -2717,6 +2751,9 @@ def test_payment_form_displays_balance_and_confirmation() -> None:
     assert "Payment Address" in response.text
     assert 'name="csrf_token"' in response.text
     assert 'name="confirmed"' in response.text
+    assert 'name="payment_mode"' in response.text
+    assert 'value="confirmed"' in response.text
+    assert 'value="continuity"' in response.text
     assert "Payment in progress. Please wait" in response.text
     assert "Sending payment…" in response.text
     assert "<summary>Advisories</summary>" in response.text
@@ -3492,7 +3529,7 @@ def test_payment_is_blocked_when_mint_verification_is_not_clean() -> None:
     assert acorn.payments == []
 
 
-def test_payment_blocks_for_continuity_flow_when_mint_is_unavailable(
+def test_confirmed_payment_still_blocks_when_mint_is_unavailable(
     monkeypatch,
 ) -> None:
     async def unavailable_mint(_acorn, _timeout):
@@ -3518,7 +3555,118 @@ def test_payment_blocks_for_continuity_flow_when_mint_is_unavailable(
     assert response.status_code == 503
     assert "a mint is unavailable" in response.text
     assert "Continuity Payments" in response.text
-    assert "not implemented yet" in response.text
+    assert acorn.payments == []
+    assert acorn.ecash_transfers == []
+
+
+def test_continuity_payment_sends_only_to_safebox_without_mint_check(
+    monkeypatch,
+) -> None:
+    recipient_hex = "11" * 32
+    recipient_npub = main_module.Keys.hex_to_bech32(recipient_hex, prefix="npub")
+
+    async def mint_must_not_be_called(_acorn, _timeout):
+        raise AssertionError("Continuity mode must not contact the mint")
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "names": {"alice": recipient_hex},
+                "relays": {recipient_hex: ["ws://spurline.local:8080"]},
+            }
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            return FakeResponse()
+
+    monkeypatch.setattr(main_module, "_read_proof_verification", mint_must_not_be_called)
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "local market",
+            "payment_mode": "continuity",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Continuity Payment sent" in response.text
+    assert "mint was not contacted" in response.text
+    assert acorn.payments == []
+    assert acorn.ecash_transfers == [
+        {
+            "amount": 21,
+            "recipient": recipient_npub,
+            "relay": "ws://spurline.local:8080",
+            "comment": "local market",
+            "payment_mode": "continuity",
+        }
+    ]
+
+
+def test_continuity_payment_rejects_external_lightning_address(
+    monkeypatch,
+) -> None:
+    async def mint_must_not_be_called(_acorn, _timeout):
+        raise AssertionError("Continuity mode must not contact the mint")
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            raise main_module.httpx.HTTPError("not a Safebox address")
+
+    monkeypatch.setattr(main_module, "_read_proof_verification", mint_must_not_be_called)
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "outside@example.com",
+            "amount": "21",
+            "comment": "must stay local",
+            "payment_mode": "continuity",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "only be sent to another Safebox address" in response.text
+    assert "No Lightning payment was attempted" in response.text
+    assert 'value="continuity"' in response.text
     assert acorn.payments == []
     assert acorn.ecash_transfers == []
 

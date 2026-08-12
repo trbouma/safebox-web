@@ -239,6 +239,13 @@ figure.blob-preview { padding: .75rem; }
 .transaction-advisories > summary::-webkit-details-marker, .payment-advisories > summary::-webkit-details-marker { display: none; }
 .transaction-advisories[open] > summary, .payment-advisories[open] > summary { border-bottom: 1px solid var(--note-border); }
 .transaction-advisories-content, .payment-advisories-content { padding: 0 1rem 1rem; }
+.payment-mode { margin: 1.25rem 0; padding: 0; border: 0; }
+.payment-mode legend { margin-bottom: .55rem; font-weight: 700; }
+.payment-mode-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); }
+.payment-mode-options label { display: flex; min-height: 2.75rem; align-items: center; justify-content: center; gap: .45rem; margin: 0; padding: .55rem .75rem; cursor: pointer; text-align: center; }
+.payment-mode-options label + label { border-left: 1px solid var(--border); }
+.payment-mode-options label:has(input:checked) { background: var(--surface-soft); color: var(--link); }
+.payment-mode-options input { width: auto; margin: 0; accent-color: currentColor; }
 .transaction-advisories .retention-notice { margin-top: .75rem; }
 @media (max-width: 36rem) {
   body { margin: 1.25rem auto 2rem; padding: 0 .875rem; }

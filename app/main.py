@@ -228,6 +228,7 @@ def _payment_form(
     lightning_address: str = "",
     amount: str = "",
     comment: str = "Paid from Safebox Web",
+    payment_mode: str = "confirmed",
 ) -> str:
     if balance_status is None:
         balance_status = (
@@ -242,6 +243,7 @@ def _payment_form(
         lightning_address=lightning_address,
         amount=amount,
         comment=comment,
+        payment_mode=payment_mode,
     )
 
 
@@ -2982,20 +2984,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lightning_address: str = Form(...),
         amount: str = Form(...),
         comment: str = Form("Paid from Safebox Web"),
+        payment_mode: str = Form("confirmed"),
         confirmed: str | None = Form(None),
     ):
         settings = request.app.state.settings
         form_token = CsrfProtector(settings)
-        verification, verification_error = await _read_proof_verification(
-            acorn,
-            settings.wallet_load_timeout_seconds,
-        )
-        balance_status = _balance_status_html(
-            acorn.get_balance(),
-            len(acorn.proofs),
-            verification,
-            verification_error,
-        )
+        payment_mode = str(payment_mode).strip().lower()
+        if payment_mode not in {"confirmed", "continuity"}:
+            payment_mode = "confirmed"
+        verification = None
+        verification_error = None
+        if payment_mode == "confirmed":
+            verification, verification_error = await _read_proof_verification(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
+            balance_status = _balance_status_html(
+                acorn.get_balance(),
+                len(acorn.proofs),
+                verification,
+                verification_error,
+            )
+        else:
+            balance_status = (
+                f"<p>Locally held proof total: "
+                f"<strong>{int(acorn.get_balance()):,} sats</strong></p>"
+                "<p>Continuity mode does not contact the mint. Received funds "
+                "remain provisional until later reconciliation.</p>"
+            )
 
         def payment_error(message: str, status_code: int = 400) -> HTMLResponse:
             return HTMLResponse(
@@ -3007,6 +3023,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     lightning_address=lightning_address,
                     amount=amount,
                     comment=comment,
+                    payment_mode=payment_mode,
                 ),
                 status_code=status_code,
             )
@@ -3052,6 +3069,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         lightning_address=lightning_address,
                         amount=amount,
                         comment=comment,
+                        payment_mode=payment_mode,
                     ),
                     status_code=409,
                 )
@@ -3066,6 +3084,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     lightning_address=lightning_address,
                     amount=amount,
                     comment=comment,
+                    payment_mode=payment_mode,
                 ),
                 status_code=409,
             )
@@ -3077,14 +3096,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         if confirmed != "yes":
             return payment_error("Explicit payment confirmation is required.")
-        if verification is None:
+        if payment_mode == "confirmed" and verification is None:
             return payment_error(
                 "Payment is blocked because a mint is unavailable. Continuity "
-                "Payments for provisional in-kind ecash transfer are not "
-                "implemented yet.",
+                "Payments remain available for supported Safebox recipients.",
                 503,
             )
-        if verification.get("status") != "clean":
+        if payment_mode == "confirmed" and verification.get("status") != "clean":
             return payment_error(
                 "Payment is blocked because the wallet proof state is not clean. "
                 "Review it with 'acorn balance --verify' before spending.",
@@ -3101,12 +3119,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return payment_error("Payment amount must be a whole number of sats.")
         if amount_sats <= 0:
             return payment_error("Payment amount must be greater than zero.")
-        confirmed_balance = int(
-            verification.get("mint_confirmed_unspent", {}).get("amount", 0)
+        available_balance = (
+            int(verification.get("mint_confirmed_unspent", {}).get("amount", 0))
+            if payment_mode == "confirmed"
+            else int(acorn.get_balance())
         )
-        if amount_sats > confirmed_balance:
+        if amount_sats > available_balance:
             return payment_error(
-                "Payment amount exceeds the mint-confirmed spendable balance."
+                "Payment amount exceeds the available spendable balance."
             )
 
         payment_comment = str(comment).strip() or "Paid from Safebox Web"
@@ -3117,6 +3137,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             recipient,
             timeout=settings.payment_timeout_seconds,
         )
+        if payment_mode == "continuity" and direct_recipient is None:
+            return payment_error(
+                "Continuity Payments can only be sent to another Safebox address. "
+                "No Lightning payment was attempted.",
+                422,
+            )
         if direct_recipient is not None:
             try:
                 delivery = await asyncio.wait_for(
@@ -3125,6 +3151,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         recipient=direct_recipient["npub"],
                         relay=direct_recipient["relay"],
                         comment=payment_comment,
+                        **(
+                            {"payment_mode": "continuity"}
+                            if payment_mode == "continuity"
+                            else {}
+                        ),
                     ),
                     timeout=settings.payment_timeout_seconds,
                 )
@@ -3146,7 +3177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             except Exception as exc:
                 error_reason = str(exc).strip()
-                if _is_stale_proof_error(error_reason):
+                if payment_mode == "confirmed" and _is_stale_proof_error(error_reason):
                     return await repair_stale_proofs_for_review(error_reason)
                 logger.warning(
                     "direct safebox ecash payment failed recipient=%s relay=%s error_type=%s error=%s",
@@ -3190,12 +3221,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=502,
                 )
             event_id = str(delivery.get("event_id") or delivery.get("event") or "")
-            message = "Direct Safebox ecash transfer sent."
+            if payment_mode == "continuity":
+                message = (
+                    "Provisional Continuity Payment sent. The mint was not "
+                    "contacted; the recipient must reconcile the proofs later."
+                )
+            else:
+                message = "Direct Safebox ecash transfer sent."
             if event_id:
                 message += f" Event: {event_id}."
             return render_template(
                 "payment_result.html",
-                title="Payment successful",
+                title=(
+                    "Continuity Payment sent"
+                    if payment_mode == "continuity"
+                    else "Payment successful"
+                ),
                 amount=f"{amount_sats:,}",
                 fees="0",
                 recipient=recipient,
@@ -3418,12 +3459,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         accepted_count = int(result.get("accepted_count", 0))
+        confirmed_count = int(result.get("confirmed_count", accepted_count))
+        provisional_count = int(result.get("provisional_count", 0))
         accepted_amount = int(result.get("accepted_amount", 0))
+        provisional_amount = int(result.get("provisional_amount", 0))
         queried = int(result.get("queried", 0))
-        if accepted_count:
+        if confirmed_count:
             notice = (
                 f"Received {accepted_amount:,} sats from "
-                f"{accepted_count:,} incoming ecash transfer(s)."
+                f"{confirmed_count:,} incoming ecash transfer(s)."
+            )
+        elif provisional_count:
+            notice = (
+                f"Stored {provisional_amount:,} sats from "
+                f"{provisional_count:,} provisional Continuity Payment(s). "
+                "These funds are not spendable until mint reconciliation."
             )
         else:
             notice = f"No incoming ecash was accepted ({queried:,} transfer event(s) checked)."
@@ -3432,7 +3482,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             history = await _read_receive_history_with_retry(
                 acorn,
                 accepted_amount=accepted_amount,
-                accepted_count=accepted_count,
+                accepted_count=confirmed_count,
                 timeout=settings.wallet_load_timeout_seconds,
             )
         except Exception as exc:
@@ -3451,10 +3501,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=200,
             )
 
-        verification, _verification_error = await _read_proof_verification(
-            acorn,
-            settings.wallet_load_timeout_seconds,
-        )
+        verification = None
+        if not provisional_count or confirmed_count:
+            verification, _verification_error = await _read_proof_verification(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
         wallet_balance, wallet_balance_verified = _wallet_balance_summary(
             acorn.get_balance(),
             verification,
@@ -3472,7 +3524,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not _history_has_receive_credit(
             entries,
             accepted_amount=accepted_amount,
-            accepted_count=accepted_count,
+            accepted_count=confirmed_count,
         ):
             notice += (
                 " The wallet balance may already reflect the accepted funds, "
