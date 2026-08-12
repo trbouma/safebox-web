@@ -669,6 +669,9 @@ Acorn containers in one step, run:
 ./refresh-containers.sh
 ```
 
+The script waits up to 60 seconds for the web container's `/health` endpoint
+and exits with an error if the refreshed application does not become healthy.
+
 Both containers use `safebox-web:local`; Compose overrides the command to run
 Uvicorn in one and the service Acorn worker in the other. Both are part of the
 normal Compose project, so ordinary `up`, `stop`, `restart`, and `down`
