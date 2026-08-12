@@ -5,16 +5,23 @@ description: Why Safebox Web exists as a sibling product to Acorn, Grove, and Sp
 
 # Why Safebox Web?
 
+## Local-first approach
+
 People need a usable place to work with portable keys, records, funds, and
 evidence. Most people do not want to operate directly through scripts, raw
 relay events, or wallet internals.
 
-Safebox Web exists to make a portable wallet practical without making the app
-the authority.
+Safebox Web takes a **local-first approach**: people and communities should
+have a dependable path to their important funds, records, and evidence without
+giving up the convenience of connected services. Public infrastructure can
+help with reach, synchronization, and payments, while the state needed for
+continuity remains portable to infrastructure the user or community can run.
 
-That means the app starts from a simple user promise: funds, records, and
-evidence should remain usable when a device, provider, relay, or application
-changes.
+Local-first does not mean disconnected by default or isolated from the wider
+network. It means a device, provider, relay, or application can change without
+becoming the end of the user's wallet or records. This principle frames the
+rest of Safebox: connected when useful, locally dependable when circumstances
+change.
 
 ## The app is not the authority
 
@@ -29,16 +36,6 @@ Safebox Web provides the human workflows:
 - claiming handles and using Lightning address flows.
 
 The authority remains in the user's Acorn. The web app should be replaceable.
-
-## Local-first, not isolated
-
-Local-first does not mean disconnected by default. It means the person or
-community has a workable local continuity path when hosted services, global
-connectivity, or a particular operator are unavailable.
-
-Safebox Web can use public infrastructure, private infrastructure, or local
-services. In the Lockbox direction, it can sit beside Acorn, Spurline, and
-Grove on the same small appliance.
 
 ## Practical continuity
 
