@@ -662,6 +662,13 @@ Or build and start both in one command:
 docker compose up --detach --build
 ```
 
+To pull the latest source, rebuild the image, and recreate the web and service
+Acorn containers in one step, run:
+
+```sh
+./refresh-containers.sh
+```
+
 Both containers use `safebox-web:local`; Compose overrides the command to run
 Uvicorn in one and the service Acorn worker in the other. Both are part of the
 normal Compose project, so ordinary `up`, `stop`, `restart`, and `down`
