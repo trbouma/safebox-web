@@ -1080,6 +1080,36 @@ def test_invite_qr_requires_connected_acorn() -> None:
     assert response.status_code == 401
 
 
+def test_protected_browser_page_redirects_to_root_when_login_is_missing() -> None:
+    response = make_https_client().get(
+        "/transactions",
+        headers={"Accept": "text/html"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+
+
+def test_protected_browser_page_redirects_to_root_when_session_is_invalid() -> None:
+    client = make_https_client()
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        "not-a-valid-session",
+        domain="safebox.example",
+        path="/",
+    )
+
+    response = client.get(
+        "/pay",
+        headers={"Accept": "text/html"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+
+
 def test_onboard_redirects_valid_existing_session_to_wallet() -> None:
     client = make_https_client()
     client.cookies.set(

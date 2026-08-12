@@ -16,7 +16,7 @@ import re
 from urllib.parse import quote, urlencode
 
 import bolt11
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 import httpx
@@ -1011,6 +1011,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         StaticFiles(directory=Path(__file__).resolve().parent / "static"),
         name="static",
     )
+
+    @app.exception_handler(HTTPException)
+    async def browser_session_error(request: Request, exc: HTTPException):
+        session_errors = {
+            "Acorn login required",
+            "Acorn session is invalid or expired",
+        }
+        accepts_html = "text/html" in request.headers.get("accept", "").lower()
+        if (
+            exc.status_code == 401
+            and str(exc.detail) in session_errors
+            and request.method in {"GET", "HEAD"}
+            and accepts_html
+        ):
+            return RedirectResponse("/", status_code=303)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=exc.headers,
+        )
 
     @app.middleware("http")
     async def security_boundary(request: Request, call_next):
