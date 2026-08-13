@@ -50,6 +50,7 @@ from app.dependencies import (
     get_session_credentials,
 )
 from app.main import create_app
+from app.funds_finalization import get_finalization_job
 from app.security import (
     CsrfProtector,
     DepositQuoteCipher,
@@ -2427,6 +2428,12 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         currency_rate_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(currency_rate)")
         }
+        finalization_job_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(funds_finalization_job)"
+            )
+        }
     assert {
         "alembic_version",
         "claimed_handle",
@@ -2434,8 +2441,9 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "provider_payment",
         "provider_zap",
         "currency_rate",
+        "funds_finalization_job",
     }.issubset(tables)
-    assert revision == ("20260812_0004",)
+    assert revision == ("20260813_0005",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -2478,6 +2486,22 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "fetched_at",
         "updated_at",
     } == currency_rate_columns
+    assert {
+        "npub",
+        "status",
+        "owner_token",
+        "phase",
+        "discovered_count",
+        "discovered_amount",
+        "confirmed_count",
+        "confirmed_amount",
+        "pending_count",
+        "pending_amount",
+        "error",
+        "started_at",
+        "updated_at",
+        "lease_expires_at",
+    } == finalization_job_columns
 
 
 def test_web_lifespan_does_not_own_the_service_acorn(tmp_path) -> None:
@@ -2952,7 +2976,24 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
             "status": "provisional",
         }
     ]
-    acorn.incoming_preview = {"previewed_count": 2, "previewed_amount": 7}
+    acorn.incoming_preview = {
+        "previewed_count": 2,
+        "previewed_amount": 7,
+        "previewed": [
+            {
+                "event_id": "incoming-event-2",
+                "sender_pubkey": "sender-two-pubkey",
+                "timestamp": 1_786_430_500,
+                "amount": 4,
+            },
+            {
+                "event_id": "incoming-event-3",
+                "sender_pubkey": "sender-three-pubkey",
+                "timestamp": 1_786_430_450,
+                "amount": 3,
+            },
+        ],
+    }
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.get("/transactions")
@@ -2960,9 +3001,107 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
     assert response.status_code == 200
     assert "Pending incoming funds: 12 sats in 3 transfer event(s)." in response.text
     assert "100 <span>sats</span>" in response.text
-    assert "Awaiting Confirmation" not in response.text
-    assert "local market" not in response.text
+    assert "Pending Transactions" in response.text
+    assert "These funds have arrived for this Acorn" in response.text
+    assert "Awaiting mint confirmation" in response.text
+    assert "Received on relay; finalization pending" in response.text
+    assert "+5 sats" in response.text
+    assert "+4 sats" in response.text
+    assert "+3 sats" in response.text
+    assert "local market" in response.text
+    assert "sender-two-p" in response.text
+    assert response.text.index("+4 sats") < response.text.index("+3 sats")
+    assert response.text.index("+3 sats") < response.text.index("+5 sats")
     assert "No transaction history was found" in response.text
+
+
+def test_pending_transaction_list_deduplicates_staged_event(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    acorn.continuity_receipts = [
+        {
+            "event_id": "same-event",
+            "sender_pubkey": "sender-pubkey",
+            "amount": 9,
+            "timestamp": 1_786_430_400,
+            "status": "provisional",
+        }
+    ]
+    acorn.incoming_preview = {
+        "previewed_count": 1,
+        "previewed_amount": 9,
+        "previewed": [
+            {
+                "event_id": "same-event",
+                "sender_pubkey": "sender-pubkey",
+                "amount": 9,
+                "timestamp": 1_786_430_400,
+            }
+        ],
+    }
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/transactions")
+
+    assert response.status_code == 200
+    assert "Pending incoming funds: 9 sats in 1 transfer event(s)." in response.text
+    assert response.text.count("+9 sats") == 1
+    assert "Awaiting mint confirmation" in response.text
+
+
+def test_transaction_finalization_runs_in_background(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(
+        receive_result={
+            "queried": 3,
+            "accepted_count": 3,
+            "accepted_amount": 50,
+            "provisional_count": 3,
+            "provisional_amount": 50,
+        }
+    )
+    acorn.continuity_reconciliation = {
+        "confirmed_count": 3,
+        "confirmed_amount": 50,
+        "pending_count": 0,
+        "pending_amount": 0,
+        "terminal_error_count": 0,
+        "terminal_error_amount": 0,
+    }
+    app.dependency_overrides[get_receive_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/transactions/finalize-background",
+            data={"csrf_token": valid_csrf_token()},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/transactions?finalization=started"
+
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_finalization_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
+
+        page = client.get("/transactions")
+
+    assert job is not None
+    assert job["status"] == "COMPLETE"
+    assert job["confirmed_count"] == 3
+    assert job["confirmed_amount"] == 50
+    assert acorn.receive_calls == 1
+    assert acorn.receive_finalize_values == [False]
+    assert "Background finalization completed." in page.text
+    assert "Finalized 50 sats from 3 transfer event(s)." in page.text
 
 
 def test_transaction_history_can_receive_incoming_ecash() -> None:

@@ -15,13 +15,51 @@
   {% if pending_amount %}<p class="wallet-balance-state">Pending incoming funds: {{ "{:,}".format(pending_amount) }} sats in {{ "{:,}".format(pending_count) }} transfer event(s).</p>{% endif %}
 </a>
 {% endif %}
+{% if pending_transactions %}
+<section class="pending-transaction-list" aria-label="Pending transaction arrivals">
+  <h2>Pending Transactions</h2>
+  <p class="pending-transaction-intro">These funds have arrived for this Acorn but are not spendable until mint confirmation completes.</p>
+  {% for pending in pending_transactions %}
+  <article class="transaction-card pending">
+    <header class="transaction-header">
+      <span class="transaction-kind">Pending Credit</span>
+      <time class="transaction-date">{{ pending.created }}</time>
+    </header>
+    <div class="transaction-amount">+{{ "{:,}".format(pending.amount) }} sats</div>
+    <p class="pending-transaction-stage"><strong>{{ pending.stage }}</strong></p>
+    {% if pending.comment %}<p class="transaction-note"><strong>Note:</strong> {{ pending.comment }}</p>{% endif %}
+    {% if pending.sender_short or pending.event_short %}
+    <p class="pending-transaction-reference">
+      {% if pending.sender_short %}From {{ pending.sender_short }}{% endif %}
+      {% if pending.sender_short and pending.event_short %} · {% endif %}
+      {% if pending.event_short %}Event {{ pending.event_short }}{% endif %}
+    </p>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
 <section class="incoming-funds" aria-label="Pending transactions">
-  <form method="post" action="/transactions/receive"
-        data-progress-message="Finalizing pending transactions. Please wait."
+  {% if finalization_job and finalization_job.status == "RUNNING" %}
+  <p role="status"><strong>Finalizing pending incoming funds in the background.</strong></p>
+  <p>You can leave this page and return later. Current phase: {{ finalization_job.phase | lower }}.</p>
+  {% elif finalization_job and finalization_job.status == "COMPLETE" %}
+  <p role="status"><strong>Background finalization completed.</strong>
+    {% if finalization_job.confirmed_count %}Finalized {{ "{:,}".format(finalization_job.confirmed_amount) }} sats from {{ "{:,}".format(finalization_job.confirmed_count) }} transfer event(s).{% endif %}
+  </p>
+  {% elif finalization_job and finalization_job.status in ("PARTIAL", "FAILED", "INTERRUPTED") %}
+  <p role="status"><strong>Background finalization requires another check.</strong>
+    {% if finalization_job.error %}{{ finalization_job.error }}{% endif %}
+  </p>
+  {% endif %}
+  {% if not finalization_job or finalization_job.status != "RUNNING" %}
+  <form method="post" action="/transactions/finalize-background"
+        data-progress-message="Starting background finalization. Please wait."
         data-progress-button="Finalizing…">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button type="submit">Finalize Pending Transactions</button>
   </form>
+  {% endif %}
   <details class="transaction-advisories force-finalization">
     <summary>Force Finalization</summary>
     <div class="transaction-advisories-content">

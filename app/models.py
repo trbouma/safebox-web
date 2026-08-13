@@ -101,3 +101,24 @@ class CurrencyRate(SQLModel, table=True):
     source: str = Field(nullable=False)
     fetched_at: datetime = Field(nullable=False)
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
+class FundsFinalizationJob(SQLModel, table=True):
+    """Non-secret coordination state for one recipient finalization task."""
+
+    __tablename__ = "funds_finalization_job"
+
+    npub: str = Field(primary_key=True)
+    status: str = Field(default="RUNNING", nullable=False, index=True)
+    owner_token: str = Field(nullable=False)
+    phase: str = Field(default="STARTING", nullable=False)
+    discovered_count: int = Field(default=0, nullable=False)
+    discovered_amount: int = Field(default=0, nullable=False)
+    confirmed_count: int = Field(default=0, nullable=False)
+    confirmed_amount: int = Field(default=0, nullable=False)
+    pending_count: int = Field(default=0, nullable=False)
+    pending_amount: int = Field(default=0, nullable=False)
+    error: Optional[str] = Field(default=None, nullable=True)
+    started_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    lease_expires_at: datetime = Field(nullable=False, index=True)

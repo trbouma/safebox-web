@@ -67,6 +67,55 @@ development and light pilot traffic.
 - An ambiguous ecash publication stops at `DELIVERY_FAILED`; it is not blindly
   retried and therefore does not intentionally create a duplicate payment.
 
+## Attached-Acorn background finalization
+
+Receiving funds into an attached user Acorn is deliberately separate from the
+singleton service Acorn. The recipient's private key comes from the encrypted
+browser session and is available only to the web process handling that user.
+It must not be copied into the provider worker or written to the application
+database.
+
+When the user chooses **Finalize Pending Transactions**, Safebox Web now:
+
+1. atomically claims a database lease keyed by the component public key;
+2. starts one in-memory asynchronous task in the claiming web worker;
+3. discovers visible relay-backed transfers and finalizes them sequentially;
+4. updates non-secret progress and result fields in the database; and
+5. lets the HTTP request return immediately so the user can leave the page and
+   return later to inspect the result.
+
+Before finalization, the transaction page provides immediate payment
+assurance from the relay-visible evidence. It lists each incoming transfer
+directly below the confirmed balance with its amount, relay timestamp, and
+shortened sender and event references. A transfer already staged in the
+continuity journal is labelled as awaiting mint confirmation; a newly
+discovered gift-wrapped event is labelled as received on the relay. These
+cards are deliberately separate from confirmed transaction history and never
+increase the displayed spendable balance. If the same event is visible through
+both sources during a transition, its event id deduplicates the presentation.
+
+The database row contains the public key, phase, counts, amounts, timestamps,
+status, error summary, and an opaque lease token. It never contains the nsec,
+mnemonics, Cashu proofs, transfer tokens, or record-protection material. The
+request-scoped Acorn object—and therefore its private key—remains in memory
+only until the task completes or the web process stops.
+
+The lease prevents two Uvicorn workers or browser tabs from starting competing
+proof mutations for the same Acorn. A heartbeat renews ownership while work is
+active. Finalization remains sequential within the job because concurrent
+proof swaps against one wallet are unsafe. If the process stops, the task is
+marked interrupted when possible; otherwise its lease expires. The user can
+reconnect and start finalization again. Relay-backed transfer and continuity
+events remain the authoritative recovery queue, so the database status row is
+coordination and presentation state rather than wallet state.
+
+This removes the browser request timeout from long relay and mint verification
+without weakening canonical publish checks. It does not promise completion in
+exactly one minute: network and mint conditions still determine duration. The
+intended experience is that the user starts the work, leaves the page, and
+returns after roughly a minute to see whether it completed or requires another
+check.
+
 This is sufficient for development and carefully bounded small-value pilot
 traffic. It is not yet a production concurrency guarantee.
 
@@ -138,7 +187,7 @@ can use `SELECT ... FOR UPDATE SKIP LOCKED`. The singleton rule should remain
 even after claims are added because job coordination alone does not make proof
 ownership multi-writer safe.
 
-### Attached-Acorn mutations
+### Other attached-Acorn mutations
 
 Request-scoped user Acorns are separate from the provider Acorn. Two browser
 requests can nevertheless attempt to mutate the same attached wallet at the
@@ -146,9 +195,11 @@ same time, particularly with multiple web workers or multiple browser tabs.
 Relay-backed advisory locks help, but the application should not treat them as
 a complete local scheduling mechanism.
 
-Safebox Web needs a wallet-scoped mutation policy, such as a durable operation
-record keyed by component public key, so deposits, payments, ecash receipt, and
-proof maintenance cannot accidentally overlap.
+Incoming-funds finalization now has a wallet-scoped database lease. Deposits,
+payments, record updates, and other proof maintenance do not yet participate
+in that lease, so they can still overlap with finalization from another tab or
+worker. The shared policy should eventually cover every attached-Acorn
+mutation.
 
 ### Ambiguous delivery outcomes
 
@@ -197,7 +248,8 @@ protects wallet state. Neither substitutes for the other.
    wait mechanism.
 5. Move production state from SQLite to PostgreSQL.
 6. Add atomic job claims, leases, and stale-claim recovery.
-7. Add wallet-scoped serialization for attached-Acorn mutations.
+7. Extend the existing incoming-funds lease into wallet-scoped serialization
+   for every attached-Acorn mutation.
 8. Add delivery acknowledgement, reconciliation, and operator review tooling.
 9. Exercise concurrency and crash points with deterministic integration tests.
 
@@ -210,5 +262,7 @@ protects wallet state. Neither substitutes for the other.
 - Monitor `QUOTE_PENDING`, `INVOICE_PENDING`, `DELIVERING`, and
   `DELIVERY_FAILED` row ages.
 - Do not automatically replay an ambiguous delivery.
+- Do not start another wallet mutation while attached-Acorn background
+  finalization is running.
 - Stop accepting new provider payments before maintenance that may interrupt
   settlement or delivery.

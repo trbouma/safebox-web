@@ -237,6 +237,13 @@ figure.blob-preview { padding: .75rem; }
 .danger-button { border-color: var(--error); color: var(--error); font-weight: 700; }
 .transaction-headline { text-align: center; }
 .transaction-balance { margin-top: 0; }
+.pending-transaction-list { display: grid; gap: .75rem; margin: 0 0 1.25rem; }
+.pending-transaction-list h2 { margin: 0; font-size: 1.15rem; }
+.pending-transaction-intro { margin: -.25rem 0 .15rem; color: var(--muted); }
+.transaction-card.pending { border-left-color: var(--advisory); background: var(--surface-soft); }
+.transaction-card.pending .transaction-amount { color: var(--advisory); }
+.pending-transaction-stage { margin: 0; }
+.pending-transaction-reference { margin: .65rem 0 0; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
 .incoming-funds { margin: 0 0 1.25rem; }
 .transaction-list { display: grid; gap: 1rem; margin: 1.5rem 0; }
 .transaction-card { border: 1px solid var(--border); border-left: .35rem solid #777; border-radius: .8rem; padding: 1rem; background: var(--surface); min-width: 0; }

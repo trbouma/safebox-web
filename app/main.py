@@ -71,6 +71,11 @@ from app.dependencies import (
     RecordAcornDependency,
 )
 from app.models import ClaimedHandle, CurrencyRate
+from app.funds_finalization import (
+    claim_finalization_job,
+    get_finalization_job,
+    run_finalization_job,
+)
 from app.handles import default_handle_from_pubkey
 from app.openetr import query_openetr_history
 from app.lnurl_pay import (
@@ -534,6 +539,89 @@ def _transaction_history_view(entries: list[dict]) -> list[dict]:
     return cards
 
 
+def _pending_transaction_view(
+    continuity_receipts: list[dict],
+    incoming_preview: dict,
+) -> list[dict]:
+    """Normalize relay-visible arrivals without presenting them as spendable."""
+
+    cards: list[dict] = []
+    seen_event_ids: set[str] = set()
+
+    def append_card(item: dict, *, stage: str) -> None:
+        if not isinstance(item, dict):
+            return
+        event_id = str(item.get("event_id") or "").strip()
+        if event_id and event_id in seen_event_ids:
+            return
+        if event_id:
+            seen_event_ids.add(event_id)
+        try:
+            amount = int(item.get("amount") or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        try:
+            timestamp = int(item.get("timestamp") or 0)
+        except (TypeError, ValueError):
+            timestamp = 0
+        created = (
+            datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime(
+                "%Y-%m-%d %H:%M UTC"
+            )
+            if timestamp > 0
+            else "Arrival time unavailable"
+        )
+        sender = str(item.get("sender_pubkey") or "").strip()
+        cards.append(
+            {
+                "event_id": event_id,
+                "event_short": event_id[:12],
+                "amount": amount,
+                "created": created,
+                "timestamp": timestamp,
+                "sender_short": sender[:12],
+                "comment": str(item.get("comment") or "").strip(),
+                "stage": stage,
+            }
+        )
+
+    for receipt in continuity_receipts:
+        if str(receipt.get("status") or "provisional") == "provisional":
+            append_card(receipt, stage="Awaiting mint confirmation")
+
+    previewed = incoming_preview.get("previewed", [])
+    if isinstance(previewed, list):
+        for arrival in previewed:
+            append_card(arrival, stage="Received on relay; finalization pending")
+
+    return sorted(
+        cards,
+        key=lambda card: (card["timestamp"], card["event_id"]),
+        reverse=True,
+    )
+
+
+def _pending_transaction_totals(
+    continuity_receipts: list[dict],
+    incoming_preview: dict,
+) -> tuple[int, int]:
+    """Prefer exact deduplicated entries while supporting older Acorn results."""
+
+    if isinstance(incoming_preview.get("previewed"), list):
+        cards = _pending_transaction_view(continuity_receipts, incoming_preview)
+        return sum(int(card["amount"]) for card in cards), len(cards)
+    provisional = [
+        receipt
+        for receipt in continuity_receipts
+        if str(receipt.get("status") or "provisional") == "provisional"
+    ]
+    return (
+        sum(int(receipt.get("amount") or 0) for receipt in provisional)
+        + int(incoming_preview.get("previewed_amount", 0)),
+        len(provisional) + int(incoming_preview.get("previewed_count", 0)),
+    )
+
+
 async def _read_continuity_receipts(acorn, timeout: float) -> list[dict]:
     reader = getattr(acorn, "get_continuity_receipts", None)
     if reader is None:
@@ -578,6 +666,8 @@ def _transactions_page(
     pending_amount: int = 0,
     pending_count: int = 0,
     fiat_estimate: dict | None = None,
+    finalization_job: dict | None = None,
+    pending_transactions: list[dict] | None = None,
 ) -> str:
     """Render transaction history with an explicit incoming funds check."""
 
@@ -594,6 +684,8 @@ def _transactions_page(
         pending_amount=int(pending_amount),
         pending_count=int(pending_count),
         fiat_estimate=fiat_estimate,
+        finalization_job=finalization_job,
+        pending_transactions=pending_transactions or [],
     )
 
 
@@ -1110,9 +1202,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.database_engine = create_database_engine(
             runtime_settings.database_url
         )
+        app.state.finalization_tasks = {}
         try:
             yield
         finally:
+            tasks = list(app.state.finalization_tasks.values())
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
             app.state.database_engine.dispose()
 
     app = FastAPI(title="Safebox Web", version="0.1.0", lifespan=lifespan)
@@ -2278,16 +2376,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
             continuity_receipts = []
-        pending_continuity_amount = sum(
-            int(receipt.get("amount") or 0)
-            for receipt in continuity_receipts
-            if str(receipt.get("status") or "provisional") == "provisional"
-        )
-        pending_continuity_count = sum(
-            1
-            for receipt in continuity_receipts
-            if str(receipt.get("status") or "provisional") == "provisional"
-        )
         try:
             incoming_preview = await _preview_incoming_payments(
                 acorn,
@@ -2299,13 +2387,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
             incoming_preview = {}
-        pending_payment_amount = (
-            pending_continuity_amount
-            + int(incoming_preview.get("previewed_amount", 0))
-        )
-        pending_payment_count = (
-            pending_continuity_count
-            + int(incoming_preview.get("previewed_count", 0))
+        pending_payment_amount, pending_payment_count = _pending_transaction_totals(
+            continuity_receipts,
+            incoming_preview,
         )
         return render_template(
             "wallet.html",
@@ -3651,11 +3735,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
             incoming_preview = {}
-        pending_amount = sum(
-            int(receipt.get("amount") or 0) for receipt in continuity_receipts
-        ) + int(incoming_preview.get("previewed_amount", 0))
-        pending_count = len(continuity_receipts) + int(
-            incoming_preview.get("previewed_count", 0)
+        pending_amount, pending_count = _pending_transaction_totals(
+            continuity_receipts,
+            incoming_preview,
+        )
+        pending_transactions = _pending_transaction_view(
+            continuity_receipts,
+            incoming_preview,
+        )
+        finalization_job = get_finalization_job(
+            request.app.state.database_engine,
+            acorn.pubkey_bech32,
         )
         return _transactions_page(
             entries,
@@ -3666,6 +3756,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             pending_amount=pending_amount,
             pending_count=pending_count,
             fiat_estimate=fiat_estimate,
+            finalization_job=finalization_job,
+            pending_transactions=pending_transactions,
+        )
+
+    @app.post("/transactions/finalize-background")
+    async def start_background_funds_finalization(
+        request: Request,
+        acorn: ReceiveAcornDependency,
+        csrf_token: str = Form(...),
+    ) -> RedirectResponse:
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            raise HTTPException(status_code=403, detail="Form token is invalid or expired")
+
+        npub = acorn.pubkey_bech32
+        claimed, owner_token, _job = claim_finalization_job(
+            request.app.state.database_engine,
+            npub,
+        )
+        if claimed:
+            task = asyncio.create_task(
+                run_finalization_job(
+                    engine=request.app.state.database_engine,
+                    acorn=acorn,
+                    npub=npub,
+                    owner_token=owner_token,
+                ),
+                name=f"funds-finalization:{npub}",
+            )
+            request.app.state.finalization_tasks[npub] = task
+
+            def remove_completed_task(completed: asyncio.Task) -> None:
+                current = request.app.state.finalization_tasks.get(npub)
+                if current is completed:
+                    request.app.state.finalization_tasks.pop(npub, None)
+
+            task.add_done_callback(remove_completed_task)
+            state = "started"
+        else:
+            state = "running"
+        return RedirectResponse(
+            f"/transactions?finalization={state}",
+            status_code=303,
         )
 
     @app.post("/transactions/receive", response_class=HTMLResponse)

@@ -30,6 +30,7 @@ The containers have separate memory. They communicate through the durable
 `safebox-web-data` volume at `/app/data`. The volume contains:
 
 - `database.db`, including claimed handles and provider-payment jobs; and
+- non-secret attached-Acorn finalization leases and progress; and
 - `service-acorn.json`, the provider wallet recovery secret while that wallet
   exists.
 
@@ -53,6 +54,14 @@ Never run more than one `service-acorn-worker` container against that state.
 the provider wallet. Multiple web workers improve request capacity but do not
 remove SQLite or singleton-worker limits. See
 [Concurrency and Provider-Job Coordination](CONCURRENCY-AND-JOB-COORDINATION.md).
+
+The web process can also run a session-bound background task when a connected
+user asks to finalize pending incoming funds. This is not service-Acorn work:
+the recipient nsec remains only in that web process's memory. SQLite or
+PostgreSQL stores only a public-key-scoped lease and non-secret progress. A
+deployment restart interrupts that task, after which the user can reconnect
+and resume from relay-backed transfer receipts. Do not delete the database
+volume merely to clear a job; an expired lease is safely reclaimable.
 
 ## 1. Prepare the Acorn dependency
 
