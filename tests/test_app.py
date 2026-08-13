@@ -2958,7 +2958,7 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
         response = client.get("/transactions")
 
     assert response.status_code == 200
-    assert "12 sats pending." in response.text
+    assert "Pending incoming funds: 12 sats in 3 transfer event(s)." in response.text
     assert "100 <span>sats</span>" in response.text
     assert "Awaiting Confirmation" not in response.text
     assert "local market" not in response.text

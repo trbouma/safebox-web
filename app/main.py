@@ -576,6 +576,7 @@ def _transactions_page(
     wallet_balance: int | None = None,
     wallet_balance_verified: bool = False,
     pending_amount: int = 0,
+    pending_count: int = 0,
     fiat_estimate: dict | None = None,
 ) -> str:
     """Render transaction history with an explicit incoming funds check."""
@@ -591,6 +592,7 @@ def _transactions_page(
         wallet_balance=wallet_balance,
         wallet_balance_verified=wallet_balance_verified,
         pending_amount=int(pending_amount),
+        pending_count=int(pending_count),
         fiat_estimate=fiat_estimate,
     )
 
@@ -3652,6 +3654,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pending_amount = sum(
             int(receipt.get("amount") or 0) for receipt in continuity_receipts
         ) + int(incoming_preview.get("previewed_amount", 0))
+        pending_count = len(continuity_receipts) + int(
+            incoming_preview.get("previewed_count", 0)
+        )
         return _transactions_page(
             entries,
             CsrfProtector(settings).issue(),
@@ -3659,6 +3664,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
             pending_amount=pending_amount,
+            pending_count=pending_count,
             fiat_estimate=fiat_estimate,
         )
 
@@ -3946,6 +3952,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pending_amount = sum(
             int(receipt.get("amount") or 0) for receipt in continuity_receipts
         )
+        pending_count = len(continuity_receipts)
         if not _history_has_receive_credit(
             entries,
             accepted_amount=accepted_amount,
@@ -3964,6 +3971,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
             pending_amount=pending_amount,
+            pending_count=pending_count,
         )
 
     @app.get("/record/present", response_class=HTMLResponse)
