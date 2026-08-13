@@ -55,7 +55,7 @@
   {% else %}
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
   {% endif %}
-  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance.{% else %}Balance requires verification—review the advisory below.{% endif %}{% if pending_payment_amount %} {{ "{:,}".format(pending_payment_amount) }} sats pending.{% endif %}</p>
+  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance.{% else %}Balance requires verification—review the advisory below.{% endif %}{% if pending_payment_amount %} Pending incoming funds: {{ "{:,}".format(pending_payment_amount) }} sats in {{ "{:,}".format(pending_payment_count) }} transfer event(s).{% endif %}</p>
 </a>
 <nav class="wallet-actions" aria-label="Wallet actions">
   <a href="/deposit">Deposit funds</a>

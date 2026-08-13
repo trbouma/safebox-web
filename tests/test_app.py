@@ -2918,7 +2918,7 @@ def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "5 sats pending." in response.text
+    assert "Pending incoming funds: 5 sats in 1 transfer event(s)." in response.text
     assert "100 <span>sats</span>" in response.text
 
 
@@ -2934,7 +2934,7 @@ def test_wallet_balance_previews_unprocessed_incoming_payments_without_receiving
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "7 sats pending." in response.text
+    assert "Pending incoming funds: 7 sats in 2 transfer event(s)." in response.text
     assert "100 <span>sats</span>" in response.text
     assert acorn.preview_calls == 1
     assert acorn.receive_calls == 0

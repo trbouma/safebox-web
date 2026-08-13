@@ -2281,6 +2281,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             for receipt in continuity_receipts
             if str(receipt.get("status") or "provisional") == "provisional"
         )
+        pending_continuity_count = sum(
+            1
+            for receipt in continuity_receipts
+            if str(receipt.get("status") or "provisional") == "provisional"
+        )
         try:
             incoming_preview = await _preview_incoming_payments(
                 acorn,
@@ -2295,6 +2300,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pending_payment_amount = (
             pending_continuity_amount
             + int(incoming_preview.get("previewed_amount", 0))
+        )
+        pending_payment_count = (
+            pending_continuity_count
+            + int(incoming_preview.get("previewed_count", 0))
         )
         return render_template(
             "wallet.html",
@@ -2325,6 +2334,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             wallet_balance_verified=wallet_balance_verified,
             fiat_estimate=fiat_estimate,
             pending_payment_amount=pending_payment_amount,
+            pending_payment_count=pending_payment_count,
             onboard_invite_path="/invite",
             csrf_token=csrf_token,
         )
