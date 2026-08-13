@@ -2293,9 +2293,9 @@ def test_wallet_displays_cached_default_currency_estimate(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "50,000 <span>sats</span>" in response.text
-    assert "≈ $100.00 CAD" in response.text
-    assert "cached rate may be stale" not in response.text
+    assert 'class="wallet-balance-amount">≈ $100.00 <span>CAD</span>' in response.text
+    assert 'class="wallet-balance-sats">50,000 sats' in response.text
+    assert "Cached rate may be stale" not in response.text
 
 
 def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) -> None:
@@ -2810,8 +2810,8 @@ def test_transaction_history_displays_cached_currency_estimate(tmp_path) -> None
         response = client.get("/transactions")
 
     assert response.status_code == 200
-    assert "50,000 <span>sats</span>" in response.text
-    assert "≈ $50.00 USD" in response.text
+    assert 'class="wallet-balance-amount">≈ $50.00 <span>USD</span>' in response.text
+    assert 'class="wallet-balance-sats">50,000 sats' in response.text
 
 
 def test_wallet_uses_balance_as_the_transaction_history_link(tmp_path) -> None:

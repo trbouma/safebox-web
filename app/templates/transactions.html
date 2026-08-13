@@ -4,9 +4,12 @@
 {% if wallet_balance is not none %}
 <a class="wallet-balance transaction-balance" href="/wallet" aria-labelledby="transaction-balance-heading">
   <h2 id="transaction-balance-heading">Balance</h2>
-  <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
   {% if fiat_estimate %}
-  <p class="wallet-balance-estimate">≈ {{ fiat_estimate.currency_symbol }}{{ "{:,.2f}".format(fiat_estimate.amount) }} {{ fiat_estimate.currency_code }}{% if fiat_estimate.stale %} · cached rate may be stale{% endif %}</p>
+  <p class="wallet-balance-amount">≈ {{ fiat_estimate.currency_symbol }}{{ "{:,.2f}".format(fiat_estimate.amount) }} <span>{{ fiat_estimate.currency_code }}</span></p>
+  <p class="wallet-balance-sats">{{ "{:,}".format(wallet_balance) }} sats</p>
+  {% if fiat_estimate.stale %}<p class="wallet-balance-rate-state">Cached rate may be stale.</p>{% endif %}
+  {% else %}
+  <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
   {% endif %}
   <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance.{% else %}Balance requires verification—review the advisory below.{% endif %}{% if pending_amount %} {{ "{:,}".format(pending_amount) }} sats pending.{% endif %}</p>
 </a>
