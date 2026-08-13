@@ -1136,6 +1136,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             and accepts_html
         ):
             return RedirectResponse("/", status_code=303)
+        if (
+            exc.status_code == 502
+            and str(exc.detail)
+            == "Unable to load the Acorn wallet from its bootstrap relay"
+            and request.method in {"GET", "HEAD"}
+            and accepts_html
+        ):
+            return HTMLResponse(
+                render_template(
+                    "disconnect.html",
+                    title="Unable to Load Acorn",
+                    message=(
+                        "Safebox could not find or load wallet state for this "
+                        "key and bootstrap relay. The recovery material or relay "
+                        "may be incorrect, or the relay may be unavailable."
+                    ),
+                    csrf_token=CsrfProtector(request.app.state.settings).issue(),
+                    show_page_navigation=False,
+                ),
+                status_code=502,
+            )
         return JSONResponse(
             status_code=exc.status_code,
             content={"detail": exc.detail},
@@ -2141,6 +2162,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.delete_cookie(SECURE_COOKIE_NAME, path="/", secure=True, httponly=True)
         response.delete_cookie(LOOPBACK_COOKIE_NAME, path="/", httponly=True)
         return response
+
+    @app.get("/disconnect", response_class=HTMLResponse)
+    async def disconnect_form(request: Request) -> HTMLResponse:
+        """Offer a safe cookie reset even when the attached Acorn cannot load."""
+
+        return HTMLResponse(
+            render_template(
+                "disconnect.html",
+                title="Disconnect Acorn",
+                message=(
+                    "Disconnecting removes the attached Acorn credentials from "
+                    "this browser session. It does not delete relay data, records, "
+                    "or funds."
+                ),
+                csrf_token=CsrfProtector(request.app.state.settings).issue(),
+                show_page_navigation=False,
+            )
+        )
 
     @app.get("/wallet", response_class=HTMLResponse)
     async def wallet(

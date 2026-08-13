@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<p>{{ message }}</p>
+<div class="onboard-actions">
+  <a class="nav-button" href="/login">Try Different Recovery Material</a>
+</div>
+<form class="disconnect-form" method="post" action="/logout">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label class="disconnect-confirmation">
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I understand this removes the attached credentials from this browser.
+  </label>
+  <button type="submit">Clear Session and Disconnect</button>
+</form>
+{% endblock %}

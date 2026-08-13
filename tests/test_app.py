@@ -19,6 +19,7 @@ from sqlmodel import Session
 # app.main deliberately refuses to import without an explicit server-held key.
 os.environ.setdefault("SAFEBOX_COOKIE_KEY", Fernet.generate_key().decode("ascii"))
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from acorn import (
@@ -805,6 +806,79 @@ def test_logout_requires_recovery_confirmation() -> None:
     assert response.status_code == 403
     assert "Confirm that you have your recovery information" in response.text
     assert SECURE_COOKIE_NAME in client.cookies
+
+
+def test_disconnect_page_can_clear_an_unloadable_session() -> None:
+    client = make_https_client()
+    client.cookies.set(
+        SECURE_COOKIE_NAME,
+        SessionCipher(TEST_SETTINGS).encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+            )
+        ),
+        domain="safebox.example",
+        path="/",
+    )
+
+    page = client.get("/disconnect")
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+
+    assert page.status_code == 200
+    assert token is not None
+    assert "Clear Session and Disconnect" in page.text
+    assert SECURE_COOKIE_NAME in client.cookies
+
+    response = client.post(
+        "/logout",
+        data={"csrf_token": token.group(1), "confirmed": "yes"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    assert SECURE_COOKIE_NAME not in client.cookies
+
+
+def test_browser_wallet_load_failure_offers_session_recovery() -> None:
+    app = create_app(TEST_SETTINGS)
+
+    async def unavailable_wallet():
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to load the Acorn wallet from its bootstrap relay",
+        )
+
+    app.dependency_overrides[get_loaded_acorn] = unavailable_wallet
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/wallet", headers={"Accept": "text/html"})
+
+    assert response.status_code == 502
+    assert "Unable to Load Acorn" in response.text
+    assert "Try Different Recovery Material" in response.text
+    assert "Clear Session and Disconnect" in response.text
+
+
+def test_api_wallet_load_failure_remains_json() -> None:
+    app = create_app(TEST_SETTINGS)
+
+    async def unavailable_wallet():
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to load the Acorn wallet from its bootstrap relay",
+        )
+
+    app.dependency_overrides[get_loaded_acorn] = unavailable_wallet
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/wallet", headers={"Accept": "application/json"})
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "Unable to load the Acorn wallet from its bootstrap relay"
+    }
 
 
 def test_onboard_offers_single_confirmed_fast_creation_path() -> None:
