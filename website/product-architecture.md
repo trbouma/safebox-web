@@ -104,6 +104,25 @@ supporting services locally.
 
 </div>
 
+## Separate responsibilities, composable confidence
+
+Safebox does not ask one database or provider to establish every property of a
+payment or record. Confidence is assembled from narrow responsibilities:
+
+| Layer | Responsibility |
+| --- | --- |
+| Acorn key | authorization, signing, and decryption |
+| Relay | signed-event availability and transport |
+| Mint | Cashu proof spend state |
+| Acorn runtime | proof compatibility, wallet mutation, and verified persistence |
+| Safebox Web | user intent, workflow coordination, and understandable status |
+
+That is why an incoming payment can be visibly present but not yet part of the
+spendable balance. It is also why the application database can coordinate a
+background task without becoming the wallet.
+
+[Read the funds model](how-safebox-treats-funds.md){ .md-button }
+
 ## Toward Mainstay and Lockbox
 
 The product distinction is deliberate:

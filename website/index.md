@@ -101,6 +101,56 @@ private relay, or a local Spurline relay inside a Lockbox. The web app is a
 convenient way to use the record. The record's continuity does not depend on
 that one web app remaining online.
 
+## Show arrival now, confirm spendability honestly
+
+A payment does not need to disappear behind a spinner while every relay and
+mint operation finishes. Safebox shows incoming transfers as pending as soon
+as they are visible for the Acorn. Each arrival remains separate from the
+confirmed balance until Acorn establishes that its proofs are compatible,
+accepted by the mint, and safely persisted.
+
+<div class="safebox-grid safebox-grid--two" markdown>
+
+<article class="safebox-card" markdown>
+
+### Arrival is visible
+
+Relay evidence gives the user immediate assurance that a payment was sent to
+their Acorn.
+
+</article>
+
+<article class="safebox-card" markdown>
+
+### Spendability is earned
+
+The large balance changes only after mint confirmation and Acorn's proof
+compatibility checks.
+
+</article>
+
+<article class="safebox-card" markdown>
+
+### Finalization can continue
+
+Longer relay and mint work runs in the background. The user can return later
+without losing sight of what arrived.
+
+</article>
+
+<article class="safebox-card" markdown>
+
+### Coordination is not custody
+
+Safebox stores non-secret job progress, not the recipient's key, proofs, or
+private wallet state.
+
+</article>
+
+</div>
+
+[See how Safebox treats funds](how-safebox-treats-funds.md){ .md-button .md-button--primary }
+
 ## Part of the local-first family
 
 Safebox Web is a sibling product in the Acorn family:
@@ -158,5 +208,6 @@ available again. This working experiment is an important foundation for
 Mainstay across Connected, Local, Mobile, and Community modes.
 
 [Read the radical rewrite](radical-rewrite-of-architecture.md){ .md-button .md-button--primary }
+[See how Safebox treats funds](how-safebox-treats-funds.md){ .md-button .md-button--primary }
 [Read the product architecture](product-architecture.md){ .md-button .md-button--primary }
 [Get started](getting-started.md){ .md-button }

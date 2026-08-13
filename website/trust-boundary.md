@@ -19,6 +19,18 @@ only when handling a request that needs an Acorn instance.
 The application database is for operational application state, such as handle
 directory entries and provider jobs. It is not the user's wallet.
 
+Incoming-funds finalization makes this distinction concrete. The database can
+store a public-key-scoped job lease, phase, counts, amounts, timestamps, and a
+bounded error. It does not store the recipient nsec, recovery words, Cashu
+proofs, incoming bearer token, or private records.
+
+The recipient key is nevertheless present in clear form inside the trusted web
+process while Acorn performs a session-authorized operation. Stateless does
+not mean the execution environment never handles secrets; it means those
+secrets do not become durable application state. Whoever controls the running
+code and its immediate proxy boundary must therefore still be trusted during
+the session.
+
 ## Web-enabled, local-first
 
 Safebox Web can be reached through a browser, but the browser-facing app is not
@@ -37,6 +49,11 @@ relay.
 Acorn handles wallet loading, proof operations, record encryption, relay
 publishing, recovery behavior, and payment workflows. Safebox Web delegates
 those operations rather than duplicating them.
+
+The provider's singleton service Acorn is a separate authority. It can receive
+Lightning settlement and deliver a private transfer to a registered recipient,
+but it does not receive the recipient key and cannot finalize the recipient's
+wallet. That final step belongs to the authenticated recipient session.
 
 ## What stays replaceable
 

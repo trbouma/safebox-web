@@ -73,6 +73,13 @@ mint is unavailable, those transactions remain pending and the confirmed
 balance stays unchanged. Connectivity can return later without hiding what was
 received or overstating what is final.
 
+This is more than a display preference. A relay can establish that a signed
+transfer is available, while a mint determines proof spend state and Acorn
+checks whether the proof itself conforms to the protocol. Safebox Web presents
+those stages without pretending that one service answers every question.
+
+[See how Safebox treats funds](how-safebox-treats-funds.md){ .md-button }
+
 Safebox Web proves this experience today. Mainstay is the future unified
 application that will carry it across records, identity, and payments.
 Lockbox is the hardware-first form of the local fallback: a small local home
