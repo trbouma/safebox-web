@@ -3006,6 +3006,7 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
                 "sender_pubkey": "sender-two-pubkey",
                 "timestamp": 1_786_430_500,
                 "amount": 4,
+                "comment": "Community supplies",
             },
             {
                 "event_id": "incoming-event-3",
@@ -3030,6 +3031,8 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
     assert "+4 sats" in response.text
     assert "+3 sats" in response.text
     assert "local market" in response.text
+    assert "Community supplies" in response.text
+    assert "<strong>Detail:</strong>" in response.text
     assert "sender-two-p" in response.text
     assert response.text.index("+4 sats") < response.text.index("+3 sats")
     assert response.text.index("+3 sats") < response.text.index("+5 sats")

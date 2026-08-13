@@ -27,7 +27,7 @@
     </header>
     <div class="transaction-amount">+{{ "{:,}".format(pending.amount) }} sats</div>
     <p class="pending-transaction-stage"><strong>{{ pending.stage }}</strong></p>
-    {% if pending.comment %}<p class="transaction-note"><strong>Note:</strong> {{ pending.comment }}</p>{% endif %}
+    {% if pending.comment %}<p class="transaction-note"><strong>Detail:</strong> {{ pending.comment }}</p>{% endif %}
     {% if pending.sender_short or pending.event_short %}
     <p class="pending-transaction-reference">
       {% if pending.sender_short %}From {{ pending.sender_short }}{% endif %}
