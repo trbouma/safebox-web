@@ -732,6 +732,13 @@ def test_public_rates_page_uses_cached_rows_without_a_session(tmp_path) -> None:
     assert response.text.count("Possibly stale") == 1
     assert "Acorn login required" not in response.text
     assert "set-cookie" not in response.headers
+    assert response.text.index("<h1>Exchange Rates</h1>") < response.text.index(
+        'class="page-navigation"'
+    )
+    assert response.text.count('class="page-navigation') == 2
+    assert response.text.index("<summary>Advisories</summary>") < response.text.rindex(
+        'class="page-navigation'
+    )
 
 
 def test_public_rates_page_explains_when_cache_is_empty(tmp_path) -> None:
@@ -1432,8 +1439,8 @@ def test_secondary_pages_have_consistent_top_level_navigation() -> None:
     assert login_nav is not None
     assert 'href="/">Home</a>' in login_nav.group(0)
     assert "Back to" not in login_nav.group(0)
-    assert login.text.index('class="page-navigation"') < login.text.index(
-        "<h1>Connect an Acorn</h1>"
+    assert login.text.index("<h1>Connect an Acorn</h1>") < login.text.index(
+        'class="page-navigation"'
     )
 
 
@@ -1455,6 +1462,10 @@ def test_record_page_navigation_links_home_and_parent_records() -> None:
     assert navigation is not None
     assert 'href="/">Home</a>' in navigation.group(0)
     assert 'href="/records">Back to Records</a>' in navigation.group(0)
+    assert response.text.index("<h1>Private Notes</h1>") < response.text.index(
+        'class="page-navigation"'
+    )
+    assert response.text.count('class="page-navigation') == 2
 
 
 def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> None:
@@ -1483,7 +1494,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert 'name="confirmed" type="checkbox" value="yes" required' in response.text
     assert response.text.index("wallet-balance") < response.text.index("wallet-actions")
     assert response.text.index("wallet-actions") < response.text.index("Component public key")
-    assert response.text.index("Advisories") < response.text.index("Disconnect")
+    assert response.text.index("Disconnect") < response.text.index("Advisories")
 
 
 def test_wallet_prominently_warns_while_recovery_backup_is_pending(tmp_path) -> None:
@@ -2678,7 +2689,7 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
     assert "Relay enforcement and physical deletion can vary" in wallet_page.text
     assert wallet_page.text.index("alice@safebox.example") < wallet_page.text.index("Balance")
     assert wallet_page.text.index("Balance") < wallet_page.text.index("Receive Silent Payment")
-    assert wallet_page.text.index("Advisories") < wallet_page.text.index("Disconnect")
+    assert wallet_page.text.index("Disconnect") < wallet_page.text.index("Advisories")
 
 
 def test_invoice_qr_is_black_and_white_without_centre_mark() -> None:
@@ -2833,6 +2844,9 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
     assert "Mint-confirmed spendable balance" in response.text
     assert "Incoming ecash" not in response.text
+    assert response.text.index(
+        '<h1 class="transaction-headline">Transaction History</h1>'
+    ) < response.text.index(">Home</a>")
     assert response.text.index(">Home</a>") < response.text.index(
         'class="wallet-balance transaction-balance"'
     )
@@ -2865,6 +2879,13 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert "<summary>Advisories</summary>" in response.text
     assert response.text.index('aria-label="Transaction history"') < response.text.index(
         "Pending transactions are added to the confirmed balance"
+    )
+    assert response.text.index("Force Finalization") > response.text.index(
+        "<summary>Advisories</summary>"
+    )
+    assert response.text.count('class="page-navigation') == 2
+    assert response.text.rindex("<summary>Advisories</summary>") < response.text.rindex(
+        'class="page-navigation'
     )
 
 
@@ -4462,6 +4483,12 @@ def test_record_index_paginates_ten_clickable_panels_at_a_time() -> None:
     assert 'rel="next" href="/records?page=3"' in second.text
     assert 'rel="prev" href="/records?page=2"' in third.text
     assert 'rel="next"' not in third.text
+    assert first.text.index("<h1>Manage Records</h1>") < first.text.index(
+        'class="page-navigation"'
+    )
+    assert first.text.count('class="page-navigation') == 2
+    assert ">Home</a>" in first.text[first.text.rindex('class="page-navigation'):]
+    assert ">Back to Wallet</a>" in first.text[first.text.rindex('class="page-navigation'):]
 
 
 def test_record_index_rejects_invalid_page_and_clamps_excessive_page() -> None:

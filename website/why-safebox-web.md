@@ -56,6 +56,39 @@ In that situation, Safebox Web can fall back to local services:
 - later, nearby community infrastructure or mesh transport when wider
   connectivity is unavailable.
 
+## When the large providers go offline
+
+Local-first becomes most important when the services people normally depend on
+are not available. A cloud application, public relay, Lightning provider, mint,
+DNS service, or even the wider internet can fail independently. Safebox is
+being designed so that the disappearance of one of those providers does not
+automatically make the community's own application, records, or previously
+issued funds disappear with it.
+
+Mainstay is the in-development application intended to become that local-first
+provider. Running on a Lockbox or other community-controlled infrastructure,
+it can bring the familiar Safebox workflows close to the people using them. A
+local Mainstay deployment can use local Acorn execution, a local Spurline
+relay, and local Grove storage instead of waiting for a distant application
+provider to recover.
+
+Payments can degrade deliberately instead of failing invisibly. Acorns can
+hold ecash that was issued while its mint was reachable. During an outage,
+Mainstay can help participants exchange that existing ecash through available
+local infrastructure and preserve the signed transfer events. The recipient
+can immediately see that funds have arrived, but Safebox keeps them **pending**
+rather than presenting them as mint-confirmed. When connectivity to the mint
+returns, Acorn checks the proofs, refreshes accepted value, and records the
+final result. Invalid or already-spent proofs do not become confirmed funds.
+
+This is continuity, not the invention of a new source of money. A disconnected
+Mainstay cannot obtain authoritative proof state from an unavailable mint,
+complete a real Lightning settlement, or remove the credit risk of the issuer.
+It can preserve local operation, evidence of what was exchanged, and a clear
+queue of work to reconcile later. Communities can therefore choose how much
+provisional risk to accept during an emergency without confusing provisional
+receipt with final settlement.
+
 Payment continuity follows the same pattern. In ordinary connected use,
 Safebox Web can use mints, Lightning, and direct Safebox-to-Safebox ecash
 transfers. It now also demonstrates Continuity Payments between Safebox

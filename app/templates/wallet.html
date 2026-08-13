@@ -92,6 +92,17 @@
   </div>
 </details>
 {% endif %}
+<form class="disconnect-form" method="post" action="/logout">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <p class="disconnect-warning">Before disconnecting, make sure you have your
+  recovery information. Safebox does not store it, and it will be impossible to
+  get back in if it is lost.</p>
+  <label class="disconnect-confirmation">
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I have my recovery information and understand Safebox cannot restore it for me.
+  </label>
+  <button type="submit">Disconnect</button>
+</form>
 <details class="general-advisories">
   <summary>Advisories</summary>
   <div class="general-advisories-content">
@@ -123,15 +134,4 @@
     {% endif %}
   </div>
 </details>
-<form class="disconnect-form" method="post" action="/logout">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <p class="disconnect-warning">Before disconnecting, make sure you have your
-  recovery information. Safebox does not store it, and it will be impossible to
-  get back in if it is lost.</p>
-  <label class="disconnect-confirmation">
-    <input name="confirmed" type="checkbox" value="yes" required>
-    I have my recovery information and understand Safebox cannot restore it for me.
-  </label>
-  <button type="submit">Disconnect</button>
-</form>
 {% endblock %}

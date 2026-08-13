@@ -10,6 +10,14 @@ TEMPLATE_DIRECTORY = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIRECTORY))
 
 _MAIN_TEMPLATES = {"home.html", "onboard.html", "wallet.html"}
+_LONG_LIST_TEMPLATES = {
+    "control_history.html",
+    "rates.html",
+    "record.html",
+    "records.html",
+    "silent_payment_receipts.html",
+    "transactions.html",
+}
 _PARENT_NAVIGATION = {
     "blob_upload.html": ("/records", "Back to Records"),
     "control_history.html": (None, "Back to Record"),
@@ -41,6 +49,7 @@ def render_template(template_name: str, **context: Any) -> str:
     """Render a complete HTML representation without introducing browser state."""
 
     context.setdefault("show_page_navigation", template_name not in _MAIN_TEMPLATES)
+    context.setdefault("repeat_page_navigation", template_name in _LONG_LIST_TEMPLATES)
     context.setdefault("home_url", "/")
     parent = _PARENT_NAVIGATION.get(template_name)
     if parent is not None:

@@ -42,6 +42,13 @@ settle a payment.</p>
 </p>
 {% endif %}
 
-<p class="rate-page-note">This is a public page. It does not load an Acorn,
-read a wallet balance, or contact the rate provider.</p>
+<details class="transaction-advisories rate-advisories">
+  <summary>Advisories</summary>
+  <div class="transaction-advisories-content">
+    <p class="rate-page-note">This is a public page. It does not load an Acorn,
+    read a wallet balance, or contact the rate provider.</p>
+    <p>Rates are informational estimates and are never used to authorize or
+    settle a payment.</p>
+  </div>
+</details>
 {% endblock %}

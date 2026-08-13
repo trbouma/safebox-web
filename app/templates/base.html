@@ -17,14 +17,16 @@
   {% include "partials/relationship.html" %}
   <p id="page-progress" class="page-progress" role="status" aria-live="polite" hidden>Opening…</p>
   <main>
-    {% if show_page_navigation %}
-    <nav class="page-navigation" aria-label="Page navigation">
-      <a class="nav-button" href="{{ home_url }}">Home</a>
-      {% if page_back_url %}<a class="nav-button" href="{{ page_back_url }}">{{ page_back_label }}</a>{% endif %}
-    </nav>
-    {% endif %}
     <h1{% if headline_class %} class="{{ headline_class }}"{% endif %}>{{ title }}</h1>
+    {% if show_page_navigation %}
+      {% set navigation_position = "top" %}
+      {% include "partials/page_navigation.html" %}
+    {% endif %}
     {% block content %}{% endblock %}
+    {% if show_page_navigation and repeat_page_navigation %}
+      {% set navigation_position = "bottom" %}
+      {% include "partials/page_navigation.html" %}
+    {% endif %}
   </main>
 </body>
 </html>

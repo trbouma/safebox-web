@@ -236,6 +236,7 @@ figure.blob-preview { padding: .75rem; }
 .danger-zone h2 { margin-top: 0; font-size: 1.15rem; }
 .danger-button { border-color: var(--error); color: var(--error); font-weight: 700; }
 .transaction-headline { text-align: center; }
+.page-navigation-bottom { margin-top: 1.5rem; }
 .transaction-balance { margin-top: 0; }
 .pending-transaction-list { display: grid; gap: .75rem; margin: 0 0 1.25rem; }
 .pending-transaction-list h2 { margin: 0; font-size: 1.15rem; }
