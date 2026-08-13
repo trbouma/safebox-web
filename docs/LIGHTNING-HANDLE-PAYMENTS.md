@@ -9,6 +9,14 @@ This complete path has been deployed and verified with a real Lightning
 payment. That validates the process boundary and interoperability path; it does
 not remove the production release gates documented below.
 
+On August 13, 2026, the opposite direction was also exercised: a connected
+Safebox Web wallet successfully paid an independently operated Swiss Bitcoin
+Pay application over Lightning after the Acorn NUT-00 proof-safety correction.
+Together, the tests demonstrate inbound provider delivery and outbound payment
+interoperability without limiting either end to Safebox-controlled software.
+See the [Funds Arrival and Finalization Milestone](FUNDS-ARRIVAL-AND-FINALIZATION-MILESTONE-2026-08-13.md)
+for the assurance, settlement, and residual-risk boundaries.
+
 ![Illustrated flow from an external Lightning wallet through Safebox Web, a durable payment job, the singleton service Acorn and mint, a gift-wrapped relay delivery, and finally into the recipient Acorn balance.](assets/lightning-to-acorn-payment-flow.png)
 
 ```text

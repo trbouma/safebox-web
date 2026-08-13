@@ -116,6 +116,9 @@ intended experience is that the user starts the work, leaves the page, and
 returns after roughly a minute to see whether it completed or requires another
 check.
 
+The complete incident-to-UX narrative and live interoperability evidence are
+recorded in the [Funds Arrival and Finalization Milestone](FUNDS-ARRIVAL-AND-FINALIZATION-MILESTONE-2026-08-13.md).
+
 This is sufficient for development and carefully bounded small-value pilot
 traffic. It is not yet a production concurrency guarantee.
 
