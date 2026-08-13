@@ -10,6 +10,11 @@ different process entry points**:
 | `safebox-web` | `uvicorn app.main:app ...` | Web routes, handle resolution, and durable job creation |
 | `service-acorn-worker` | `python -m app.service_acorn_worker run` | Exclusive provider Acorn ownership, mint settlement, and ecash delivery |
 
+The singleton worker also refreshes optional informational currency rates. That
+task is isolated from the service Acorn object: failures retain last-known-good
+rows and do not interrupt provider-payment processing. See
+[Informational Currency Rate Cache](CURRENCY-RATE-CACHE.md).
+
 ```text
 one image: safebox-web:local
     |

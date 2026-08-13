@@ -11,6 +11,7 @@ from typing import Sequence
 from acorn import Acorn
 
 from app.config import ServiceAcornSettings
+from app.currency_rates import refresh_currency_rates
 from app.database import create_database_engine, run_migrations
 from app.provider_payments import process_provider_payments_once, set_provider_identity
 from app.service_acorn import (
@@ -48,6 +49,44 @@ def _install_stop_handlers(stop_event: asyncio.Event) -> None:
             pass
 
 
+async def run_currency_rate_refresh_loop(
+    engine,
+    settings: ServiceAcornSettings,
+    stop_event: asyncio.Event,
+) -> None:
+    """Refresh display-only rates without delaying provider payments."""
+
+    delay_seconds = 0.0
+    while not stop_event.is_set():
+        if delay_seconds:
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=delay_seconds)
+                return
+            except TimeoutError:
+                pass
+        try:
+            refresh_result = await refresh_currency_rates(
+                engine,
+                source_url=settings.currency_rate_source_url,
+                currencies=settings.currency_rate_currencies,
+            )
+            logger.info(
+                "currency rates refreshed updated=%s missing=%s",
+                refresh_result["updated"],
+                ",".join(refresh_result["missing"]) or "none",
+            )
+            delay_seconds = settings.currency_rate_interval_seconds
+        except Exception as exc:
+            # Rates are display-only. Keep prior valid rows and retry sooner
+            # than the normal refresh interval without blocking settlement.
+            logger.warning(
+                "currency rate refresh failed; retaining cached values "
+                "error_type=%s",
+                type(exc).__name__,
+            )
+            delay_seconds = min(60.0, settings.currency_rate_interval_seconds)
+
+
 async def run_worker(
     settings: ServiceAcornSettings,
     *,
@@ -73,6 +112,13 @@ async def run_worker(
             "standalone service Acorn worker ready npub=%s recovered=%s",
             runtime.acorn.pubkey_bech32,
             runtime.recovered,
+        )
+        currency_rate_task = (
+            asyncio.create_task(
+                run_currency_rate_refresh_loop(engine, settings, worker_stop)
+            )
+            if settings.currency_rates_enabled
+            else None
         )
         try:
             while not worker_stop.is_set():
@@ -100,6 +146,9 @@ async def run_worker(
                 except TimeoutError:
                     pass
         finally:
+            worker_stop.set()
+            if currency_rate_task is not None:
+                await currency_rate_task
             # A routine deploy or restart must not destroy an operational wallet.
             # The mode-0600 state file lets the next singleton worker recover it.
             logger.info(

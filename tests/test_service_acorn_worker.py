@@ -106,6 +106,69 @@ def test_worker_settings_do_not_require_web_cookie_key(tmp_path, monkeypatch) ->
     assert settings.service_acorn_enabled is True
     assert settings.service_acorn_gift_wrap_retention_seconds == 7 * 24 * 60 * 60
     assert settings.nip57_require_description_hash is False
+    assert settings.currency_rates_enabled is False
+
+
+def test_worker_currency_rate_settings_are_loaded_without_cookie_key(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
+    monkeypatch.setenv("SAFEBOX_SERVICE_ACORN_ENABLED", "true")
+    monkeypatch.setenv("SAFEBOX_CURRENCY_RATES_ENABLED", "true")
+    monkeypatch.setenv("SAFEBOX_CURRENCY_RATE_INTERVAL_SECONDS", "7200")
+    monkeypatch.setenv("SAFEBOX_CURRENCY_RATE_CURRENCIES", "cad,USD,cad")
+
+    settings = ServiceAcornSettings.from_env()
+
+    assert settings.currency_rates_enabled is True
+    assert settings.currency_rate_interval_seconds == 7200
+    assert settings.currency_rate_currencies == ("CAD", "USD")
+
+
+def test_worker_refreshes_rates_without_passing_the_service_acorn(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "service-acorn.json"
+    state_path.write_text("recovery", encoding="utf-8")
+    acorn = SimpleNamespace(pubkey_bech32="npub1service", pubkey_hex="11" * 32)
+    runtime = SimpleNamespace(acorn=acorn, recovered=True, state_path=state_path)
+    stop_event = asyncio.Event()
+    refresh_calls: list[dict] = []
+
+    async def fake_start(settings):
+        return runtime
+
+    async def fake_refresh(engine, **kwargs):
+        refresh_calls.append(kwargs)
+        stop_event.set()
+        return {"updated": 2, "missing": []}
+
+    async def fake_payments(*args, **kwargs):
+        return False
+
+    monkeypatch.setattr(worker_module, "start_service_acorn", fake_start)
+    monkeypatch.setattr(worker_module, "refresh_currency_rates", fake_refresh)
+    monkeypatch.setattr(
+        worker_module,
+        "process_provider_payments_once",
+        fake_payments,
+    )
+    settings = worker_settings(
+        tmp_path,
+        currency_rates_enabled=True,
+        currency_rate_source_url="https://rates.example/ticker",
+        currency_rate_currencies=("CAD", "USD"),
+    )
+
+    asyncio.run(worker_module.run_worker(settings, stop_event=stop_event))
+
+    assert refresh_calls == [
+        {
+            "source_url": "https://rates.example/ticker",
+            "currencies": ("CAD", "USD"),
+        }
+    ]
 
 
 def test_worker_can_require_strict_nip57_description_hash(

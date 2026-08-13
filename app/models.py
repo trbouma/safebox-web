@@ -87,3 +87,17 @@ class ProviderZap(SQLModel, table=True):
     receipt_event_id: Optional[str] = Field(default=None, nullable=True)
     receipt_json: Optional[str] = Field(default=None, nullable=True)
     receipt_error: Optional[str] = Field(default=None, nullable=True)
+
+
+class CurrencyRate(SQLModel, table=True):
+    """Last-known-good informational fiat value for one bitcoin."""
+
+    __tablename__ = "currency_rate"
+
+    currency_code: str = Field(primary_key=True)
+    fiat_per_btc: float = Field(nullable=False)
+    currency_symbol: str = Field(nullable=False)
+    currency_description: str = Field(nullable=False)
+    source: str = Field(nullable=False)
+    fetched_at: datetime = Field(nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)

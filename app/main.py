@@ -6,7 +6,7 @@ import asyncio
 import base64
 from contextlib import asynccontextmanager
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from html import escape
 import json
 import logging
@@ -59,6 +59,7 @@ from acorn import (
     detect_silent_payment_receipts,
 )
 from app.database import create_database_engine, run_migrations
+from app.currency_rates import currency_balance_estimate
 from app.dependencies import (
     AcornDependency,
     CredentialsDependency,
@@ -69,7 +70,7 @@ from app.dependencies import (
     ReceiveAcornDependency,
     RecordAcornDependency,
 )
-from app.models import ClaimedHandle
+from app.models import ClaimedHandle, CurrencyRate
 from app.handles import default_handle_from_pubkey
 from app.openetr import query_openetr_history
 from app.lnurl_pay import (
@@ -1202,6 +1203,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/rates", response_class=HTMLResponse)
+    async def public_rates(
+        request: Request,
+        session: DatabaseSessionDependency,
+    ) -> HTMLResponse:
+        """Show cached informational rates without requiring an Acorn session."""
+
+        settings = request.app.state.settings
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        stale_after = timedelta(seconds=settings.currency_rate_stale_seconds)
+        rows = session.exec(
+            select(CurrencyRate).order_by(CurrencyRate.currency_code)
+        ).all()
+        rates = [
+            {
+                "currency_code": row.currency_code,
+                "currency_symbol": row.currency_symbol,
+                "currency_description": row.currency_description,
+                "fiat_per_btc": row.fiat_per_btc,
+                "fetched_at": row.fetched_at,
+                "source": row.source,
+                "stale": now - row.fetched_at > stale_after,
+            }
+            for row in rows
+        ]
+        return HTMLResponse(
+            render_template(
+                "rates.html",
+                title="Exchange Rates",
+                rates=rates,
+                rates_enabled=settings.currency_rates_enabled,
+            )
+        )
+
     @app.get("/favicon.ico", include_in_schema=False)
     async def favicon() -> FileResponse:
         return FileResponse(static_directory / "favicon.ico", media_type="image/x-icon")
@@ -2181,6 +2216,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             acorn.get_balance(),
             verification,
         )
+        fiat_estimate = None
+        if settings.currency_rates_enabled:
+            fiat_estimate = currency_balance_estimate(
+                session,
+                sats=wallet_balance,
+                currency_code=settings.default_display_currency,
+                stale_seconds=settings.currency_rate_stale_seconds,
+            )
         try:
             continuity_receipts = await _read_continuity_receipts(
                 acorn,
@@ -2239,6 +2282,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             balance_status=balance_status,
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
+            fiat_estimate=fiat_estimate,
             pending_payment_amount=pending_payment_amount,
             onboard_invite_path="/invite",
             csrf_token=csrf_token,

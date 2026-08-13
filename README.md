@@ -11,6 +11,13 @@ The browser interface follows a documented
 Application and wallet logic remains in FastAPI and Acorn; browser JavaScript
 is limited to progressive presentation behavior and narrowly scoped device
 input such as QR acquisition.
+
+Informational fiat estimates use a database-backed cache refreshed by the
+singleton worker; web requests do not contact the external rate provider. See
+the [Informational Currency Rate Cache](docs/CURRENCY-RATE-CACHE.md) for process,
+failure, freshness, privacy, and configuration boundaries.
+The same cache supplies the unauthenticated public `/rates` page. Public access
+does not weaken the normal HTTPS transport requirement.
 The companion
 [Progressive Web App and Hypermedia Boundary](docs/PWA-HYPERMEDIA-BOUNDARY.md)
 defines how future installability, offline presentation, service workers,
@@ -70,6 +77,8 @@ This implementation intentionally provides:
 - an encrypted, authenticated browser cookie;
 - request-scoped `Acorn` construction through FastAPI dependency injection;
 - relay-backed wallet loading and balance display;
+- an optional singleton-refreshed, last-known-good currency-rate cache for an
+  informational estimate beneath the satoshi balance;
 - a responsive transaction-history view with explicit incoming-ecash receipt;
 - authenticated NIP-05 handle claiming and public resolution;
 - record label listing, retrieval, creation, and user-confirmed update;

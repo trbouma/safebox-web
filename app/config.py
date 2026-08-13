@@ -34,6 +34,11 @@ DEFAULT_BITCOIN_SWEEP_FEE_RATE = 2.0
 DEFAULT_OPENETR_RELAYS = ("wss://relay.openetr.org",)
 DEFAULT_OPENETR_QUERY_TIMEOUT_SECONDS = 5.0
 DEFAULT_OPENETR_QUERY_LIMIT = 100
+DEFAULT_CURRENCY_RATE_SOURCE_URL = "https://blockchain.info/ticker"
+DEFAULT_CURRENCY_RATE_INTERVAL_SECONDS = 60 * 60
+DEFAULT_CURRENCY_RATE_STALE_SECONDS = 24 * 60 * 60
+DEFAULT_CURRENCY_RATE_CURRENCIES = ("CAD", "USD", "EUR", "GBP", "JPY", "INR")
+DEFAULT_DISPLAY_CURRENCY = "CAD"
 
 
 def _allowed_ws_relays_from_env() -> tuple[str, ...]:
@@ -56,6 +61,20 @@ def _openetr_relays_from_env() -> tuple[str, ...]:
         if relay.strip()
     )
     return relays or DEFAULT_OPENETR_RELAYS
+
+
+def _currency_codes_from_env() -> tuple[str, ...]:
+    codes = tuple(
+        dict.fromkeys(
+            code.strip().upper()
+            for code in os.getenv(
+                "SAFEBOX_CURRENCY_RATE_CURRENCIES",
+                ",".join(DEFAULT_CURRENCY_RATE_CURRENCIES),
+            ).split(",")
+            if code.strip()
+        )
+    )
+    return codes or DEFAULT_CURRENCY_RATE_CURRENCIES
 
 
 def _session_ttl_seconds_from_env() -> int:
@@ -130,6 +149,10 @@ class ServiceAcornSettings:
     nip57_require_description_hash: bool = False
     service_acorn_shutdown_recipient: str | None = None
     service_acorn_shutdown_relay: str | None = None
+    currency_rates_enabled: bool = False
+    currency_rate_source_url: str = DEFAULT_CURRENCY_RATE_SOURCE_URL
+    currency_rate_interval_seconds: float = DEFAULT_CURRENCY_RATE_INTERVAL_SECONDS
+    currency_rate_currencies: tuple[str, ...] = DEFAULT_CURRENCY_RATE_CURRENCIES
 
     def __post_init__(self) -> None:
         if self.wallet_load_timeout_seconds <= 0:
@@ -138,6 +161,10 @@ class ServiceAcornSettings:
             raise ValueError("SAFEBOX_PAYMENT_TIMEOUT_SECONDS must be positive")
         if self.service_acorn_poll_seconds <= 0:
             raise ValueError("SAFEBOX_SERVICE_ACORN_POLL_SECONDS must be positive")
+        if self.currency_rate_interval_seconds <= 0:
+            raise ValueError("SAFEBOX_CURRENCY_RATE_INTERVAL_SECONDS must be positive")
+        if self.currency_rates_enabled and not self.currency_rate_source_url.strip():
+            raise ValueError("SAFEBOX_CURRENCY_RATE_SOURCE_URL is required")
         _validate_gift_wrap_retention(
             self.service_acorn_gift_wrap_retention_seconds
         )
@@ -160,6 +187,12 @@ class ServiceAcornSettings:
             load_timeout = float(os.getenv("SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS", "20"))
             payment_timeout = float(os.getenv("SAFEBOX_PAYMENT_TIMEOUT_SECONDS", "90"))
             poll_seconds = float(os.getenv("SAFEBOX_SERVICE_ACORN_POLL_SECONDS", "0.5"))
+            rate_interval = float(
+                os.getenv(
+                    "SAFEBOX_CURRENCY_RATE_INTERVAL_SECONDS",
+                    str(DEFAULT_CURRENCY_RATE_INTERVAL_SECONDS),
+                )
+            )
         except ValueError as exc:
             raise RuntimeError("Safebox Acorn timeout settings must be numbers") from exc
         retention_seconds = _gift_wrap_retention_from_env()
@@ -197,6 +230,15 @@ class ServiceAcornSettings:
             ),
             service_acorn_shutdown_recipient=shutdown_recipient or None,
             service_acorn_shutdown_relay=shutdown_relay or None,
+            currency_rates_enabled=_env_bool(
+                "SAFEBOX_CURRENCY_RATES_ENABLED", False
+            ),
+            currency_rate_source_url=os.getenv(
+                "SAFEBOX_CURRENCY_RATE_SOURCE_URL",
+                DEFAULT_CURRENCY_RATE_SOURCE_URL,
+            ).strip(),
+            currency_rate_interval_seconds=rate_interval,
+            currency_rate_currencies=_currency_codes_from_env(),
         )
 
 
@@ -235,6 +277,10 @@ class Settings:
     )
     service_acorn_shutdown_recipient: str | None = None
     service_acorn_shutdown_relay: str | None = None
+    currency_rates_enabled: bool = False
+    currency_rate_currencies: tuple[str, ...] = DEFAULT_CURRENCY_RATE_CURRENCIES
+    default_display_currency: str = DEFAULT_DISPLAY_CURRENCY
+    currency_rate_stale_seconds: int = DEFAULT_CURRENCY_RATE_STALE_SECONDS
 
     @property
     def onboard_invite_code(self) -> str:
@@ -298,6 +344,15 @@ class Settings:
             )
         if not 0 <= self.lnurl_comment_allowed <= 1000:
             raise ValueError("SAFEBOX_LNURL_COMMENT_ALLOWED must be between 0 and 1000")
+        if self.currency_rate_stale_seconds <= 0:
+            raise ValueError("SAFEBOX_CURRENCY_RATE_STALE_SECONDS must be positive")
+        if not self.currency_rate_currencies:
+            raise ValueError("SAFEBOX_CURRENCY_RATE_CURRENCIES must not be empty")
+        if self.default_display_currency not in self.currency_rate_currencies:
+            raise ValueError(
+                "SAFEBOX_DEFAULT_DISPLAY_CURRENCY must be included in "
+                "SAFEBOX_CURRENCY_RATE_CURRENCIES"
+            )
         _validate_gift_wrap_retention(
             self.service_acorn_gift_wrap_retention_seconds
         )
@@ -362,6 +417,12 @@ class Settings:
                 os.getenv(
                     "SAFEBOX_OPENETR_QUERY_LIMIT",
                     str(DEFAULT_OPENETR_QUERY_LIMIT),
+                )
+            )
+            currency_rate_stale_seconds = int(
+                os.getenv(
+                    "SAFEBOX_CURRENCY_RATE_STALE_SECONDS",
+                    str(DEFAULT_CURRENCY_RATE_STALE_SECONDS),
                 )
             )
         except ValueError as exc:
@@ -445,4 +506,13 @@ class Settings:
             ),
             service_acorn_shutdown_recipient=shutdown_recipient or None,
             service_acorn_shutdown_relay=shutdown_relay or None,
+            currency_rates_enabled=_env_bool(
+                "SAFEBOX_CURRENCY_RATES_ENABLED", False
+            ),
+            currency_rate_currencies=_currency_codes_from_env(),
+            default_display_currency=os.getenv(
+                "SAFEBOX_DEFAULT_DISPLAY_CURRENCY",
+                DEFAULT_DISPLAY_CURRENCY,
+            ).strip().upper(),
+            currency_rate_stale_seconds=currency_rate_stale_seconds,
         )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from html import unescape
 import json
 import os
@@ -12,6 +13,7 @@ from types import SimpleNamespace
 
 from cryptography.fernet import Fernet
 import pytest
+from sqlmodel import Session
 
 
 # app.main deliberately refuses to import without an explicit server-held key.
@@ -680,6 +682,63 @@ def test_root_renders_existing_acorn_login_without_a_session() -> None:
     assert 'action="/login"' in response.text
     assert 'class="page-navigation"' not in response.text
     assert "Create a new Acorn" in response.text
+    assert 'href="/rates">View Exchange Rates</a>' in response.text
+
+
+def test_public_rates_page_uses_cached_rows_without_a_session(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        currency_rates_enabled=True,
+        currency_rate_stale_seconds=3_600,
+    )
+    app = create_app(settings)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    with TestClient(app, base_url="https://safebox.example") as client:
+        with Session(app.state.database_engine) as session:
+            from app.models import CurrencyRate
+
+            session.add_all(
+                [
+                    CurrencyRate(
+                        currency_code="USD",
+                        fiat_per_btc=100_000.5,
+                        currency_symbol="$",
+                        currency_description="United States dollar",
+                        source="https://rates.example/ticker",
+                        fetched_at=now,
+                        updated_at=now,
+                    ),
+                    CurrencyRate(
+                        currency_code="CAD",
+                        fiat_per_btc=140_000.0,
+                        currency_symbol="$",
+                        currency_description="Canadian dollar",
+                        source="https://rates.example/ticker",
+                        fetched_at=now - timedelta(hours=2),
+                        updated_at=now - timedelta(hours=2),
+                    ),
+                ]
+            )
+            session.commit()
+        response = client.get("/rates")
+
+    assert response.status_code == 200
+    assert "Exchange Rates" in response.text
+    assert "$140,000.00" in response.text
+    assert "$100,000.50" in response.text
+    assert response.text.index("CAD") < response.text.index("USD")
+    assert response.text.count("Possibly stale") == 1
+    assert "Acorn login required" not in response.text
+    assert "set-cookie" not in response.headers
+
+
+def test_public_rates_page_explains_when_cache_is_empty(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/rates")
+
+    assert response.status_code == 200
+    assert "not enabled by this Safebox operator" in response.text
 
 
 def test_root_clears_invalid_session_and_renders_existing_acorn_login() -> None:
@@ -2205,6 +2264,40 @@ def test_wallet_page_displays_loaded_balance(tmp_path) -> None:
     assert "NIP-05 address" not in response.text
 
 
+def test_wallet_displays_cached_default_currency_estimate(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        currency_rates_enabled=True,
+        default_display_currency="CAD",
+    )
+    app = create_app(settings)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn(
+        balance=50_000
+    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        with Session(app.state.database_engine) as session:
+            from app.models import CurrencyRate
+
+            session.add(
+                CurrencyRate(
+                    currency_code="CAD",
+                    fiat_per_btc=200_000.0,
+                    currency_symbol="$",
+                    currency_description="Canadian dollar",
+                    source="test",
+                    fetched_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                    updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                )
+            )
+            session.commit()
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "50,000 <span>sats</span>" in response.text
+    assert "≈ $100.00 CAD" in response.text
+    assert "cached rate may be stale" not in response.text
+
+
 def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
@@ -2257,14 +2350,18 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         provider_zap_columns = {
             row[1] for row in connection.execute("PRAGMA table_info(provider_zap)")
         }
+        currency_rate_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(currency_rate)")
+        }
     assert {
         "alembic_version",
         "claimed_handle",
         "provider_identity",
         "provider_payment",
         "provider_zap",
+        "currency_rate",
     }.issubset(tables)
-    assert revision == ("20260808_0003",)
+    assert revision == ("20260812_0004",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -2298,6 +2395,15 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "receipt_json",
         "receipt_error",
     } == provider_zap_columns
+    assert {
+        "currency_code",
+        "fiat_per_btc",
+        "currency_symbol",
+        "currency_description",
+        "source",
+        "fetched_at",
+        "updated_at",
+    } == currency_rate_columns
 
 
 def test_web_lifespan_does_not_own_the_service_acorn(tmp_path) -> None:

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Indicative fiat values for one bitcoin, read from the most recently cached
+rate data. These values are informational and are never used to authorize or
+settle a payment.</p>
+
+{% if rates %}
+<div class="rates-table-wrap">
+  <table class="rates-table">
+    <thead>
+      <tr>
+        <th scope="col">Currency</th>
+        <th scope="col">Value of 1 BTC</th>
+        <th scope="col">Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for rate in rates %}
+      <tr>
+        <th scope="row">
+          <span class="rate-code">{{ rate.currency_code }}</span>
+          <span class="rate-description">{{ rate.currency_description }}</span>
+        </th>
+        <td class="rate-value">{{ rate.currency_symbol }}{{ "{:,.2f}".format(rate.fiat_per_btc) }}</td>
+        <td>
+          <time datetime="{{ rate.fetched_at.isoformat() }}">{{ rate.fetched_at.strftime("%Y-%m-%d %H:%M UTC") }}</time>
+          {% if rate.stale %}<span class="rate-stale">Possibly stale</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="onboard-advisory">
+  {% if rates_enabled %}
+  Exchange rates are not available yet. The background worker will populate
+  this page after its next successful provider refresh.
+  {% else %}
+  Exchange-rate display is not enabled by this Safebox operator.
+  {% endif %}
+</p>
+{% endif %}
+
+<p class="rate-page-note">This is a public page. It does not load an Acorn,
+read a wallet balance, or contact the rate provider.</p>
+{% endblock %}
