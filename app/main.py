@@ -576,6 +576,7 @@ def _transactions_page(
     wallet_balance: int | None = None,
     wallet_balance_verified: bool = False,
     pending_amount: int = 0,
+    fiat_estimate: dict | None = None,
 ) -> str:
     """Render transaction history with an explicit incoming funds check."""
 
@@ -590,6 +591,7 @@ def _transactions_page(
         wallet_balance=wallet_balance,
         wallet_balance_verified=wallet_balance_verified,
         pending_amount=int(pending_amount),
+        fiat_estimate=fiat_estimate,
     )
 
 
@@ -3516,7 +3518,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/transactions", response_class=HTMLResponse)
-    async def transactions(request: Request, acorn: LoadedAcornDependency):
+    async def transactions(
+        request: Request,
+        acorn: LoadedAcornDependency,
+        session: DatabaseSessionDependency,
+    ):
         settings = request.app.state.settings
         verification, _verification_error = await _read_proof_verification(
             acorn,
@@ -3526,6 +3532,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             acorn.get_balance(),
             verification,
         )
+        fiat_estimate = None
+        if settings.currency_rates_enabled:
+            fiat_estimate = currency_balance_estimate(
+                session,
+                sats=wallet_balance,
+                currency_code=settings.default_display_currency,
+                stale_seconds=settings.currency_rate_stale_seconds,
+            )
         try:
             history = await asyncio.wait_for(
                 acorn.get_tx_history(),
@@ -3596,6 +3610,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
             pending_amount=pending_amount,
+            fiat_estimate=fiat_estimate,
         )
 
     @app.post("/transactions/receive", response_class=HTMLResponse)

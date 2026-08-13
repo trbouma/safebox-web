@@ -2698,8 +2698,8 @@ def test_handle_and_component_uniqueness_are_enforced(tmp_path) -> None:
         ).status_code == 404
 
 
-def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(
         transaction_history=[
             {
@@ -2727,9 +2727,8 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
         ]
     )
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.get("/transactions")
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/transactions")
 
     assert response.status_code == 200
     assert '<h1 class="transaction-headline">Transaction History</h1>' in response.text
@@ -2771,15 +2770,48 @@ def test_transaction_history_renders_mobile_friendly_journal_cards() -> None:
     )
 
 
-def test_transaction_history_has_an_empty_state() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_transaction_history_has_an_empty_state(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
     app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.get("/transactions")
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/transactions")
 
     assert response.status_code == 200
     assert "No transaction history was found" in response.text
+
+
+def test_transaction_history_displays_cached_currency_estimate(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        currency_rates_enabled=True,
+        default_display_currency="USD",
+    )
+    app = create_app(settings)
+    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn(
+        balance=50_000
+    )
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    with TestClient(app, base_url="https://safebox.example") as client:
+        with Session(app.state.database_engine) as session:
+            from app.models import CurrencyRate
+
+            session.add(
+                CurrencyRate(
+                    currency_code="USD",
+                    fiat_per_btc=100_000.0,
+                    currency_symbol="$",
+                    currency_description="United States dollar",
+                    source="https://rates.example/ticker",
+                    fetched_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+        response = client.get("/transactions")
+
+    assert response.status_code == 200
+    assert "50,000 <span>sats</span>" in response.text
+    assert "≈ $50.00 USD" in response.text
 
 
 def test_wallet_uses_balance_as_the_transaction_history_link(tmp_path) -> None:
@@ -2834,8 +2866,8 @@ def test_wallet_balance_previews_unprocessed_incoming_payments_without_receiving
     assert acorn.receive_calls == 0
 
 
-def test_transaction_history_sums_all_pending_payments() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
     acorn.continuity_receipts = [
         {
@@ -2848,9 +2880,8 @@ def test_transaction_history_sums_all_pending_payments() -> None:
     ]
     acorn.incoming_preview = {"previewed_count": 2, "previewed_amount": 7}
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.get("/transactions")
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/transactions")
 
     assert response.status_code == 200
     assert "12 sats pending." in response.text
@@ -3114,12 +3145,11 @@ def test_receive_incoming_ecash_stale_proofs_repairs_and_requires_fresh_check() 
     assert "Finalize pending transactions again" in response.text
 
 
-def test_transaction_history_offers_explicit_force_finalization() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_transaction_history_offers_explicit_force_finalization(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
     app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.get("/transactions")
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/transactions")
 
     assert response.status_code == 200
     assert '<input type="hidden" name="force" value="true">' in response.text

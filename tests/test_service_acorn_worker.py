@@ -99,6 +99,7 @@ def test_worker_requires_explicit_enablement(tmp_path) -> None:
 def test_worker_settings_do_not_require_web_cookie_key(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
+    monkeypatch.delenv("SAFEBOX_CURRENCY_RATES_ENABLED", raising=False)
     monkeypatch.setenv("SAFEBOX_SERVICE_ACORN_ENABLED", "true")
 
     settings = ServiceAcornSettings.from_env()
