@@ -5,13 +5,13 @@ description: How Safebox Web fits with Acorn, Grove, Spurline, Mainstay, and Loc
 
 # Product Architecture
 
-Safebox Web is designed as a sibling product in a broader local-first family.
+Safebox Web is designed as a sibling product in the Mainstay product family.
 Each component has a narrow responsibility and can be developed, tested, and
 operated independently.
 
 The user-facing promise is simpler than the component diagram: Safebox Web is
 the wallet app available today. It is also the practical foundation for
-Mainstay, the future unified application for records, identity, and payments.
+Mainstay, the future unified application for keys, records, and payments.
 The other pieces preserve state and evidence without making one hosted service
 permanent.
 
@@ -104,7 +104,7 @@ supporting services locally.
 
 </div>
 
-## Separate responsibilities, composable confidence
+## Good boundaries, not barriers
 
 Safebox does not ask one database or provider to establish every property of a
 payment or record. Confidence is assembled from narrow responsibilities:
@@ -120,6 +120,11 @@ payment or record. Confidence is assembled from narrow responsibilities:
 That is why an incoming payment can be visibly present but not yet part of the
 spendable balance. It is also why the application database can coordinate a
 background task without becoming the wallet.
+
+These boundaries contain failures and keep authority legible. Open protocols
+prevent them from becoming barriers: each component can remain independently
+deployable and replaceable while Mainstay and Safebox Web coordinate a
+coherent experience across them.
 
 [Read the funds model](how-safebox-treats-funds.md){ .md-button }
 

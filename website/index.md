@@ -1,13 +1,13 @@
 ---
 title: Safebox Web
-description: A local-first wallet app for individuals and communities.
+description: A local-first application for user-controlled funds, records, and continuity.
 ---
 
 <section class="safebox-hero" markdown>
 
 # Safebox Web
 
-<p class="safebox-tagline">A local-first wallet app for individuals and communities.</p>
+<p class="safebox-tagline">A local-first application for user-controlled funds, records, and continuity.</p>
 
 <p class="safebox-intro">Safebox Web helps people hold funds, manage private records, receive value, and present portable evidence while keeping control portable across apps and infrastructure.</p>
 
@@ -151,9 +151,9 @@ private wallet state.
 
 [See how Safebox treats funds](how-safebox-treats-funds.md){ .md-button .md-button--primary }
 
-## Part of the local-first family
+## Part of the Mainstay product family
 
-Safebox Web is a sibling product in the Acorn family:
+Safebox Web is an independently useful sibling in the Mainstay product family:
 
 ```text
 Safebox Web -> Acorn -> Spurline
@@ -170,6 +170,12 @@ foundation for Mainstay, the future unified application. Lockbox is the
 hardware-first appliance intended to run Mainstay and its supporting services
 locally.
 
+**Good boundaries, not barriers.** Safebox Web owns the human workflows, while
+Acorn, Grove, Spurline, mints, and other services retain their own authority
+and failure boundaries. Open protocols keep those boundaries interoperable so
+the app can coordinate continuity without becoming the wallet, relay, mint, or
+system of record.
+
 <div class="safebox-family" markdown>
 
 [**Acorn**  
@@ -180,6 +186,9 @@ Blossom storage for opaque, content-addressed blobs.](https://github.com/trbouma
 
 [**Spurline**  
 A local-first relay for individuals and communities.](https://github.com/trbouma/spurline)
+
+[**Clear**<br>
+Optional bounded local currencies for organizations and communities.](https://github.com/trbouma/clear)
 
 [**Mainstay + Lockbox**<br>
 The future unified app and its hardware-first local appliance.](product-architecture.md)

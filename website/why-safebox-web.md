@@ -114,7 +114,7 @@ those stages without pretending that one service answers every question.
 [See how Safebox treats funds](how-safebox-treats-funds.md){ .md-button }
 
 Safebox Web proves this experience today. Mainstay is the future unified
-application that will carry it across records, identity, and payments.
+application that will carry it across keys, records, and payments.
 Lockbox is the hardware-first form of the local fallback: a small local home
 for Mainstay, Acorn, Spurline, Grove, and related services people may normally
 reach through a web-connected service.
