@@ -70,7 +70,7 @@ if (
     if (!accepted) status.textContent = "Camera scanning stopped.";
   };
 
-  startButton.addEventListener("click", async () => {
+  const start = async () => {
     accepted = false;
     startButton.disabled = true;
     status.textContent = "Requesting camera access…";
@@ -81,12 +81,15 @@ if (
       stopButton.hidden = false;
       status.textContent = "Camera active. Hold the QR code inside the frame.";
     } catch (_error) {
+      startButton.hidden = false;
       startButton.disabled = false;
       status.textContent =
         "Camera access was unavailable. Check browser permission or enter the address manually.";
     }
-  });
+  };
 
+  startButton.addEventListener("click", start);
   stopButton.addEventListener("click", stop);
   window.addEventListener("pagehide", () => scanner.destroy(), { once: true });
+  void start();
 }

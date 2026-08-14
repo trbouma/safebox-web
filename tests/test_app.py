@@ -3521,8 +3521,20 @@ def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None
     assert 'src="/static/lightning-scan.js"' in response.text
     assert 'method="post" action="/scan/lightning"' in response.text
     assert "data-scanner-form" in response.text
+    assert '<button type="button" data-scanner-start hidden>' in response.text
+    assert "Requesting camera access…" in response.text
+    assert '<details class="general-advisories scanner-advisories">' in response.text
+    assert response.text.index('data-lightning-scanner') < response.text.index(
+        "Point the camera at a Safebox"
+    )
     assert "Camera scanning requires JavaScript" in response.text
     assert "worker-src 'self' blob:" in response.headers["content-security-policy"]
+
+    script = client.get("/static/lightning-scan.js")
+    assert script.status_code == 200
+    assert "const start = async () =>" in script.text
+    assert "void start();" in script.text
+    assert "startButton.hidden = false;" in script.text
 
 
 def test_scanned_lightning_address_prefills_payment_review() -> None:
