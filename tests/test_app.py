@@ -1424,6 +1424,7 @@ def test_pages_include_mobile_layout_safeguards() -> None:
     assert ".safekeeping-message" in stylesheet.text
     assert ".page-navigation .nav-button { width: 100%; }" in stylesheet.text
     assert ".wallet-address-disclosure { box-sizing: border-box; width: 100%; margin: 0; }" in stylesheet.text
+    assert ".wallet-address-panel button, .wallet-address-panel .nav-button { width: 100%; margin-top: 1rem; }" in stylesheet.text
 
 
 def test_secondary_pages_have_consistent_top_level_navigation() -> None:

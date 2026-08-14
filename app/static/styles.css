@@ -78,7 +78,7 @@ button:disabled { cursor: wait; opacity: .65; }
 .wallet-address-disclosure[open] .wallet-address-summary-at { display: inline-flex; }
 .wallet-address-panel { box-sizing: border-box; max-width: 24rem; margin: .75rem auto 0; padding: 1rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); color: var(--text); text-align: center; }
 .wallet-address-panel p { margin: .75rem 0 0; }
-.wallet-address-panel button { margin-top: 1rem; }
+.wallet-address-panel button, .wallet-address-panel .nav-button { width: 100%; margin-top: 1rem; }
 .wallet-address-qr { display: flex; width: 100%; min-height: 0; margin: 0; padding: 0; justify-content: center; border: 0; background: transparent; }
 .wallet-address-qr svg { width: min(100%, 20rem); height: auto; }
 .wallet-address-copy-status { margin: .75rem 0 0; text-align: center; }
