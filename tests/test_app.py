@@ -2657,17 +2657,21 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
         assert claim.status_code == 303
 
         wallet_page = client.get("/wallet")
+        stylesheet = client.get("/static/styles.css")
 
     assert wallet_page.status_code == 200
     assert "alice@safebox.example" in wallet_page.text
     assert '<section class="wallet-address" aria-label="Lightning payment address">' in wallet_page.text
-    assert '<p class="wallet-address-value">alice@safebox.example</p>' in wallet_page.text
+    assert 'class="wallet-address-value"' not in wallet_page.text
     assert '<div class="wallet-address-actions">' in wallet_page.text
     assert '<a href="/scan/lightning">Scan</a>' in wallet_page.text
     assert '<details class="wallet-address-disclosure">' in wallet_page.text
-    assert "Show QR Code" in wallet_page.text
-    assert "Hide QR" in wallet_page.text
-    assert wallet_page.text.index('href="/scan/lightning">Scan') < wallet_page.text.index("Show QR Code")
+    assert "Show QR Code" not in wallet_page.text
+    assert "Hide QR" not in wallet_page.text
+    assert 'class="wallet-address-summary-icon wallet-address-summary-qr"' in wallet_page.text
+    assert 'class="wallet-address-summary-icon wallet-address-summary-at"' in wallet_page.text
+    assert '<span class="wallet-address-summary-value">alice@safebox.example</span>' in wallet_page.text
+    assert wallet_page.text.index('href="/scan/lightning">Scan') < wallet_page.text.index("wallet-address-disclosure")
     assert 'class="wallet-address-qr"' in wallet_page.text
     assert 'aria-label="Lightning payment QR code"' in wallet_page.text
     assert 'data-address-copy="alice@safebox.example"' in wallet_page.text
@@ -2690,6 +2694,11 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
     assert wallet_page.text.index("alice@safebox.example") < wallet_page.text.index("Balance")
     assert wallet_page.text.index("Balance") < wallet_page.text.index("Receive Silent Payment")
     assert wallet_page.text.index("Disconnect") < wallet_page.text.index("Advisories")
+
+    assert stylesheet.status_code == 200
+    assert ".wallet-address-summary-at { display: none; }" in stylesheet.text
+    assert ".wallet-address-disclosure[open] .wallet-address-summary-qr { display: none; }" in stylesheet.text
+    assert ".wallet-address-disclosure[open] .wallet-address-summary-at { display: inline-flex; }" in stylesheet.text
 
 
 def test_invoice_qr_is_black_and_white_without_centre_mark() -> None:

@@ -3,13 +3,18 @@
 <p class="continuity-mode">Connected Mode</p>
 {% if lightning_lnurl %}
 <section class="wallet-address" aria-label="Lightning payment address">
-  <p class="wallet-address-value">{{ nip05_address | lower }}</p>
   <div class="wallet-address-actions">
     <a href="/scan/lightning">Scan</a>
     <details class="wallet-address-disclosure">
       <summary>
-        <span class="wallet-address-summary-show">Show QR Code</span>
-        <span class="wallet-address-summary-hide">Hide QR</span>
+        <span class="wallet-address-summary-icon wallet-address-summary-qr" aria-hidden="true">
+          <svg viewBox="0 0 24 24" role="img">
+            <path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM18 14h3v3h-3zM14 18h3v3h-3zM18 18h3v3h-3z" fill="currentColor"/>
+            <path d="M5 5h3v3H5zM16 5h3v3h-3zM5 16h3v3H5z" fill="var(--control)"/>
+          </svg>
+        </span>
+        <span class="wallet-address-summary-icon wallet-address-summary-at" aria-hidden="true">@</span>
+        <span class="wallet-address-summary-value">{{ nip05_address | lower }}</span>
       </summary>
       <div class="wallet-address-panel">
         <div class="wallet-address-qr" aria-label="Lightning payment QR code">
