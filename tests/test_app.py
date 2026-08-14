@@ -1481,7 +1481,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert 'class="page-navigation"' not in response.text
     assert '<a href="/deposit">Deposit funds</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text
-    assert '<a href="/handle">Claim a Custom Address</a>' in response.text
+    assert "Claim a Custom Address" not in response.text
     assert '<a href="/invite">Invite</a>' in response.text
     assert "Scan a Code" not in response.text
     assert 'href="/record-protection/enable"' in response.text
@@ -2676,6 +2676,17 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
     assert 'aria-label="Lightning payment QR code"' in wallet_page.text
     assert 'data-address-copy="alice@safebox.example"' in wallet_page.text
     assert "Copy payment address" in wallet_page.text
+    assert '<a class="nav-button" href="/handle">Change Address</a>' in wallet_page.text
+    assert wallet_page.text.index("Copy payment address") < wallet_page.text.index(
+        '<a class="nav-button" href="/handle">Change Address</a>'
+    )
+    address_disclosure = re.search(
+        r'<details class="wallet-address-disclosure">.*?</details>',
+        wallet_page.text,
+        flags=re.DOTALL,
+    )
+    assert address_disclosure is not None
+    assert "Change Address" in address_disclosure.group(0)
     assert "Scan for Lightning Payment." in wallet_page.text
     expected_lnurl = main_module.encode_lnurl(
         "https://safebox.example/.well-known/lnurlp/alice"
