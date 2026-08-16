@@ -44,6 +44,7 @@ nav:
       - Trust Boundary: trust-boundary.md
   - Use Safebox Web:
       - Getting Started: getting-started.md
+      - Receiving Funds: receiving-funds.md
       - Local-First Stack: local-first-stack.md
   - Project Status: project-status.md
 

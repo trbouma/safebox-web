@@ -12,8 +12,9 @@ Spurline, Mainstay, and Lockbox release gates continue to mature.
 ## Implemented direction
 
 Safebox Web currently provides a FastAPI, server-rendered wallet app for
-onboarding, login, wallet views, private records, record sharing and
-presentation, handles, Lightning deposits, Lightning payments, incoming ecash,
+onboarding, Acorn connection, wallet views, private records, record sharing and
+presentation, handles, receiver-created Lightning payment requests, Lightning
+payments, incoming ecash,
 Continuity Payments, confirmed-versus-pending balance signals, pending
 transaction finalization, and selected evidence-verification workflows.
 

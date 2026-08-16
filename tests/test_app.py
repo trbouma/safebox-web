@@ -571,7 +571,7 @@ def test_ws_relay_allowlist_requires_explicit_port() -> None:
         )
 
 
-def test_login_accepts_exactly_allowlisted_ws_relay() -> None:
+def test_connect_accepts_exactly_allowlisted_ws_relay() -> None:
     settings = replace(
         TEST_SETTINGS,
         allowed_ws_relays=("ws://localhost:8735",),
@@ -582,7 +582,7 @@ def test_login_accepts_exactly_allowlisted_ws_relay() -> None:
     )
 
     response = client.post(
-        "/login",
+        "/connect",
         data={
             "csrf_token": CsrfProtector(settings).issue(),
             "secret_type": "nsec",
@@ -676,12 +676,12 @@ def test_root_redirects_valid_existing_session_to_wallet() -> None:
     assert response.headers["location"] == "/wallet"
 
 
-def test_root_renders_existing_acorn_login_without_a_session() -> None:
+def test_root_renders_existing_acorn_connection_without_a_session() -> None:
     response = make_https_client().get("/", follow_redirects=False)
 
     assert response.status_code == 200
     assert "Connect an Acorn" in response.text
-    assert 'action="/login"' in response.text
+    assert 'action="/connect"' in response.text
     assert 'class="page-navigation"' not in response.text
     assert "Create a new Acorn" in response.text
     assert 'href="/rates">View Exchange Rates</a>' in response.text
@@ -730,7 +730,7 @@ def test_public_rates_page_uses_cached_rows_without_a_session(tmp_path) -> None:
     assert "$100,000.50" in response.text
     assert response.text.index("CAD") < response.text.index("USD")
     assert response.text.count("Possibly stale") == 1
-    assert "Acorn login required" not in response.text
+    assert "Acorn connection required" not in response.text
     assert "set-cookie" not in response.headers
     assert response.text.index("<h1>Exchange Rates</h1>") < response.text.index(
         'class="page-navigation"'
@@ -750,7 +750,7 @@ def test_public_rates_page_explains_when_cache_is_empty(tmp_path) -> None:
     assert "not enabled by this Safebox operator" in response.text
 
 
-def test_root_clears_invalid_session_and_renders_existing_acorn_login() -> None:
+def test_root_clears_invalid_session_and_renders_existing_acorn_connection() -> None:
     client = make_https_client()
     client.cookies.set(
         SECURE_COOKIE_NAME,
@@ -766,7 +766,7 @@ def test_root_clears_invalid_session_and_renders_existing_acorn_login() -> None:
     assert SECURE_COOKIE_NAME not in client.cookies
 
 
-def test_logout_disconnects_and_redirects_to_root_login() -> None:
+def test_disconnect_clears_session_and_redirects_to_root() -> None:
     client = make_https_client()
     client.cookies.set(
         SECURE_COOKIE_NAME,
@@ -781,7 +781,7 @@ def test_logout_disconnects_and_redirects_to_root_login() -> None:
     )
 
     response = client.post(
-        "/logout",
+        "/disconnect",
         data={"csrf_token": valid_csrf_token(), "confirmed": "yes"},
         follow_redirects=False,
     )
@@ -791,7 +791,7 @@ def test_logout_disconnects_and_redirects_to_root_login() -> None:
     assert SECURE_COOKIE_NAME not in client.cookies
 
 
-def test_logout_requires_recovery_confirmation() -> None:
+def test_disconnect_requires_recovery_confirmation() -> None:
     client = make_https_client()
     client.cookies.set(
         SECURE_COOKIE_NAME,
@@ -806,7 +806,7 @@ def test_logout_requires_recovery_confirmation() -> None:
     )
 
     response = client.post(
-        "/logout",
+        "/disconnect",
         data={"csrf_token": valid_csrf_token()},
         follow_redirects=False,
     )
@@ -839,7 +839,7 @@ def test_disconnect_page_can_clear_an_unloadable_session() -> None:
     assert SECURE_COOKIE_NAME in client.cookies
 
     response = client.post(
-        "/logout",
+        "/disconnect",
         data={"csrf_token": token.group(1), "confirmed": "yes"},
         follow_redirects=False,
     )
@@ -847,6 +847,21 @@ def test_disconnect_page_can_clear_an_unloadable_session() -> None:
     assert response.status_code == 303
     assert response.headers["location"] == "/"
     assert SECURE_COOKIE_NAME not in client.cookies
+
+
+def test_legacy_session_routes_redirect_to_connect_and_disconnect() -> None:
+    client = make_https_client()
+
+    connect_page = client.get("/login", follow_redirects=False)
+    connect_submission = client.post("/login", follow_redirects=False)
+    disconnect_submission = client.post("/logout", follow_redirects=False)
+
+    assert connect_page.status_code == 303
+    assert connect_page.headers["location"] == "/connect"
+    assert connect_submission.status_code == 307
+    assert connect_submission.headers["location"] == "/connect"
+    assert disconnect_submission.status_code == 307
+    assert disconnect_submission.headers["location"] == "/disconnect"
 
 
 def test_browser_wallet_load_failure_offers_session_recovery() -> None:
@@ -903,7 +918,7 @@ def test_onboard_offers_single_confirmed_fast_creation_path() -> None:
     assert 'name="confirmed"' not in response.text
     assert 'name="confirmed" type="checkbox"' not in response.text
     assert "Create My Acorn" in response.text
-    assert 'href="/login"' not in response.text
+    assert 'href="/connect"' not in response.text
     assert "Use an Existing Acorn" not in response.text
     assert "12- or 24-word recovery mnemonic" in response.text
     assert "defers the backup ceremony" in response.text
@@ -1262,7 +1277,7 @@ def test_invite_qr_requires_connected_acorn() -> None:
     assert response.status_code == 401
 
 
-def test_protected_browser_page_redirects_to_root_when_login_is_missing() -> None:
+def test_protected_browser_page_redirects_when_connection_is_missing() -> None:
     response = make_https_client().get(
         "/transactions",
         headers={"Accept": "text/html"},
@@ -1429,18 +1444,18 @@ def test_pages_include_mobile_layout_safeguards() -> None:
 
 def test_secondary_pages_have_consistent_top_level_navigation() -> None:
     client = make_https_client()
-    login = client.get("/login")
-    login_nav = re.search(
+    connection = client.get("/connect")
+    connection_nav = re.search(
         r'<nav class="page-navigation".*?</nav>',
-        login.text,
+        connection.text,
         flags=re.DOTALL,
     )
 
-    assert login.status_code == 200
-    assert login_nav is not None
-    assert 'href="/">Home</a>' in login_nav.group(0)
-    assert "Back to" not in login_nav.group(0)
-    assert login.text.index("<h1>Connect an Acorn</h1>") < login.text.index(
+    assert connection.status_code == 200
+    assert connection_nav is not None
+    assert 'href="/">Home</a>' in connection_nav.group(0)
+    assert "Back to" not in connection_nav.group(0)
+    assert connection.text.index("<h1>Connect an Acorn</h1>") < connection.text.index(
         'class="page-navigation"'
     )
 
@@ -1480,7 +1495,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert '<h1 class="wallet-headline">Safebox is Connected</h1>' in response.text
     assert '<p class="continuity-mode">Connected Mode</p>' in response.text
     assert 'class="page-navigation"' not in response.text
-    assert '<a href="/deposit">Deposit funds</a>' in response.text
+    assert '<a href="/receive-funds">Receive Funds</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text
     assert "Claim a Custom Address" not in response.text
     assert '<a href="/invite">Invite</a>' in response.text
@@ -1692,8 +1707,8 @@ def test_pages_use_external_jinja_layout_assets() -> None:
     assert "style-src 'self'" in response.headers["content-security-policy"]
 
 
-def test_login_page_links_to_new_acorn_creation() -> None:
-    response = make_https_client().get("/login")
+def test_connect_page_links_to_new_acorn_creation() -> None:
+    response = make_https_client().get("/connect")
 
     assert response.status_code == 200
     assert response.text.index('value="mnemonic"') < response.text.index('value="nsec"')
@@ -1924,11 +1939,11 @@ def test_record_protection_recovery_display_requires_confirmation_and_marks_back
     assert updated.record_protection_backup_confirmed is True
 
 
-def test_login_restores_record_protection_key_from_recovery_phrase() -> None:
+def test_connect_restores_record_protection_key_from_recovery_phrase() -> None:
     client = make_https_client()
 
     response = client.post(
-        "/login",
+        "/connect",
         data={
             "csrf_token": valid_csrf_token(),
             "secret_type": "nsec",
@@ -1949,13 +1964,13 @@ def test_login_restores_record_protection_key_from_recovery_phrase() -> None:
     assert credentials.record_protection_backup_confirmed is True
 
 
-def test_login_restores_record_protection_key_from_external_entropy() -> None:
+def test_connect_restores_record_protection_key_from_external_entropy() -> None:
     entropy = "17" * 32
     expected_rpk = record_protection_key_from_entropy(entropy)
     client = make_https_client()
 
     response = client.post(
-        "/login",
+        "/connect",
         data={
             "csrf_token": valid_csrf_token(),
             "secret_type": "nsec",
@@ -1976,12 +1991,12 @@ def test_login_restores_record_protection_key_from_external_entropy() -> None:
     assert credentials.record_protection_backup_confirmed is True
 
 
-def test_login_rejects_invalid_record_protection_phrase_without_echoing_it() -> None:
+def test_connect_rejects_invalid_record_protection_phrase_without_echoing_it() -> None:
     invalid_phrase = "abandon " * 23 + "abandon"
     client = make_https_client()
 
     response = client.post(
-        "/login",
+        "/connect",
         data={
             "csrf_token": valid_csrf_token(),
             "secret_type": "nsec",
@@ -3792,41 +3807,98 @@ def test_confirmed_scanned_invoice_delegates_to_acorn(monkeypatch) -> None:
     ]
 
 
-def test_deposit_form_displays_home_mint_and_amount_field() -> None:
+def test_receive_funds_form_displays_home_mint_and_amount_field() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_deposit_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
-    response = client.get("/deposit")
+    response = client.get("/receive-funds")
 
     assert response.status_code == 200
     assert "500 sats" in response.text
     assert "https://mint.example.com" in response.text
     assert 'name="amount"' in response.text
-    assert "Creating a deposit invoice. Please wait." in response.text
-    assert "Creating invoice…" in response.text
+    assert (
+        "Create a payment request for the funds you want to receive."
+        in response.text
+    )
+    assert (
+        'name="payment_method" type="radio" value="lightning" checked'
+        in response.text
+    )
+    assert "Creating a payment request. Please wait." in response.text
+    assert "Creating request…" in response.text
+    assert "Create Payment Request" in response.text
+    assert "Clear Mint Unit" in response.text
 
 
-def test_deposit_creates_invoice_qr_without_polling() -> None:
+def test_receive_funds_rejects_unavailable_payment_method() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_deposit_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
-        "/deposit",
-        data={"csrf_token": valid_csrf_token(), "amount": "21"},
+        "/receive-funds",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "amount": "21",
+            "payment_method": "clear-mnu",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "payment-request method is not available yet" in response.text
+    assert acorn.deposit_calls == []
+
+
+@pytest.mark.parametrize(
+    ("method", "legacy_path", "canonical_path", "status_code"),
+    [
+        ("GET", "/deposit", "/receive-funds", 303),
+        ("POST", "/deposit", "/receive-funds", 307),
+        ("POST", "/deposit/check", "/receive-funds/check", 307),
+    ],
+)
+def test_legacy_deposit_routes_redirect_to_receive_funds(
+    method: str,
+    legacy_path: str,
+    canonical_path: str,
+    status_code: int,
+) -> None:
+    app = create_app(TEST_SETTINGS)
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.request(method, legacy_path, follow_redirects=False)
+
+    assert response.status_code == status_code
+    assert response.headers["location"] == canonical_path
+
+
+def test_receive_funds_creates_lightning_request_without_polling() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_deposit_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/receive-funds",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "amount": "21",
+            "payment_method": "lightning",
+        },
     )
 
     assert response.status_code == 200
-    assert "Pay deposit invoice" in response.text
+    assert "Lightning Payment Request" in response.text
     assert "21 sats" in response.text
     assert "lnbc21n1pytestinvoice" in response.text
     assert '<div class="invoice-qr"><svg' in response.text
-    assert 'action="/deposit/check"' in response.text
-    assert "Checking and finalizing the deposit. Please wait" in response.text
-    assert "Checking deposit…" in response.text
+    assert 'action="/receive-funds/check"' in response.text
+    assert "Checking and finalizing the received funds. Please wait" in response.text
+    assert "Checking payment…" in response.text
     assert acorn.deposit_calls == [21]
     assert acorn.quote_checks == []
 
@@ -3858,7 +3930,7 @@ def test_paid_deposit_is_finalized_and_redirects_to_updated_wallet() -> None:
     )
 
     response = client.post(
-        "/deposit/check",
+        "/receive-funds/check",
         data={
             "csrf_token": valid_csrf_token(),
             "deposit_token": DepositQuoteCipher(TEST_SETTINGS).encode(state),
@@ -3871,7 +3943,7 @@ def test_paid_deposit_is_finalized_and_redirects_to_updated_wallet() -> None:
     assert acorn.quote_checks == [("pytest-deposit-quote", 21)]
     assert acorn.balance == 521
     assert acorn.history_entries == [
-        {"tx_type": "C", "amount": 21, "comment": "safebox web deposit"}
+        {"tx_type": "C", "amount": 21, "comment": "safebox web funds received"}
     ]
 
 
@@ -3888,7 +3960,7 @@ def test_unpaid_deposit_keeps_same_invoice_available_for_recheck() -> None:
     )
 
     response = client.post(
-        "/deposit/check",
+        "/receive-funds/check",
         data={
             "csrf_token": valid_csrf_token(),
             "deposit_token": DepositQuoteCipher(TEST_SETTINGS).encode(state),
@@ -3898,7 +3970,7 @@ def test_unpaid_deposit_keeps_same_invoice_available_for_recheck() -> None:
     assert response.status_code == 409
     assert "has not confirmed payment yet" in response.text
     assert "lnbc21n1pytestinvoice" in response.text
-    assert 'action="/deposit/check"' in response.text
+    assert 'action="/receive-funds/check"' in response.text
     assert acorn.history_entries == []
 
 
@@ -5469,7 +5541,7 @@ def test_record_save_preserves_structured_json_payload() -> None:
     }
 
 
-def test_loopback_login_accepts_matching_browser_origin() -> None:
+def test_loopback_connect_accepts_matching_browser_origin() -> None:
     client = TestClient(
         create_app(TEST_SETTINGS),
         base_url="http://127.0.0.1:8000",
@@ -5477,7 +5549,7 @@ def test_loopback_login_accepts_matching_browser_origin() -> None:
     )
 
     response = client.post(
-        "/login",
+        "/connect",
         headers={"Origin": "http://127.0.0.1:8000/"},
         data={
             "csrf_token": valid_csrf_token(),
@@ -5491,7 +5563,7 @@ def test_loopback_login_accepts_matching_browser_origin() -> None:
     assert response.status_code == 303
 
 
-def test_loopback_login_accepts_null_origin_with_valid_form_token() -> None:
+def test_loopback_connect_accepts_null_origin_with_valid_form_token() -> None:
     client = TestClient(
         create_app(TEST_SETTINGS),
         base_url="http://127.0.0.1:8000",
@@ -5499,7 +5571,7 @@ def test_loopback_login_accepts_null_origin_with_valid_form_token() -> None:
     )
 
     response = client.post(
-        "/login",
+        "/connect",
         headers={"Origin": "null"},
         data={
             "csrf_token": valid_csrf_token(),
@@ -5521,7 +5593,7 @@ def test_null_origin_without_valid_form_token_is_rejected() -> None:
     )
 
     response = client.post(
-        "/login",
+        "/connect",
         headers={"Origin": "null"},
         data={
             "csrf_token": "invalid",
@@ -5536,11 +5608,11 @@ def test_null_origin_without_valid_form_token_is_rejected() -> None:
     assert "form token is invalid" in response.text.lower()
 
 
-def test_login_rejects_cross_origin_submission() -> None:
+def test_connect_rejects_cross_origin_submission() -> None:
     client = make_https_client()
 
     response = client.post(
-        "/login",
+        "/connect",
         headers={"Origin": "https://attacker.example"},
         data={
             "csrf_token": valid_csrf_token(),
@@ -5554,11 +5626,11 @@ def test_login_rejects_cross_origin_submission() -> None:
     assert response.json()["detail"] == "Origin rejected"
 
 
-def test_nsec_login_uses_encrypted_secure_cookie_and_dependency() -> None:
+def test_nsec_connection_uses_encrypted_secure_cookie_and_dependency() -> None:
     client = make_https_client()
 
     response = client.post(
-        "/login",
+        "/connect",
         data={
             "csrf_token": valid_csrf_token(),
             "secret_type": "nsec",
@@ -5722,11 +5794,11 @@ def test_session_cipher_accepts_unexpired_legacy_fernet_cookie() -> None:
     assert SessionCipher(TEST_SETTINGS).decode(legacy_token) == credentials
 
 
-def test_offline_mnemonic_login_derives_nsec_but_does_not_store_phrase() -> None:
+def test_offline_mnemonic_connection_derives_nsec_without_storing_phrase() -> None:
     client = make_https_client()
 
     response = client.post(
-        "/login",
+        "/connect",
         data={
             "csrf_token": valid_csrf_token(),
             "secret_type": "mnemonic",
@@ -5750,7 +5822,7 @@ def test_invalid_secret_is_rejected_without_echoing_it() -> None:
     bad_secret = "not-a-real-private-key"
 
     response = client.post(
-        "/login",
+        "/connect",
         data={
             "csrf_token": valid_csrf_token(),
             "secret_type": "nsec",
@@ -5776,14 +5848,14 @@ def test_tampered_cookie_is_rejected() -> None:
     response = client.get("/api/session")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Acorn session is invalid or expired"
+    assert response.json()["detail"] == "Acorn connection is invalid or expired"
 
 
 def test_unlisted_ws_relay_is_rejected() -> None:
     client = make_https_client()
 
     response = client.post(
-        "/login",
+        "/connect",
         data={
             "csrf_token": valid_csrf_token(),
             "secret_type": "nsec",

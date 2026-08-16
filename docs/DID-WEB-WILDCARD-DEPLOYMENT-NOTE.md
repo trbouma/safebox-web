@@ -73,7 +73,7 @@ selects an exact server name before a wildcard server name, so a separate
 `acorn.safebox.dev`. See the
 [Nginx server-name documentation](https://nginx.org/en/docs/http/server_names.html).
 
-The wildcard host should expose only DID resolution. Login, wallet, payment,
+The wildcard host should expose only DID resolution. Acorn connection, wallet, payment,
 record, and session routes should remain available through the existing exact
 application hostname. This avoids creating parallel cookie scopes or
 accidentally presenting the entire application on every handle subdomain.

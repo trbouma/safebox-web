@@ -65,7 +65,7 @@
   {% if pending_payment_amount %}<p class="wallet-balance-state">Pending incoming funds: {{ "{:,}".format(pending_payment_amount) }} sats in {{ "{:,}".format(pending_payment_count) }} transfer event(s).</p>{% endif %}
 </a>
 <nav class="wallet-actions" aria-label="Wallet actions">
-  <a href="/deposit">Deposit funds</a>
+  <a href="/receive-funds">Receive Funds</a>
   <a href="/pay">Pay to an Address</a>
   <a href="/records">Manage Records</a>
   <a href="{{ onboard_invite_path }}">Invite</a>
@@ -97,7 +97,7 @@
   </div>
 </details>
 {% endif %}
-<form class="disconnect-form" method="post" action="/logout">
+<form class="disconnect-form" method="post" action="/disconnect">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <p class="disconnect-warning">Before disconnecting, make sure you have your
   recovery information. Safebox does not store it, and it will be impossible to

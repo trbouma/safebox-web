@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{{ balance_status | safe }}
+<p>Home mint: <code>{{ home_mint }}</code></p>
+<p>Create a payment request for the funds you want to receive.</p>
+<form method="post" action="/receive-funds" autocomplete="off"
+      data-progress-message="Creating a payment request. Please wait."
+      data-progress-button="Creating request…">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <fieldset>
+    <legend>Payment method</legend>
+    <label>
+      <input name="payment_method" type="radio" value="lightning" checked>
+      Lightning through the Acorn home mint
+    </label>
+  </fieldset>
+  <label for="amount">Amount in sats</label>
+  <input id="amount" name="amount" type="number" min="1" step="1" required>
+  <button type="submit">Create Payment Request</button>
+</form>
+<p class="advisory">Direct payment requests for a particular Clear Mint Unit
+will be offered here when a compatible Clear mint is configured.</p>
+{% endblock %}

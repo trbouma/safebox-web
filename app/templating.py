@@ -21,8 +21,8 @@ _LONG_LIST_TEMPLATES = {
 _PARENT_NAVIGATION = {
     "blob_upload.html": ("/records", "Back to Records"),
     "control_history.html": (None, "Back to Record"),
-    "deposit.html": ("/wallet", "Back to Wallet"),
-    "deposit_invoice.html": ("/deposit", "Back to Deposit"),
+    "receive_funds.html": ("/wallet", "Back to Wallet"),
+    "receive_funds_request.html": ("/receive-funds", "Back to Receive Funds"),
     "deferred_recovery.html": ("/recovery", "Back to Recovery"),
     "deferred_recovery_warning.html": ("/wallet", "Back to Wallet"),
     "handle.html": ("/wallet", "Back to Wallet"),

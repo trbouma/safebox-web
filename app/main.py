@@ -93,7 +93,7 @@ from app.security import (
     InvoicePaymentState,
     SessionCipher,
     cookie_name_for_request,
-    credentials_from_login,
+    credentials_from_connection,
     is_allowed_transport,
     is_loopback_http_request,
     is_same_origin,
@@ -190,7 +190,7 @@ def _page(title: str, body: str) -> str:
     return render_template("page.html", title=title, body=body)
 
 
-def _login_form(
+def _connect_form(
     default_relay: str,
     csrf_token: str,
     error: str | None = None,
@@ -208,7 +208,7 @@ def _login_form(
     if show_page_navigation is not None:
         context["show_page_navigation"] = show_page_navigation
     return render_template(
-        "login.html",
+        "connect.html",
         **context,
     )
 
@@ -1006,7 +1006,7 @@ def _handle_form(
     )
 
 
-def _deposit_form(
+def _receive_funds_form(
     balance: int,
     home_mint: str,
     csrf_token: str,
@@ -1018,8 +1018,8 @@ def _deposit_form(
             f"<p>Relay-visible proof total: <strong>{int(balance):,} sats</strong></p>"
         )
     return render_template(
-        "deposit.html",
-        title="Deposit funds",
+        "receive_funds.html",
+        title="Receive Funds",
         home_mint=home_mint,
         csrf_token=csrf_token,
         error=error,
@@ -1175,15 +1175,15 @@ async def _store_deferred_recovery_with_retry(
     raise RuntimeError("deferred recovery readback was not verified")
 
 
-def _deposit_invoice_page(
+def _lightning_payment_request_page(
     state: DepositQuoteState,
     state_token: str,
     csrf_token: str,
     message: str | None = None,
 ) -> str:
     return render_template(
-        "deposit_invoice.html",
-        title="Pay deposit invoice",
+        "receive_funds_request.html",
+        title="Lightning Payment Request",
         state=state,
         state_token=state_token,
         csrf_token=csrf_token,
@@ -1225,8 +1225,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(HTTPException)
     async def browser_session_error(request: Request, exc: HTTPException):
         session_errors = {
-            "Acorn login required",
-            "Acorn session is invalid or expired",
+            "Acorn connection required",
+            "Acorn connection is invalid or expired",
         }
         accepts_html = "text/html" in request.headers.get("accept", "").lower()
         if (
@@ -1376,7 +1376,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else:
                 return RedirectResponse("/wallet", status_code=303)
         response = HTMLResponse(
-            _login_form(
+            _connect_form(
                 settings.default_bootstrap_relay,
                 CsrfProtector(settings).issue(),
                 onboard_path=_onboard_path(settings),
@@ -1450,10 +1450,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             default_mint=settings.default_home_mint,
         )
 
-    @app.get("/login", response_class=HTMLResponse)
-    async def login_form(request: Request) -> str:
+    @app.get("/connect", response_class=HTMLResponse)
+    async def connect_form(request: Request) -> str:
         settings = request.app.state.settings
-        return _login_form(
+        return _connect_form(
             settings.default_bootstrap_relay,
             CsrfProtector(settings).issue(),
             onboard_path=_onboard_path(settings),
@@ -1629,7 +1629,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         acorn.pubkey_bech32,
                     )
 
-        credentials = credentials_from_login(
+        credentials = credentials_from_connection(
             secret_type="nsec",
             secret=generated_nsec,
             bootstrap_relay=normalized_relay,
@@ -1755,8 +1755,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             confirmed="yes",
         )
 
-    @app.post("/login")
-    async def login(
+    @app.post("/connect")
+    async def connect(
         request: Request,
         csrf_token: str = Form(...),
         secret_type: str = Form(...),
@@ -1768,7 +1768,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings = request.app.state.settings
         if not CsrfProtector(settings).verify(csrf_token):
             return HTMLResponse(
-                _login_form(
+                _connect_form(
                     settings.default_bootstrap_relay,
                     CsrfProtector(settings).issue(),
                     "The form token is invalid or expired. Reload and try again.",
@@ -1794,7 +1794,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             else:
                 record_protection_key = None
-            credentials = credentials_from_login(
+            credentials = credentials_from_connection(
                 secret_type=secret_type,
                 secret=secret,
                 bootstrap_relay=bootstrap_relay,
@@ -1806,7 +1806,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except ValueError as exc:
             return HTMLResponse(
-                _login_form(
+                _connect_form(
                     settings.default_bootstrap_relay,
                     CsrfProtector(settings).issue(),
                     str(exc),
@@ -2230,8 +2230,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return response
 
-    @app.post("/logout")
-    async def logout(
+    @app.post("/disconnect")
+    async def disconnect(
         request: Request,
         csrf_token: str = Form(...),
         confirmed: str | None = Form(None),
@@ -2262,6 +2262,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.delete_cookie(SECURE_COOKIE_NAME, path="/", secure=True, httponly=True)
         response.delete_cookie(LOOPBACK_COOKIE_NAME, path="/", httponly=True)
         return response
+
+    @app.get("/login", include_in_schema=False)
+    async def legacy_connect_get() -> RedirectResponse:
+        return RedirectResponse("/connect", status_code=303)
+
+    @app.post("/login", include_in_schema=False)
+    async def legacy_connect_post() -> RedirectResponse:
+        return RedirectResponse("/connect", status_code=307)
+
+    @app.post("/logout", include_in_schema=False)
+    async def legacy_disconnect_post() -> RedirectResponse:
+        return RedirectResponse("/disconnect", status_code=307)
 
     @app.get("/disconnect", response_class=HTMLResponse)
     async def disconnect_form(request: Request) -> HTMLResponse:
@@ -2763,14 +2775,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers={"Access-Control-Allow-Origin": "*"},
         )
 
-    @app.get("/deposit", response_class=HTMLResponse)
-    async def deposit_form(request: Request, acorn: DepositAcornDependency) -> str:
+    @app.get("/receive-funds", response_class=HTMLResponse)
+    async def receive_funds_form(
+        request: Request, acorn: DepositAcornDependency
+    ) -> str:
         settings = request.app.state.settings
         verification, verification_error = await _read_proof_verification(
             acorn,
             settings.wallet_load_timeout_seconds,
         )
-        return _deposit_form(
+        return _receive_funds_form(
             acorn.get_balance(),
             acorn.home_mint,
             CsrfProtector(settings).issue(),
@@ -2782,19 +2796,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
         )
 
-    @app.post("/deposit", response_class=HTMLResponse)
-    async def create_deposit_invoice(
+    @app.post("/receive-funds", response_class=HTMLResponse)
+    async def create_payment_request(
         request: Request,
         acorn: DepositAcornDependency,
         csrf_token: str = Form(...),
         amount: str = Form(...),
+        payment_method: str = Form("lightning"),
     ):
         settings = request.app.state.settings
         form_token = CsrfProtector(settings)
 
-        def deposit_error(message: str, status_code: int = 400) -> HTMLResponse:
+        def receive_error(message: str, status_code: int = 400) -> HTMLResponse:
             return HTMLResponse(
-                _deposit_form(
+                _receive_funds_form(
                     acorn.get_balance(),
                     acorn.home_mint,
                     form_token.issue(),
@@ -2804,16 +2819,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         if not form_token.verify(csrf_token):
-            return deposit_error(
+            return receive_error(
                 "The form token is invalid or expired. Enter the amount again.",
                 403,
+            )
+        if payment_method != "lightning":
+            return receive_error(
+                "That payment-request method is not available yet.",
+                400,
             )
         try:
             amount_sats = int(str(amount).strip())
         except ValueError:
-            return deposit_error("Deposit amount must be a whole number of sats.")
+            return receive_error("The amount must be a whole number of sats.")
         if amount_sats <= 0:
-            return deposit_error("Deposit amount must be greater than zero.")
+            return receive_error("The amount must be greater than zero.")
 
         try:
             quote = await asyncio.wait_for(
@@ -2822,8 +2842,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except TimeoutError:
             logger.warning("deposit quote request timed out mint=%s", acorn.home_mint)
-            return deposit_error(
-                "The mint did not return an invoice before the request timed out.",
+            return receive_error(
+                "The home mint did not return a payment request before the request "
+                "timed out.",
                 504,
             )
         except Exception as exc:
@@ -2832,16 +2853,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 acorn.home_mint,
                 type(exc).__name__,
             )
-            return deposit_error(
-                "Safebox could not obtain a Lightning invoice from the home mint.",
+            return receive_error(
+                "Safebox could not create a Lightning payment request through the "
+                "home mint.",
                 502,
             )
 
         quote_id = str(quote.quote).strip()
         invoice = str(quote.invoice).strip()
         if not quote_id or not invoice or len(quote_id) > 512 or len(invoice) > 2048:
-            return deposit_error(
-                "The home mint returned an invalid or oversized deposit invoice.",
+            return receive_error(
+                "The home mint returned an invalid or oversized Lightning payment "
+                "request.",
                 502,
             )
 
@@ -2852,14 +2875,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             invoice=invoice,
         )
         state_token = DepositQuoteCipher(settings).encode(state)
-        return _deposit_invoice_page(
+        return _lightning_payment_request_page(
             state,
             state_token,
             form_token.issue(),
         )
 
-    @app.post("/deposit/check")
-    async def check_deposit_invoice(
+    @app.post("/receive-funds/check")
+    async def check_payment_request(
         request: Request,
         acorn: DepositAcornDependency,
         csrf_token: str = Form(...),
@@ -2877,16 +2900,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             return HTMLResponse(
                 _page(
-                    "Deposit quote expired",
+                    "Payment request expired",
                     f'<p class="error">{escape(str(exc))}.</p>'
-                    '<p><a href="/deposit">Create a new deposit invoice</a></p>',
+                    '<p><a href="/receive-funds">Create a new payment request</a></p>',
                 ),
                 status_code=400,
             )
 
         if str(acorn.home_mint).rstrip("/") != state.mint:
             return HTMLResponse(
-                _deposit_invoice_page(
+                _lightning_payment_request_page(
                     state,
                     deposit_token,
                     form_token.issue(),
@@ -2904,12 +2927,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except TimeoutError:
             logger.warning("deposit confirmation timed out mint=%s", state.mint)
             return HTMLResponse(
-                _deposit_invoice_page(
+                _lightning_payment_request_page(
                     state,
                     deposit_token,
                     form_token.issue(),
-                    "Payment confirmation timed out. Do not create or pay another "
-                    "invoice; wait and check this invoice again.",
+                    "Payment confirmation timed out. Do not create or complete "
+                    "another request; wait and check this request again.",
                 ),
                 status_code=504,
             )
@@ -2920,19 +2943,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
             return HTMLResponse(
-                _deposit_invoice_page(
+                _lightning_payment_request_page(
                     state,
                     deposit_token,
                     form_token.issue(),
-                    "Safebox could not confirm the payment. Do not create or pay "
-                    "another invoice; wait and check this invoice again.",
+                    "Safebox could not confirm the payment. Do not create or "
+                    "complete another request; wait and check this request again.",
                 ),
                 status_code=502,
             )
 
         if not success:
             return HTMLResponse(
-                _deposit_invoice_page(
+                _lightning_payment_request_page(
                     state,
                     deposit_token,
                     form_token.issue(),
@@ -2946,7 +2969,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await acorn.add_tx_history(
                 tx_type="C",
                 amount=state.amount,
-                comment="safebox web deposit",
+                comment="safebox web funds received",
             )
         except Exception as exc:
             logger.warning(
@@ -2956,6 +2979,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
         return RedirectResponse("/wallet", status_code=303)
+
+    @app.get("/deposit", include_in_schema=False)
+    async def legacy_deposit_form() -> RedirectResponse:
+        return RedirectResponse("/receive-funds", status_code=303)
+
+    @app.post("/deposit", include_in_schema=False)
+    async def legacy_create_deposit() -> RedirectResponse:
+        return RedirectResponse("/receive-funds", status_code=307)
+
+    @app.post("/deposit/check", include_in_schema=False)
+    async def legacy_check_deposit() -> RedirectResponse:
+        return RedirectResponse("/receive-funds/check", status_code=307)
 
     @app.get("/scan/lightning-address", include_in_schema=False)
     async def legacy_lightning_address_scanner() -> RedirectResponse:

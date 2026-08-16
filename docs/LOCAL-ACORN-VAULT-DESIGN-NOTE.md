@@ -59,7 +59,7 @@ user unlocks a local vault with a passkey
       ↓
 browser briefly reconstructs the attachment bundle
       ↓
-existing login boundary issues a fresh HTTP-only cookie
+existing connection boundary issues a fresh HTTP-only cookie
 ```
 
 ## Goals
@@ -73,7 +73,7 @@ existing login boundary issues a fresh HTTP-only cookie
 - Keep the application server stateless with respect to the attached Acorn.
 - Persist only authenticated ciphertext in the browser.
 - Require explicit local user verification before unlocking.
-- Preserve the existing server-side login, validation, CSRF, and cookie model.
+- Preserve the existing server-side connection, validation, CSRF, and cookie model.
 - Fail closed when authentication, decryption, or validation fails.
 - Provide an obvious **Forget this Acorn on this device** operation.
 - Fall back cleanly to manual attachment on unsupported devices.
@@ -109,7 +109,7 @@ browser data or losing the device can destroy the local copy.
 
 ## Proposed stored data
 
-The plaintext bootstrap bundle should contain only what the existing login
+The plaintext bootstrap bundle should contain only what the existing connection
 boundary needs:
 
 ```json
@@ -201,7 +201,7 @@ When no valid session exists and a local envelope is present:
 4. Require platform user verification.
 5. Derive the key and authenticate/decrypt the envelope.
 6. Strictly validate its schema, secret, relay, and calculated public key.
-7. Submit it to the existing login route or a narrowly scoped one-time unlock
+7. Submit it to the existing connection route or a narrowly scoped one-time unlock
    endpoint.
 8. Let the server issue the ordinary HTTP-only session cookie.
 9. Remove plaintext values from the DOM and release references.
@@ -315,7 +315,7 @@ narrowly bounded:
 - JavaScript performs only enrollment, unlock, and deletion;
 - no client-side Acorn instance is created;
 - no wallet, proof, funds, relay, mint, or record state is cached;
-- decrypted material crosses the existing server login boundary; and
+- decrypted material crosses the existing server connection boundary; and
 - manual attachment continues to work without JavaScript.
 
 The vault should be a small, independently reviewable, same-origin module with

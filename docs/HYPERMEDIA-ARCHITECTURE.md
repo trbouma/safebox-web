@@ -103,7 +103,7 @@ Secondary representations receive their navigation from the shared server-side
 template boundary. A full-width **Home** action always targets `/`, which
 redirects an attached session to its wallet, and a second full-width action
 returns to the meaningful parent representation such as Wallet, Records,
-Record, Deposit, or Scanner. Pages without a meaningful parent show only Home.
+Record, Receive Funds, or Scanner. Pages without a meaningful parent show only Home.
 The landing and connected-wallet main representations omit this navigation.
 Individual templates do not reproduce top and bottom return links.
 
@@ -251,11 +251,24 @@ browser submits HTML form
         -> GET renders the current server-authoritative representation
 ```
 
-Login, logout, handle changes, deposits, and private-record saves follow this
-pattern where practical. Operations with an outcome that must be shown exactly
-once may return a complete HTML result page, but they must still work without
-JavaScript and must warn against unsafe resubmission when the outcome is
-ambiguous.
+Connection, disconnection, handle changes, payment requests, and private-record
+saves follow this pattern where practical. Operations with an outcome that must
+be shown exactly once may return a complete HTML result page, but they must
+still work without JavaScript and must warn against unsafe resubmission when
+the outcome is ambiguous.
+
+## Connection, not account login
+
+Safebox Web connects a browser session to an Acorn component; it does not log a
+real-world person into a server-side user account. `POST /connect` validates the
+supplied Acorn recovery material and creates the encrypted session cookie.
+`POST /disconnect` clears that cookie. Neither action creates or deletes a user
+account, and the application does not retain an attached user's Acorn state.
+
+The older `/login` and `/logout` paths are compatibility redirects only. New
+pages, documentation, and integrations should use **connect** and
+**disconnect** so that the interface describes the actual component-session
+boundary.
 
 ## JSON endpoints
 

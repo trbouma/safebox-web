@@ -52,7 +52,7 @@ def get_session_credentials(
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Acorn login required",
+            detail="Acorn connection required",
         )
     try:
         return SessionCipher(settings).decode(token)
@@ -65,7 +65,7 @@ def get_session_credentials(
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Acorn session is invalid or expired",
+            detail="Acorn connection is invalid or expired",
         ) from exc
 
 

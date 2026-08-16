@@ -59,7 +59,7 @@ a compatible private key.
 ### Use
 
 Work with relay-backed records, protected originals, handles, transaction
-history, deposits, direct Safebox payments, Lightning payments, and record
+history, receiving funds, direct Safebox payments, Lightning payments, and record
 sharing flows.
 
 </article>

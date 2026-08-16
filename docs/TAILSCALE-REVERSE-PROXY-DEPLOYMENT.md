@@ -259,7 +259,7 @@ This deployment trusts different layers for different purposes:
 - the Safebox Web operator and directory database for truthful NIP-05
   name-to-key and relay mappings;
 - Acorn for wallet, relay, record, mint, and payment behavior; and
-- the user for protecting the recovery material entered at login.
+- the user for protecting the recovery material entered during connection.
 
 The VPN does not make every peer a trusted reverse proxy. The bind address does
 not define proxy authority. The forwarded-header allowlist does not replace a
@@ -269,7 +269,7 @@ and the trust assumptions easier to explain.
 The allowlist also does not constrain what an authorized reverse proxy does
 before a request reaches Safebox. That proxy terminates browser TLS and chooses
 the upstream service. It can route the domain to another application, replace
-responses, or present a counterfeit login surface without the intended
+responses, or present a counterfeit connection surface without the intended
 Safebox process receiving a request at all. The application can authenticate
 forwarded metadata from its immediate peer; it cannot prove that the proxy
 routed public traffic to the intended backend. Proxy administration,

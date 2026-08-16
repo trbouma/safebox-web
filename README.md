@@ -72,7 +72,7 @@ This implementation intentionally provides:
   one-confirmation creation of a new Acorn and redirecting an already attached
   Acorn to its wallet;
 - creation of a new Acorn with a selected home relay and home mint;
-- login with an `nsec` or BIP39 Safebox Acorn mnemonic;
+- connection with an `nsec` or BIP39 Safebox Acorn mnemonic;
 - a bootstrap relay;
 - an encrypted, authenticated browser cookie;
 - request-scoped `Acorn` construction through FastAPI dependency injection;
@@ -90,7 +90,8 @@ This implementation intentionally provides:
   recipient **Done** and presenter **Stop Presenting** cleanup;
 - an on-demand, server-rendered OpenETR origin and control-history projection
   for Original Records;
-- user-confirmed Lightning deposits through the Acorn home mint;
+- receiver-created payment requests, currently finalized through Lightning
+  deposits at the Acorn home mint;
 - confirmed Lightning-address payments through Acorn;
 - camera acquisition of Lightning addresses and fixed-amount BOLT11 invoices
   from QR codes with a manual-entry fallback and server-side validation;
@@ -101,7 +102,7 @@ This implementation intentionally provides:
 - a companion standalone service Acorn worker for Lightning settlement and
   ecash delivery;
 - a connected-wallet key-information page and redacted session API; and
-- logout.
+- explicit Acorn disconnection.
 
 It does **not** maintain user accounts, write attached-Acorn configuration, or
 store server-side user sessions. The wallet page loads encrypted wallet and proof events
@@ -134,14 +135,15 @@ Concurrency boundaries and the PostgreSQL hardening path are documented in
 
 ![From an external Lightning payment to the registered recipient Acorn balance.](docs/assets/lightning-to-acorn-payment-flow.png)
 
-The deposit flow requests a Lightning invoice from the Acorn home mint and
+The **Receive Funds** flow creates a payment request. Its currently available
+method requests a Lightning invoice from the Acorn home mint and
 renders it as both a QR code and copyable text. It performs no browser polling.
 The user explicitly indicates that the invoice has been paid, after which
 Safebox asks Acorn to check the quote once, mint the proofs when payment is
 confirmed, and return to the wallet page for a freshly loaded balance. An
 unconfirmed invoice remains available for another user-initiated check.
 
-Deposit invoice creation, deposit confirmation, and outgoing payment forms
+Payment-request creation, receipt confirmation, and outgoing payment forms
 display an operation-specific progress message after submission and disable
 their submit buttons while the request is running. This is progressive browser
 behavior: server validation and transaction safety do not depend on JavaScript.
@@ -183,7 +185,7 @@ Lightning. If mint verification is unavailable, the current app blocks the
 payment; future Continuity Payments will offer provisional in-kind proof
 transfers with mint finality later.
 
-Deposit quote state is not kept in a database or server-side session. The quote
+Lightning payment-request state is not kept in a database or server-side session. The quote
 identifier, amount, mint, and invoice are encrypted and authenticated in a
 short-lived hidden form token. This prevents a browser from altering the amount
 or mint between invoice creation and confirmation while preserving the
@@ -198,15 +200,16 @@ Safebox Web distinguishes two values:
 - **Mint-confirmed spendable balance** is the sum of proofs reported as
   `UNSPENT` by their issuing mints during a read-only check.
 
-The wallet, deposit, and payment pages show both values. A difference can mean
+The wallet, Receive Funds, and payment pages show both values. A difference can mean
 that the relay retained stale proof history, omitted deletion events, or
 returned an incomplete view. Safebox warns prominently rather than presenting
 the relay total as confirmed value.
 
 Outgoing Lightning payments are blocked when mint verification is unavailable
-or the proof report is not clean. Deposits remain possible because they add new
-proofs, but a deposit never authorizes automatic swapping or consolidation of
-the existing wallet. `RECEIVE_PROOF_MAINTENANCE_ENABLED=false` is passed
+or the proof report is not clean. Receiving through a new Lightning request
+remains possible because it adds new proofs, but a receipt never authorizes
+automatic swapping or consolidation of the existing wallet.
+`RECEIVE_PROOF_MAINTENANCE_ENABLED=false` is passed
 explicitly by the Docker deployment as defense in depth.
 
 This block is also the first guardrail for Continuity Payments. The product
@@ -246,7 +249,7 @@ independent review.
 
 ## Stateless session boundary
 
-After login, the browser cookie contains only:
+After connection, the browser cookie contains only:
 
 ```text
 nsec
@@ -267,14 +270,14 @@ original session lifetime, allowing a deployment upgrade without immediately
 disconnecting every browser. New sessions are never issued in the legacy
 format.
 The default session lifetime is 30 days (`SAFEBOX_SESSION_TTL_HOURS=720`) and is an absolute
-lifetime from login rather than an activity-based sliding window. Extending
+lifetime from connection rather than an activity-based sliding window. Extending
 this period improves mobile continuity but also lengthens the exposure window
 of a captured cookie. Changing `SAFEBOX_COOKIE_KEY` invalidates all sessions.
 The former `SAFEBOX_SESSION_TTL_SECONDS` setting remains a compatibility
 fallback, but new deployments should specify the lifetime in hours.
 
 The **Safebox Acorn mnemonic** normally derives the operational `nsec` only
-during creation or login. During explicit quick onboarding, Safebox temporarily
+during creation or connection. During explicit quick onboarding, Safebox temporarily
 places that mnemonic in the authenticated encrypted cookie until the user
 completes backup. It is never written to the application database or relay.
 The decrypted cookie and `nsec` necessarily exist in process memory while an
@@ -299,7 +302,7 @@ matching is case-insensitive. The bare `/onboard` path redirects to the first
 configured invite path. The page presents only a single **Create My Acorn**
 confirmation button: recovery is fixed at 12 words, backup is deferred, and the
 wallet opens immediately after initialization and relay readback. Connecting an
-existing Acorn remains available at `/login`, but that alternative is
+existing Acorn remains available at `/connect`, but that alternative is
 deliberately omitted from the fast onboarding page.
 
 For an already connected wallet, the **Invite** action opens `/invite`, which
@@ -326,7 +329,7 @@ trusted setting.
 The creation form offers either a 12-word or 24-word BIP39 Safebox Acorn mnemonic.
 The 12-word option is the default and uses 128 bits of generated entropy; the
 24-word option uses 256 bits. Both use Acorn's same downstream key derivation
-and can later be entered through the existing offline-mnemonic login flow.
+and can later be entered through the existing offline-mnemonic connection flow.
 
 The form also offers **Bring your own entropy**. This accepts exactly 32 bytes
 of externally generated entropy encoded as 64 hexadecimal characters, entered

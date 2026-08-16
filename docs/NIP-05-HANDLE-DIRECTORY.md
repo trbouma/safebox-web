@@ -124,8 +124,8 @@ key can remain uncompromised while its public handle is redirected.
 Safebox can restrict which immediate proxy addresses are allowed to supply
 forwarded scheme and host metadata. This prevents arbitrary network peers from
 claiming proxy authority. It cannot prevent an authorized proxy from selecting
-a different backend, replacing a response, or presenting a different login
-application. The reverse proxy is therefore part of the trusted application
+a different backend, replacing a response, or presenting a different Acorn
+connection application. The reverse proxy is therefore part of the trusted application
 delivery path, not merely a transparent network hop.
 
 NIP-05 should consequently be interpreted as “this domain currently asserts

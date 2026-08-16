@@ -383,7 +383,7 @@ def nsec_from_offline_mnemonic(value: str) -> str:
     return canonical_nsec(recover_nsec_from_seed(phrase))
 
 
-def credentials_from_login(
+def credentials_from_connection(
     *,
     secret_type: str,
     secret: str,

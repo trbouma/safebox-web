@@ -2,9 +2,9 @@
 {% block content %}
 <p>{{ message }}</p>
 <div class="onboard-actions">
-  <a class="nav-button" href="/login">Try Different Recovery Material</a>
+  <a class="nav-button" href="/connect">Try Different Recovery Material</a>
 </div>
-<form class="disconnect-form" method="post" action="/logout">
+<form class="disconnect-form" method="post" action="/disconnect">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label class="disconnect-confirmation">
     <input name="confirmed" type="checkbox" value="yes" required>

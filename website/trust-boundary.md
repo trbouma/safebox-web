@@ -7,12 +7,12 @@ description: What Safebox Web does and does not hold.
 
 Safebox Web is intentionally a wallet app, not a server-side wallet database
 or identity provider. It has to handle sensitive material while serving an
-authenticated request, but it should not become the permanent authority for the
+connected session, but it should not become the permanent authority for the
 user's funds, records, or recovery path.
 
 ## What the web app holds
 
-After login, Safebox Web keeps a small encrypted browser session containing the
+After connection, Safebox Web keeps a small encrypted browser session containing the
 connected Acorn secret and bootstrap relay. The server decrypts that session
 only when handling a request that needs an Acorn instance.
 
