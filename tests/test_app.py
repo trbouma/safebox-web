@@ -2370,7 +2370,7 @@ def test_wallet_page_displays_loaded_balance(tmp_path) -> None:
     assert response.status_code == 200
     assert "12,345 sats" in response.text
     assert "Relay-visible proof total" in response.text
-    assert "Mint-confirmed spendable balance" in response.text
+    assert "Spendable cash balance" in response.text
     assert "wss://relay.example.com" in response.text
     assert "not stored" in response.text
     assert "NIP-05 address" not in response.text
@@ -2447,10 +2447,23 @@ def test_wallet_shows_pending_clear_payments_separately(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "9,836 sats" in response.text
+    balance_pane = response.text.split('<a class="wallet-balance"', 1)[1].split(
+        "</a>", 1
+    )[0]
+    assert "Cash Balance" in balance_pane
+    assert "Clear Balances" in balance_pane
     assert (
         "Pending Clear payments: 25 cmu-00ce29eeaf094301 in 1 receipt(s)."
-        in response.text
+        in balance_pane
+    )
+    assert balance_pane.index("Cash Balance") < balance_pane.index(
+        'class="wallet-balance-amount"'
+    )
+    assert balance_pane.index('class="wallet-balance-amount"') < balance_pane.index(
+        "Clear Balances"
+    )
+    assert balance_pane.index("Clear Balances") < balance_pane.index(
+        "Pending Clear payments"
     )
     assert "Pending incoming funds: 25 sats" not in response.text
 
@@ -2958,7 +2971,7 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert response.status_code == 200
     assert '<h1 class="transaction-headline">Transaction History</h1>' in response.text
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
-    assert "Mint-confirmed spendable balance" in response.text
+    assert "Spendable cash balance" in response.text
     assert "Incoming ecash" not in response.text
     assert response.text.index(
         '<h1 class="transaction-headline">Transaction History</h1>'
@@ -3084,7 +3097,16 @@ def test_transactions_show_pending_clear_payments_separately(tmp_path) -> None:
         response = client.get("/transactions")
 
     assert response.status_code == 200
-    assert "Pending Clear payments: 25 cmu-test in 2 receipt(s)." in response.text
+    balance_pane = response.text.split(
+        '<a class="wallet-balance transaction-balance"', 1
+    )[1].split("</a>", 1)[0]
+    assert "Cash Balance" in balance_pane
+    assert "Clear Balances" in balance_pane
+    assert "Pending Clear payments: 25 cmu-test in 2 receipt(s)." in balance_pane
+    assert balance_pane.index("Cash Balance") < balance_pane.index("Clear Balances")
+    assert balance_pane.index("Clear Balances") < balance_pane.index(
+        "Pending Clear payments"
+    )
     assert "Pending incoming funds: 25 sats" not in response.text
 
 

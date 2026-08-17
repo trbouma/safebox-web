@@ -3,7 +3,7 @@
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
 {% if wallet_balance is not none %}
 <a class="wallet-balance transaction-balance" href="/wallet" aria-labelledby="transaction-balance-heading">
-  <h2 id="transaction-balance-heading">Balance</h2>
+  <h2 id="transaction-balance-heading">Cash Balance</h2>
   {% if fiat_estimate %}
   <p class="wallet-balance-amount">≈ {{ fiat_estimate.currency_symbol }}{{ "{:,.2f}".format(fiat_estimate.amount) }} <span>{{ fiat_estimate.currency_code }}</span></p>
   <p class="wallet-balance-sats">{{ "{:,}".format(wallet_balance) }} sats</p>
@@ -11,9 +11,12 @@
   {% else %}
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
   {% endif %}
-  <p class="wallet-balance-state">{% if wallet_balance_verified %}Mint-confirmed spendable balance.{% else %}Balance requires verification—review the advisory below.{% endif %}</p>
+  <p class="wallet-balance-state">{% if wallet_balance_verified %}Spendable cash balance.{% else %}Balance requires verification—review the advisory below.{% endif %}</p>
   {% if pending_amount %}<p class="wallet-balance-state">Pending incoming funds: {{ "{:,}".format(pending_amount) }} sats in {{ "{:,}".format(pending_count) }} transfer event(s).</p>{% endif %}
-  {% if pending_clear.pending %}<p class="wallet-balance-state">Pending Clear payments: {% for unit in pending_clear.units %}{{ "{:,}".format(unit.amount) }} {{ unit.unit }} in {{ "{:,}".format(unit.count) }} receipt(s){% if not loop.last %}; {% endif %}{% endfor %}.</p>{% endif %}
+  {% if pending_clear.pending %}
+  <h3 class="wallet-balance-section-heading">Clear Balances</h3>
+  <p class="wallet-balance-state">Pending Clear payments: {% for unit in pending_clear.units %}{{ "{:,}".format(unit.amount) }} {{ unit.unit }} in {{ "{:,}".format(unit.count) }} receipt(s){% if not loop.last %}; {% endif %}{% endfor %}.</p>
+  {% endif %}
 </a>
 {% endif %}
 {% if pending_transactions %}
