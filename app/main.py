@@ -656,6 +656,59 @@ async def _read_clear_history(acorn, timeout: float) -> list[dict]:
     return history if isinstance(history, list) else []
 
 
+async def _preview_incoming_clear(acorn, timeout: float) -> dict:
+    scanner = getattr(acorn, "sweep_clear_transfers", None)
+    if scanner is None:
+        return {"previewed_count": 0, "previewed_amount": 0, "previewed": []}
+    try:
+        awaitable = scanner(preview_only=True, advance_cursor=False)
+    except TypeError:
+        return {"previewed_count": 0, "previewed_amount": 0, "previewed": []}
+    try:
+        result = await asyncio.wait_for(awaitable, timeout=timeout)
+    except Exception as exc:
+        logger.warning(
+            "incoming Clear preview failed error_type=%s",
+            type(exc).__name__,
+        )
+        return {"previewed_count": 0, "previewed_amount": 0, "previewed": []}
+    return result if isinstance(result, dict) else {}
+
+
+def _merge_clear_pending(receipts: list[dict], preview: dict) -> list[dict]:
+    """Merge relay previews with stored pending receipts without duplication."""
+
+    known_event_ids = {
+        str(receipt.get("event_id") or "")
+        for receipt in receipts
+        if isinstance(receipt, dict)
+    }
+    pending = [
+        dict(receipt)
+        for receipt in receipts
+        if isinstance(receipt, dict)
+        and str(receipt.get("status") or "pending") == "pending"
+    ]
+    for item in preview.get("previewed") or []:
+        if not isinstance(item, dict):
+            continue
+        event_id = str(item.get("event_id") or "")
+        if not event_id or event_id in known_event_ids:
+            continue
+        mints = [str(mint).rstrip("/") for mint in (item.get("mints") or [])]
+        if len(mints) != 1:
+            continue
+        pending.append({
+            **item,
+            "event_id": event_id,
+            "mint": mints[0],
+            "status": "pending",
+            "relay_preview": True,
+        })
+        known_event_ids.add(event_id)
+    return pending
+
+
 def _clear_balance_summary(
     receipts: list[dict],
     spendable_balances: list[dict] | None = None,
@@ -794,6 +847,7 @@ def _clear_transaction_view(
                 ],
                 "direction": "in",
                 "operation": "receive",
+                "relay_preview": bool(receipt.get("relay_preview")),
             }
         )
     for entry in history or []:
@@ -2740,18 +2794,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             incoming_preview,
         )
         try:
-            clear_receipts, clear_balances = await asyncio.gather(
+            clear_receipts, clear_balances, clear_preview = await asyncio.gather(
                 _read_clear_receipts(
                     acorn,
                     settings.wallet_load_timeout_seconds,
+                    status=None,
                 ),
                 _read_clear_balances(
                     acorn,
                     settings.wallet_load_timeout_seconds,
                 ),
+                _preview_incoming_clear(
+                    acorn,
+                    settings.wallet_load_timeout_seconds,
+                ),
+            )
+            pending_clear_receipts = _merge_clear_pending(
+                clear_receipts,
+                clear_preview,
             )
             pending_clear = await _resolve_clear_aliases(
-                _clear_balance_summary(clear_receipts, clear_balances),
+                _clear_balance_summary(pending_clear_receipts, clear_balances),
                 timeout=settings.wallet_load_timeout_seconds,
                 configured_mints=settings.clear_mints,
                 cache=request.app.state.clear_mint_metadata_cache,
@@ -4187,7 +4250,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             receipts = await _read_clear_receipts(
                 acorn,
                 settings.wallet_load_timeout_seconds,
-                status="pending",
+                status=None,
             )
         except Exception as exc:
             logger.warning(
@@ -4204,20 +4267,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         try:
-            spendable_balances, history = await asyncio.gather(
+            spendable_balances, history, clear_preview = await asyncio.gather(
                 _read_clear_balances(acorn, settings.wallet_load_timeout_seconds),
                 _read_clear_history(acorn, settings.wallet_load_timeout_seconds),
+                _preview_incoming_clear(acorn, settings.wallet_load_timeout_seconds),
             )
         except Exception as exc:
             logger.warning(
                 "clear balance or history lookup failed error_type=%s",
                 type(exc).__name__,
             )
-            spendable_balances, history = [], []
+            spendable_balances, history, clear_preview = [], [], {}
+
+        pending_receipts = _merge_clear_pending(receipts, clear_preview)
 
         try:
             clear_summary = await _resolve_clear_aliases(
-                _clear_balance_summary(receipts, spendable_balances),
+                _clear_balance_summary(pending_receipts, spendable_balances),
                 timeout=settings.wallet_load_timeout_seconds,
                 configured_mints=settings.clear_mints,
                 cache=request.app.state.clear_mint_metadata_cache,
@@ -4227,7 +4293,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "clear mint metadata lookup failed error_type=%s",
                 type(exc).__name__,
             )
-            clear_summary = _clear_balance_summary(receipts, spendable_balances)
+            clear_summary = _clear_balance_summary(
+                pending_receipts,
+                spendable_balances,
+            )
 
         return HTMLResponse(
             render_template(
@@ -4235,7 +4304,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 title="Clear Transactions",
                 headline_class="transaction-headline",
                 clear_summary=clear_summary,
-                entries=_clear_transaction_view(receipts, clear_summary, history),
+                entries=_clear_transaction_view(
+                    pending_receipts,
+                    clear_summary,
+                    history,
+                ),
                 csrf_token=CsrfProtector(settings).issue(),
                 notice=_clear_page_notice(request.query_params),
             )
@@ -4324,7 +4397,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=501,
             )
         try:
-            await accepter(event_id)
+            try:
+                await accepter(event_id)
+            except ValueError as exc:
+                if "not found" not in str(exc).lower():
+                    raise
+                receiver = getattr(acorn, "sweep_clear_transfers", None)
+                if receiver is None:
+                    raise
+                try:
+                    receive_awaitable = receiver(
+                        event_id=event_id,
+                        advance_cursor=False,
+                    )
+                except TypeError:
+                    raise exc
+                await asyncio.wait_for(
+                    receive_awaitable,
+                    timeout=settings.wallet_load_timeout_seconds,
+                )
+                await accepter(event_id)
         except ValueError as exc:
             error_text = str(exc).lower()
             if "not found" in error_text:

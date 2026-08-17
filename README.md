@@ -157,7 +157,10 @@ history remains read-only; receiving ecash is a separate CSRF-protected
 mutation initiated by the user.
 
 Safebox Web also exposes a separate **Clear Transactions** page. It calls
-Acorn's kind `7379` receiver through **Check for Clear Transfers**, groups
+Acorn's kind `7379` receiver in read-only preview mode when the wallet and Clear
+pages load, so new transfers appear immediately without changing wallet state.
+**Check for Clear Transfers** stores all discovered receipts and advances the
+receive cursor. The page groups
 pending and spendable amounts by exact mint and CMU, resolves safe mint aliases,
 and permits acceptance or confirmed deletion of a pending transfer. Acceptance
 refreshes the token at its Clear mint, stores spendable kind `7380` proofs, and

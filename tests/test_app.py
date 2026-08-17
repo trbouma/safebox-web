@@ -210,6 +210,12 @@ class FakeLoadedAcorn:
         self.deleted_clear_receipts: list[str] = []
         self.clear_sweep_calls = 0
         self.clear_sweep_receipts: list[dict] = []
+        self.clear_preview_calls = 0
+        self.clear_preview: dict = {
+            "previewed_count": 0,
+            "previewed_amount": 0,
+            "previewed": [],
+        }
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -285,14 +291,40 @@ class FakeLoadedAcorn:
             return {"status": "OK", "event_id": event_id, "deleted": True}
         raise ValueError("Pending Clear transfer was not found")
 
-    async def sweep_clear_transfers(self) -> dict:
+    async def sweep_clear_transfers(
+        self,
+        *,
+        preview_only: bool = False,
+        advance_cursor: bool = True,
+        event_id: str | None = None,
+    ) -> dict:
+        if preview_only:
+            self.clear_preview_calls += 1
+            return self.clear_preview
         self.clear_sweep_calls += 1
+        source = self.clear_sweep_receipts
+        if event_id:
+            source = [
+                receipt
+                for receipt in [
+                    *self.clear_sweep_receipts,
+                    *(self.clear_preview.get("previewed") or []),
+                ]
+                if str(receipt.get("event_id") or "") == event_id
+            ]
         existing_ids = {
             str(receipt.get("event_id") or "") for receipt in self.clear_receipts
         }
         stored = [
-            dict(receipt)
-            for receipt in self.clear_sweep_receipts
+            {
+                **dict(receipt),
+                "mint": str(
+                    receipt.get("mint")
+                    or ((receipt.get("mints") or [""])[0])
+                ),
+                "status": "pending",
+            }
+            for receipt in source
             if str(receipt.get("event_id") or "") not in existing_ids
         ]
         self.clear_receipts.extend(stored)
@@ -2552,6 +2584,36 @@ def test_wallet_shows_pending_clear_transfers_separately(tmp_path) -> None:
     assert "Pending cash payments: 25 sats" not in response.text
 
 
+def test_wallet_previews_new_clear_transfers_without_storing_them(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=9_836)
+    event_id = "7" * 64
+    acorn.clear_preview = {
+        "previewed_count": 1,
+        "previewed_amount": 40,
+        "previewed": [{
+            "event_id": event_id,
+            "sender_pubkey": "sender-pubkey",
+            "amount": 40,
+            "unit": "cmu-preview",
+            "mints": ["http://127.0.0.1:3339"],
+            "timestamp": 1_786_430_400,
+            "comment": "relay preview",
+        }],
+    }
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "1 pending Clear transfer across 1 Clear balance." in response.text
+    assert "0 cmu-preview spendable; 40 pending." in response.text
+    assert acorn.clear_preview_calls == 1
+    assert acorn.clear_sweep_calls == 0
+    assert acorn.clear_receipts == []
+
+
 def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
     settings = database_settings(tmp_path)
     database_path = tmp_path / "database.db"
@@ -3334,6 +3396,49 @@ def test_user_can_accept_clear_transfer_into_spendable_balance(tmp_path) -> None
     assert "25 <span>cmu-test</span>" in result.text
     assert "Accept Clear Transaction" in result.text
     assert "guest passes" in result.text
+    assert "Accept Clear Transfer" not in result.text
+
+
+def test_user_can_accept_relay_previewed_clear_transfer(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    event_id = "8" * 64
+    acorn.clear_preview = {
+        "previewed_count": 1,
+        "previewed_amount": 12,
+        "previewed": [{
+            "event_id": event_id,
+            "sender_pubkey": "sender-pubkey",
+            "amount": 12,
+            "unit": "cmu-preview",
+            "mints": ["http://127.0.0.1:3339"],
+            "comment": "preview acceptance",
+            "timestamp": 1_786_430_400,
+        }],
+    }
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.get("/clear")
+        token_match = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            page.text,
+        )
+        assert token_match is not None
+        assert "12 pending in 1 transfer" in page.text
+        assert "Accept Clear Transfer" in page.text
+        assert "Delete pending transfer" not in page.text
+        response = client.post(
+            "/clear/receipts/accept",
+            data={"csrf_token": token_match.group(1), "event_id": event_id},
+            follow_redirects=False,
+        )
+        result = client.get(response.headers["location"])
+
+    assert response.status_code == 303
+    assert acorn.clear_sweep_calls == 1
+    assert acorn.accepted_clear_receipts == [event_id]
+    assert "12 <span>cmu-preview</span>" in result.text
     assert "Accept Clear Transfer" not in result.text
 
 

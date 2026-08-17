@@ -61,7 +61,7 @@
       <input type="hidden" name="event_id" value="{{ entry.event_id }}">
       <button type="submit">Accept Clear Transfer</button>
     </form>
-    <details class="pending-receipt-actions">
+    {% if not entry.relay_preview %}<details class="pending-receipt-actions">
       <summary>Delete pending transfer</summary>
       <form method="post" action="/clear/receipts/delete"
             data-progress-message="Deleting pending Clear transfer. Please wait."
@@ -71,7 +71,7 @@
         <label><input type="checkbox" name="confirmed" value="yes" required> I understand this removes the pending transfer and its token.</label>
         <button type="submit" class="danger-button">Delete Pending Transfer</button>
       </form>
-    </details>
+    </details>{% endif %}
     {% endif %}
   </article>
   {% else %}

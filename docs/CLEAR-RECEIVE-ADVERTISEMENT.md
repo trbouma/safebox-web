@@ -15,12 +15,16 @@ The receiver wallet, currently Acorn, later queries its relay, unwraps the
 NIP-59 gift wrap, validates the encrypted payload, and stores the Clear token
 in its own pending Clear transfer receipt storage.
 
-Safebox Web keeps ordinary page reads non-mutating. A connected user opens
-`/clear` and selects **Check for Clear Transfers** to invoke Acorn's
-`sweep_clear_transfers()` receiver. The receiver queries kind `1059` gift
-wraps, accepts only inner kind `7379`, stores new transfers as pending, and
-then reloads Clear Balances. This action is separate from cash payment
-finalization and does not process kind `7378` ecash transfers.
+Safebox Web keeps ordinary page reads non-mutating. Wallet and `/clear` page
+loads invoke `sweep_clear_transfers(preview_only=True)` so relay-visible kind
+`1059` gift wraps with inner kind `7379` appear immediately as pending Clear
+transfers. Previewing does not store receipts or advance the receive cursor.
+
+**Check for Clear Transfers** performs the explicit mutating receive operation:
+it stores discovered transfers as pending receipts and advances the cursor.
+Accepting a previewed transfer stores that exact event before running the normal
+acceptance workflow. These actions remain separate from cash payment
+finalization and do not process kind `7378` ecash transfers.
 
 ## Settings
 
