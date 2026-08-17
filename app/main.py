@@ -13,7 +13,8 @@ import logging
 import mimetypes
 from pathlib import Path
 import re
-from urllib.parse import quote, urlencode
+from time import monotonic
+from urllib.parse import quote, urlencode, urlsplit
 
 import bolt11
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -641,10 +642,22 @@ def _pending_clear_summary(receipts: list[dict]) -> dict:
         if isinstance(receipt, dict)
         and str(receipt.get("status") or "pending") == "pending"
     ]
-    by_unit: dict[str, dict] = {}
+    by_balance: dict[tuple[str, str], dict] = {}
     for receipt in pending:
         unit = str(receipt.get("unit") or "unknown")
-        row = by_unit.setdefault(unit, {"unit": unit, "amount": 0, "count": 0})
+        mint = str(receipt.get("mint") or "unknown").rstrip("/")
+        row = by_balance.setdefault(
+            (mint, unit),
+            {
+                "mint": mint,
+                "unit": unit,
+                "amount": 0,
+                "count": 0,
+                "display_name": unit,
+                "display_unit": unit,
+                "metadata_resolved": False,
+            },
+        )
         try:
             row["amount"] += int(receipt.get("amount") or 0)
         except (TypeError, ValueError):
@@ -653,8 +666,114 @@ def _pending_clear_summary(receipts: list[dict]) -> dict:
     return {
         "pending": bool(pending),
         "count": len(pending),
-        "units": sorted(by_unit.values(), key=lambda row: row["unit"]),
+        "balance_count": len(by_balance),
+        "balances": sorted(
+            by_balance.values(),
+            key=lambda row: (row["unit"], row["mint"]),
+        ),
     }
+
+
+def _clear_metadata_url(mint: str, configured_mints: tuple[str, ...]) -> str | None:
+    normalized = mint.rstrip("/")
+    parsed = urlsplit(normalized)
+    if (
+        not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    trusted_mints = {value.rstrip("/") for value in configured_mints}
+    if parsed.scheme != "https" and normalized not in trusted_mints:
+        return None
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    return f"{normalized}/v1/info"
+
+
+def _clear_display_metadata(payload: object, *, mint: str, unit: str) -> dict | None:
+    if not isinstance(payload, dict):
+        return None
+    advertised_mint = str(payload.get("mint_url") or mint).rstrip("/")
+    currency = payload.get("currency")
+    if advertised_mint != mint or not isinstance(currency, dict):
+        return None
+    if str(currency.get("unit") or "") != unit:
+        return None
+
+    friendly_name = currency.get("friendly_alias") or currency.get("name")
+    friendly_unit = currency.get("friendly_unit_alias")
+    display_name = str(friendly_name or unit).strip()
+    display_unit = str(friendly_unit or unit).strip()
+    if not display_name or len(display_name) > 120:
+        display_name = unit
+    if not display_unit or len(display_unit) > 40:
+        display_unit = unit
+    return {
+        "display_name": display_name,
+        "display_unit": display_unit,
+        "metadata_resolved": True,
+    }
+
+
+async def _resolve_clear_aliases(
+    summary: dict,
+    *,
+    timeout: float,
+    configured_mints: tuple[str, ...],
+    cache: dict[tuple[str, str], tuple[float, dict]],
+) -> dict:
+    balances = summary.get("balances")
+    if not isinstance(balances, list) or not balances:
+        return summary
+
+    async def resolve(client: httpx.AsyncClient, balance: dict) -> dict | None:
+        mint = str(balance["mint"])
+        unit = str(balance["unit"])
+        cached = cache.get((mint, unit))
+        if cached is not None and monotonic() - cached[0] < 300:
+            return cached[1]
+        metadata_url = _clear_metadata_url(mint, configured_mints)
+        if metadata_url is None:
+            return None
+        try:
+            response = await client.get(metadata_url)
+            response.raise_for_status()
+            if len(response.content) > 64 * 1024:
+                return None
+            metadata = _clear_display_metadata(
+                response.json(),
+                mint=mint,
+                unit=unit,
+            )
+            if metadata is not None:
+                cache[(mint, unit)] = (monotonic(), metadata)
+            return metadata
+        except Exception as exc:
+            logger.info(
+                "clear mint alias lookup skipped mint=%s error_type=%s",
+                mint,
+                type(exc).__name__,
+            )
+            return None
+
+    metadata_timeout = max(0.1, min(float(timeout), 3.0))
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(
+            metadata_timeout,
+            connect=min(metadata_timeout, 2.0),
+        ),
+        follow_redirects=False,
+    ) as client:
+        resolved = await asyncio.gather(
+            *(resolve(client, balance) for balance in balances)
+        )
+    for balance, metadata in zip(balances, resolved, strict=True):
+        if metadata is not None:
+            balance.update(metadata)
+    return summary
 
 
 async def _read_continuity_receipts(acorn, timeout: float) -> list[dict]:
@@ -722,7 +841,8 @@ def _transactions_page(
         fiat_estimate=fiat_estimate,
         finalization_job=finalization_job,
         pending_transactions=pending_transactions or [],
-        pending_clear=pending_clear or {"pending": False, "count": 0, "units": []},
+        pending_clear=pending_clear
+        or {"pending": False, "count": 0, "balance_count": 0, "balances": []},
     )
 
 
@@ -1252,6 +1372,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Safebox Web", version="0.1.0", lifespan=lifespan)
     app.state.settings = runtime_settings
+    app.state.clear_mint_metadata_cache = {}
     app.include_router(lnurl_pay_router)
     app.mount(
         "/static",
@@ -2441,18 +2562,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             incoming_preview,
         )
         try:
-            pending_clear = _pending_clear_summary(
-                await _read_clear_receipts(
-                    acorn,
-                    settings.wallet_load_timeout_seconds,
-                )
+            pending_clear = await _resolve_clear_aliases(
+                _pending_clear_summary(
+                    await _read_clear_receipts(
+                        acorn,
+                        settings.wallet_load_timeout_seconds,
+                    )
+                ),
+                timeout=settings.wallet_load_timeout_seconds,
+                configured_mints=settings.clear_mints,
+                cache=request.app.state.clear_mint_metadata_cache,
             )
         except Exception as exc:
             logger.warning(
                 "clear receipt lookup failed error_type=%s",
                 type(exc).__name__,
             )
-            pending_clear = {"pending": False, "count": 0, "units": []}
+            pending_clear = {
+                "pending": False,
+                "count": 0,
+                "balance_count": 0,
+                "balances": [],
+            }
         return render_template(
             "wallet.html",
             title="Safebox is Connected",
@@ -3847,18 +3978,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             incoming_preview,
         )
         try:
-            pending_clear = _pending_clear_summary(
-                await _read_clear_receipts(
-                    acorn,
-                    settings.wallet_load_timeout_seconds,
-                )
+            pending_clear = await _resolve_clear_aliases(
+                _pending_clear_summary(
+                    await _read_clear_receipts(
+                        acorn,
+                        settings.wallet_load_timeout_seconds,
+                    )
+                ),
+                timeout=settings.wallet_load_timeout_seconds,
+                configured_mints=settings.clear_mints,
+                cache=request.app.state.clear_mint_metadata_cache,
             )
         except Exception as exc:
             logger.warning(
                 "clear receipt lookup failed error_type=%s",
                 type(exc).__name__,
             )
-            pending_clear = {"pending": False, "count": 0, "units": []}
+            pending_clear = {
+                "pending": False,
+                "count": 0,
+                "balance_count": 0,
+                "balances": [],
+            }
         finalization_job = get_finalization_job(
             request.app.state.database_engine,
             acorn.pubkey_bech32,

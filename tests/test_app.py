@@ -2452,9 +2452,9 @@ def test_wallet_shows_pending_clear_payments_separately(tmp_path) -> None:
     )[0]
     assert "Cash Balance" in balance_pane
     assert "Clear Balances" in balance_pane
+    assert "1 pending receipt across 1 Clear balance." in balance_pane
     assert (
-        "Pending Clear payments: 25 cmu-00ce29eeaf094301 in 1 receipt(s)."
-        in balance_pane
+        "25 cmu-00ce29eeaf094301 pending in 1 receipt." in balance_pane
     )
     assert balance_pane.index("Cash Balance") < balance_pane.index(
         'class="wallet-balance-amount"'
@@ -2463,7 +2463,7 @@ def test_wallet_shows_pending_clear_payments_separately(tmp_path) -> None:
         "Clear Balances"
     )
     assert balance_pane.index("Clear Balances") < balance_pane.index(
-        "Pending Clear payments"
+        "1 pending receipt"
     )
     assert "Pending incoming funds: 25 sats" not in response.text
 
@@ -3102,12 +3102,105 @@ def test_transactions_show_pending_clear_payments_separately(tmp_path) -> None:
     )[1].split("</a>", 1)[0]
     assert "Cash Balance" in balance_pane
     assert "Clear Balances" in balance_pane
-    assert "Pending Clear payments: 25 cmu-test in 2 receipt(s)." in balance_pane
+    assert "2 pending receipts across 1 Clear balance." in balance_pane
+    assert "25 cmu-test pending in 2 receipts." in balance_pane
     assert balance_pane.index("Cash Balance") < balance_pane.index("Clear Balances")
     assert balance_pane.index("Clear Balances") < balance_pane.index(
-        "Pending Clear payments"
+        "2 pending receipts"
     )
     assert "Pending incoming funds: 25 sats" not in response.text
+
+
+def test_wallet_resolves_clear_aliases_without_summing_distinct_balances(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    metadata = {
+        "https://clear.safebox.dev/v1/info": {
+            "mint_url": "https://clear.safebox.dev",
+            "currency": {
+                "name": "Clear Lab Credit Program",
+                "unit": "cmu-new",
+                "friendly_alias": "Clear Lab Credits",
+                "friendly_unit_alias": "credits",
+            },
+        },
+        "https://harbour.example/v1/info": {
+            "mint_url": "https://harbour.example",
+            "currency": {
+                "name": "Harbour Program",
+                "unit": "cmu-old",
+                "friendly_alias": "Harbour Lab Credits",
+                "friendly_unit_alias": "smiles",
+            },
+        },
+    }
+    requested_urls = []
+
+    class FakeResponse:
+        def __init__(self, payload: dict) -> None:
+            self.payload = payload
+            self.content = json.dumps(payload).encode()
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return self.payload
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url):
+            requested_urls.append(url)
+            return FakeResponse(metadata[url])
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=9_836)
+    acorn.clear_receipts = [
+        {
+            "event_id": "clear-new",
+            "status": "pending",
+            "amount": 25,
+            "unit": "cmu-new",
+            "mint": "https://clear.safebox.dev",
+        },
+        {
+            "event_id": "clear-old",
+            "status": "pending",
+            "amount": 25,
+            "unit": "cmu-old",
+            "mint": "https://harbour.example",
+        },
+    ]
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    balance_pane = response.text.split('<a class="wallet-balance"', 1)[1].split(
+        "</a>", 1
+    )[0]
+    assert "2 pending receipts across 2 Clear balances." in balance_pane
+    assert "Clear Lab Credits</strong>: 25 credits pending in 1 receipt." in (
+        balance_pane
+    )
+    assert "Harbour Lab Credits</strong>: 25 smiles pending in 1 receipt." in (
+        balance_pane
+    )
+    assert "cmu-new · https://clear.safebox.dev" in balance_pane
+    assert "cmu-old · https://harbour.example" in balance_pane
+    assert "50" not in balance_pane
+    assert sorted(requested_urls) == sorted(metadata)
 
 
 def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:

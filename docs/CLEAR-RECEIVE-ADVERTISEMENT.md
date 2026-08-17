@@ -34,6 +34,24 @@ Leaving `SAFEBOX_CLEAR_MINTS` and `SAFEBOX_CLEAR_UNITS` empty advertises
 general Clear receive support. Wallets still validate the mint, unit, keyset
 ids, and token payload after decrypting the transfer.
 
+## Wallet display metadata
+
+For each pending Clear balance, Safebox Web reads the mint's `/v1/info`
+metadata and prefers `currency.friendly_alias` and
+`currency.friendly_unit_alias` for display. The canonical mint URL and complete
+CMU remain visible and continue to identify the balance. Metadata is accepted
+only when the response advertises the same mint URL and CMU as the receipt.
+
+Balances are grouped by exact `(mint, CMU)` identity. Safebox Web may total
+receipts within one such balance, but it never adds amounts across different
+mints or CMUs. The summary reports receipt and balance counts instead of a
+cross-currency amount.
+
+Alias lookup follows a narrow network policy: public HTTPS mint URLs may be
+queried without redirects, while an HTTP mint is queried only when its exact
+URL is configured in `SAFEBOX_CLEAR_MINTS`. Failed, oversized, mismatched, or
+untrusted responses fall back to the canonical CMU and mint URL.
+
 In Docker Compose, pass these environment values into the `safebox-web`
 service:
 
@@ -112,4 +130,3 @@ The advertisement does not prove that a particular user will accept every
 Clear token, does not finalize payment, and does not bind the wallet to a
 particular Clear mint unless `SAFEBOX_CLEAR_MINTS` or `SAFEBOX_CLEAR_UNITS` are
 configured.
-
