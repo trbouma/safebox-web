@@ -1513,6 +1513,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert 'href="/record-protection/enable"' in response.text
     assert "Protected Records" in response.text
     assert '<a class="wallet-balance" href="/transactions"' in response.text
+    assert '<a class="wallet-balance clear-balance" href="/clear"' in response.text
     assert "321 <span>sats</span>" in response.text
     assert "View transaction history" not in response.text
     assert "Before disconnecting, make sure you have your" in response.text
@@ -2447,24 +2448,24 @@ def test_wallet_shows_pending_clear_payments_separately(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    balance_pane = response.text.split('<a class="wallet-balance"', 1)[1].split(
+    cash_pane = response.text.split('<a class="wallet-balance"', 1)[1].split(
         "</a>", 1
     )[0]
-    assert "Cash Balance" in balance_pane
-    assert "Clear Balances" in balance_pane
-    assert "1 pending receipt across 1 Clear balance." in balance_pane
+    clear_pane = response.text.split(
+        '<a class="wallet-balance clear-balance"', 1
+    )[1].split("</a>", 1)[0]
+    assert "Cash Balance" in cash_pane
+    assert "Clear Balances" not in cash_pane
+    assert "Cash Balance" not in clear_pane
+    assert "Clear Balances" in clear_pane
+    assert "1 pending receipt across 1 Clear balance." in clear_pane
     assert (
-        "25 cmu-00ce29eeaf094301 pending in 1 receipt." in balance_pane
+        "25 cmu-00ce29eeaf094301 pending in 1 receipt." in clear_pane
     )
-    assert balance_pane.index("Cash Balance") < balance_pane.index(
+    assert cash_pane.index("Cash Balance") < cash_pane.index(
         'class="wallet-balance-amount"'
     )
-    assert balance_pane.index('class="wallet-balance-amount"') < balance_pane.index(
-        "Clear Balances"
-    )
-    assert balance_pane.index("Clear Balances") < balance_pane.index(
-        "1 pending receipt"
-    )
+    assert clear_pane.index("Clear Balances") < clear_pane.index("1 pending receipt")
     assert "Pending incoming funds: 25 sats" not in response.text
 
 
@@ -2969,12 +2970,12 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
         response = client.get("/transactions")
 
     assert response.status_code == 200
-    assert '<h1 class="transaction-headline">Transaction History</h1>' in response.text
+    assert '<h1 class="transaction-headline">Cash Transactions</h1>' in response.text
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
     assert "Spendable cash balance" in response.text
     assert "Incoming ecash" not in response.text
     assert response.text.index(
-        '<h1 class="transaction-headline">Transaction History</h1>'
+        '<h1 class="transaction-headline">Cash Transactions</h1>'
     ) < response.text.index(">Home</a>")
     assert response.text.index(">Home</a>") < response.text.index(
         'class="wallet-balance transaction-balance"'
@@ -2983,12 +2984,12 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
         'class="wallet-balance transaction-balance"'
     )
     assert response.text.index('class="wallet-balance transaction-balance"') < response.text.index(
-        'aria-label="Pending transactions"'
+        'aria-label="Cash transaction finalization"'
     )
-    assert response.text.index('aria-label="Pending transactions"') < response.text.index(
-        'aria-label="Transaction history"'
+    assert response.text.index('aria-label="Cash transaction finalization"') < response.text.index(
+        'aria-label="Cash transaction history"'
     )
-    assert 'aria-label="Transaction history"' in response.text
+    assert 'aria-label="Cash transaction history"' in response.text
     assert 'class="transaction-card credit"' in response.text
     assert 'class="transaction-card debit"' in response.text
     assert "+21 sats" in response.text
@@ -3001,13 +3002,13 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert 'href="/static/styles.css"' in response.text
     assert 'action="/transactions/receive"' in response.text
     assert 'name="csrf_token"' in response.text
-    assert "Finalize Pending Transactions" in response.text
+    assert "Finalize Cash Transactions" in response.text
     assert "Check and receive ecash" not in response.text
     assert "Finalizing…" in response.text
     assert '<details class="transaction-advisories">' in response.text
     assert "<summary>Advisories</summary>" in response.text
-    assert response.text.index('aria-label="Transaction history"') < response.text.index(
-        "Pending transactions are added to the confirmed balance"
+    assert response.text.index('aria-label="Cash transaction history"') < response.text.index(
+        "Pending cash transactions are added to the confirmed balance"
     )
     assert response.text.index("Force Finalization") > response.text.index(
         "<summary>Advisories</summary>"
@@ -3074,7 +3075,7 @@ def test_wallet_uses_balance_as_the_transaction_history_link(tmp_path) -> None:
     assert '<a href="/transactions">Pending Transactions</a>' not in response.text
 
 
-def test_transactions_show_pending_clear_payments_separately(tmp_path) -> None:
+def test_cash_transactions_do_not_include_clear_payments(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
     acorn.clear_receipts = [
@@ -3101,14 +3102,45 @@ def test_transactions_show_pending_clear_payments_separately(tmp_path) -> None:
         '<a class="wallet-balance transaction-balance"', 1
     )[1].split("</a>", 1)[0]
     assert "Cash Balance" in balance_pane
-    assert "Clear Balances" in balance_pane
-    assert "2 pending receipts across 1 Clear balance." in balance_pane
-    assert "25 cmu-test pending in 2 receipts." in balance_pane
-    assert balance_pane.index("Cash Balance") < balance_pane.index("Clear Balances")
-    assert balance_pane.index("Clear Balances") < balance_pane.index(
-        "2 pending receipts"
-    )
+    assert "Clear Balances" not in response.text
+    assert "cmu-test" not in response.text
     assert "Pending incoming funds: 25 sats" not in response.text
+
+
+def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    acorn.clear_receipts = [
+        {
+            "event_id": "clear-event-1234567890",
+            "sender_pubkey": "sender-pubkey-1234567890",
+            "status": "pending",
+            "amount": 25,
+            "unit": "cmu-test",
+            "mint": "http://clear.example",
+            "comment": "community supplies",
+            "timestamp": 1_786_430_400,
+            "keyset_ids": ["keyset-test"],
+        }
+    ]
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/clear")
+
+    assert response.status_code == 200
+    assert '<h1 class="transaction-headline">Clear Transactions</h1>' in response.text
+    assert '<h2 id="clear-balances-heading">Clear Balances</h2>' in response.text
+    assert "1 pending receipt across 1 Clear balance." in response.text
+    assert "25 <span>cmu-test</span>" in response.text
+    assert '<h2 id="clear-history-heading">Clear Transaction History</h2>' in response.text
+    assert "Pending Clear Payment" in response.text
+    assert "+25 cmu-test" in response.text
+    assert "community supplies" in response.text
+    assert "clear-event" in response.text
+    assert "sender-pubke" in response.text
+    assert "keyset-test" in response.text
+    assert response.text.count('class="page-navigation') == 2
 
 
 def test_wallet_resolves_clear_aliases_without_summing_distinct_balances(
@@ -3187,9 +3219,9 @@ def test_wallet_resolves_clear_aliases_without_summing_distinct_balances(
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    balance_pane = response.text.split('<a class="wallet-balance"', 1)[1].split(
-        "</a>", 1
-    )[0]
+    balance_pane = response.text.split(
+        '<a class="wallet-balance clear-balance"', 1
+    )[1].split("</a>", 1)[0]
     assert "2 pending receipts across 2 Clear balances." in balance_pane
     assert "Clear Lab Credits</strong>: 25 credits pending in 1 receipt." in (
         balance_pane
@@ -3281,8 +3313,8 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
     assert response.status_code == 200
     assert "Pending incoming funds: 12 sats in 3 transfer event(s)." in response.text
     assert "100 <span>sats</span>" in response.text
-    assert "Pending Transactions" in response.text
-    assert "These funds have arrived for this Acorn" in response.text
+    assert "Pending Cash Transactions" in response.text
+    assert "These cash funds have arrived for this Acorn" in response.text
     assert "Awaiting mint confirmation" in response.text
     assert "Received on relay; finalization pending" in response.text
     assert "+5 sats" in response.text
@@ -3382,7 +3414,7 @@ def test_transaction_finalization_runs_in_background(tmp_path) -> None:
     assert job["confirmed_amount"] == 50
     assert acorn.receive_calls == 1
     assert acorn.receive_finalize_values == [False]
-    assert "Background finalization completed." in page.text
+    assert "Cash transaction finalization completed." in page.text
     assert "Finalized 50 sats from 3 transfer event(s)." in page.text
 
 

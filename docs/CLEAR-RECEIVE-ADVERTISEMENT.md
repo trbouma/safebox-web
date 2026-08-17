@@ -47,6 +47,12 @@ receipts within one such balance, but it never adds amounts across different
 mints or CMUs. The summary reports receipt and balance counts instead of a
 cross-currency amount.
 
+The wallet presents Cash Balance and Clear Balances as separate links. Cash
+Balance opens `/transactions`, which contains only cash receipts, history, and
+finalization controls. Clear Balances opens `/clear`, which shows balances
+grouped by exact mint and CMU followed by the independent Clear receipt
+history. Cash finalization does not process Clear receipts.
+
 Alias lookup follows a narrow network policy: public HTTPS mint URLs may be
 queried without redirects, while an HTTP mint is queried only when its exact
 URL is configured in `SAFEBOX_CLEAR_MINTS`. Failed, oversized, mismatched, or

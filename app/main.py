@@ -623,12 +623,17 @@ def _pending_transaction_totals(
     )
 
 
-async def _read_clear_receipts(acorn, timeout: float) -> list[dict]:
+async def _read_clear_receipts(
+    acorn,
+    timeout: float,
+    *,
+    status: str | None = "pending",
+) -> list[dict]:
     reader = getattr(acorn, "get_clear_receipts", None)
     if reader is None:
         return []
     try:
-        awaitable = reader(status="pending")
+        awaitable = reader() if status is None else reader(status=status)
     except TypeError:
         awaitable = reader()
     receipts = await asyncio.wait_for(awaitable, timeout=timeout)
@@ -672,6 +677,69 @@ def _pending_clear_summary(receipts: list[dict]) -> dict:
             key=lambda row: (row["unit"], row["mint"]),
         ),
     }
+
+
+def _clear_transaction_view(receipts: list[dict], summary: dict) -> list[dict]:
+    """Present Clear receipts without combining distinct mint-unit balances."""
+
+    metadata = {
+        (str(balance["mint"]), str(balance["unit"])): balance
+        for balance in summary.get("balances", [])
+        if isinstance(balance, dict)
+        and balance.get("mint") is not None
+        and balance.get("unit") is not None
+    }
+    cards: list[dict] = []
+    for receipt in receipts:
+        if not isinstance(receipt, dict):
+            continue
+        mint = str(receipt.get("mint") or "unknown").rstrip("/")
+        unit = str(receipt.get("unit") or "unknown")
+        display = metadata.get((mint, unit), {})
+        try:
+            amount = int(receipt.get("amount") or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        try:
+            timestamp = int(receipt.get("timestamp") or 0)
+        except (TypeError, ValueError):
+            timestamp = 0
+        created = (
+            datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime(
+                "%Y-%m-%d %H:%M UTC"
+            )
+            if timestamp > 0
+            else "Arrival time unavailable"
+        )
+        status = str(receipt.get("status") or "pending").strip().lower()
+        event_id = str(receipt.get("event_id") or "").strip()
+        sender = str(receipt.get("sender_pubkey") or "").strip()
+        cards.append(
+            {
+                "amount": amount,
+                "mint": mint,
+                "unit": unit,
+                "display_name": str(display.get("display_name") or unit),
+                "display_unit": str(display.get("display_unit") or unit),
+                "status": status,
+                "status_label": status.replace("_", " ").title(),
+                "created": created,
+                "timestamp": timestamp,
+                "event_id": event_id,
+                "event_short": event_id[:12],
+                "sender_short": sender[:12],
+                "comment": str(receipt.get("comment") or "").strip(),
+                "keyset_ids": [
+                    str(keyset_id)
+                    for keyset_id in (receipt.get("keyset_ids") or [])
+                ],
+            }
+        )
+    return sorted(
+        cards,
+        key=lambda card: (card["timestamp"], card["event_id"]),
+        reverse=True,
+    )
 
 
 def _clear_metadata_url(mint: str, configured_mints: tuple[str, ...]) -> str | None:
@@ -822,13 +890,12 @@ def _transactions_page(
     fiat_estimate: dict | None = None,
     finalization_job: dict | None = None,
     pending_transactions: list[dict] | None = None,
-    pending_clear: dict | None = None,
 ) -> str:
     """Render transaction history with an explicit incoming funds check."""
 
     return render_template(
         "transactions.html",
-        title="Transaction History",
+        title="Cash Transactions",
         headline_class="transaction-headline",
         entries=_transaction_history_view(entries),
         csrf_token=csrf_token,
@@ -841,8 +908,6 @@ def _transactions_page(
         fiat_estimate=fiat_estimate,
         finalization_job=finalization_job,
         pending_transactions=pending_transactions or [],
-        pending_clear=pending_clear
-        or {"pending": False, "count": 0, "balance_count": 0, "balances": []},
     )
 
 
@@ -3917,8 +3982,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except TimeoutError:
             return HTMLResponse(
                 _page(
-                    "Transaction history",
-                    '<p class="error">Timed out while loading transaction history.</p>'
+                    "Cash Transactions",
+                    '<p class="error">Timed out while loading cash transactions.</p>'
                     '<p><a href="/wallet">Return to wallet</a></p>',
                 ),
                 status_code=504,
@@ -3930,8 +3995,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return HTMLResponse(
                 _page(
-                    "Transaction history",
-                    '<p class="error">Unable to load transaction history from the bootstrap relay.</p>'
+                    "Cash Transactions",
+                    '<p class="error">Unable to load cash transactions from the bootstrap relay.</p>'
                     '<p><a href="/wallet">Return to wallet</a></p>',
                 ),
                 status_code=502,
@@ -3977,29 +4042,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             continuity_receipts,
             incoming_preview,
         )
-        try:
-            pending_clear = await _resolve_clear_aliases(
-                _pending_clear_summary(
-                    await _read_clear_receipts(
-                        acorn,
-                        settings.wallet_load_timeout_seconds,
-                    )
-                ),
-                timeout=settings.wallet_load_timeout_seconds,
-                configured_mints=settings.clear_mints,
-                cache=request.app.state.clear_mint_metadata_cache,
-            )
-        except Exception as exc:
-            logger.warning(
-                "clear receipt lookup failed error_type=%s",
-                type(exc).__name__,
-            )
-            pending_clear = {
-                "pending": False,
-                "count": 0,
-                "balance_count": 0,
-                "balances": [],
-            }
         finalization_job = get_finalization_job(
             request.app.state.database_engine,
             acorn.pubkey_bech32,
@@ -4015,7 +4057,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fiat_estimate=fiat_estimate,
             finalization_job=finalization_job,
             pending_transactions=pending_transactions,
-            pending_clear=pending_clear,
+        )
+
+    @app.get("/clear", response_class=HTMLResponse)
+    async def clear_transactions(
+        request: Request,
+        acorn: LoadedAcornDependency,
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        try:
+            receipts = await _read_clear_receipts(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+                status=None,
+            )
+        except Exception as exc:
+            logger.warning(
+                "clear transaction lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Clear Transactions",
+                    '<p class="error">Unable to load Clear transactions from the bootstrap relay.</p>'
+                    '<p><a href="/wallet">Return to wallet</a></p>',
+                ),
+                status_code=502,
+            )
+
+        try:
+            clear_summary = await _resolve_clear_aliases(
+                _pending_clear_summary(receipts),
+                timeout=settings.wallet_load_timeout_seconds,
+                configured_mints=settings.clear_mints,
+                cache=request.app.state.clear_mint_metadata_cache,
+            )
+        except Exception as exc:
+            logger.warning(
+                "clear mint metadata lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            clear_summary = _pending_clear_summary(receipts)
+
+        return HTMLResponse(
+            render_template(
+                "clear_transactions.html",
+                title="Clear Transactions",
+                headline_class="transaction-headline",
+                clear_summary=clear_summary,
+                entries=_clear_transaction_view(receipts, clear_summary),
+            )
         )
 
     @app.post("/transactions/finalize-background")

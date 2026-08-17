@@ -98,9 +98,9 @@ button:disabled { cursor: wait; opacity: .65; }
 .wallet-balance-rate-state { margin: .2rem 0 0; color: var(--advisory); font-size: .85rem; font-weight: 700; }
 .wallet-balance-state { margin: .6rem 0 0; color: var(--muted); font-size: .9rem; }
 .wallet-balance-state + .wallet-balance-state { margin-top: .08rem; }
-.wallet-balance-section-heading { margin: 1.1rem 0 0; padding-top: .85rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .85rem; text-transform: uppercase; letter-spacing: .08em; }
 .wallet-clear-balance { margin: .65rem 0 0; color: var(--text); font-size: .95rem; }
 .wallet-clear-balance span { display: block; margin-top: .12rem; color: var(--muted); font-size: .75rem; overflow-wrap: anywhere; }
+.clear-balance { margin-top: -0.5rem; }
 .rates-table-wrap { margin: 1.25rem 0; overflow-x: auto; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); }
 .rates-table { width: 100%; border-collapse: collapse; }
 .rates-table th, .rates-table td { padding: .8rem .9rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
@@ -252,6 +252,21 @@ figure.blob-preview { padding: .75rem; }
 .pending-transaction-reference { margin: .65rem 0 0; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
 .incoming-funds { margin: 0 0 1.25rem; }
 .transaction-list { display: grid; gap: 1rem; margin: 1.5rem 0; }
+.clear-balance-list { display: grid; gap: .75rem; margin: 0 0 1.5rem; }
+.clear-balance-list > h2, .clear-transaction-list > h2 { margin: 0; font-size: 1.15rem; }
+.clear-balance-summary { margin: -.25rem 0 .15rem; color: var(--muted); }
+.clear-balance-item { padding: 1rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); }
+.clear-balance-item h3 { margin: 0; font-size: 1rem; }
+.clear-balance-item > p { margin: .35rem 0 0; }
+.clear-balance-amount { color: var(--link); font-size: 1.75rem; font-weight: 750; }
+.clear-balance-amount span { font-size: .6em; }
+.clear-identity { display: grid; gap: .45rem; margin: .8rem 0 0; }
+.clear-identity div { min-width: 0; }
+.clear-identity dt { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }
+.clear-identity dd { margin: .1rem 0 0; overflow-wrap: anywhere; }
+.clear-transaction-name { margin: -.35rem 0 .75rem; }
+.clear-transaction-details { grid-template-columns: minmax(0, .65fr) minmax(0, 1fr) minmax(0, 1.5fr); }
+.clear-keysets { margin: .65rem 0 0; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
 .transaction-card { border: 1px solid var(--border); border-left: .35rem solid #777; border-radius: .8rem; padding: 1rem; background: var(--surface); min-width: 0; }
 .transaction-card.credit { border-left-color: var(--credit); }
 .transaction-card.debit { border-left-color: var(--debit); }

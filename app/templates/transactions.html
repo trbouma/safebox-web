@@ -13,19 +13,12 @@
   {% endif %}
   <p class="wallet-balance-state">{% if wallet_balance_verified %}Spendable cash balance.{% else %}Balance requires verification—review the advisory below.{% endif %}</p>
   {% if pending_amount %}<p class="wallet-balance-state">Pending incoming funds: {{ "{:,}".format(pending_amount) }} sats in {{ "{:,}".format(pending_count) }} transfer event(s).</p>{% endif %}
-  {% if pending_clear.pending %}
-  <h3 class="wallet-balance-section-heading">Clear Balances</h3>
-  <p class="wallet-balance-state">{{ "{:,}".format(pending_clear.count) }} pending receipt{% if pending_clear.count != 1 %}s{% endif %} across {{ "{:,}".format(pending_clear.balance_count) }} Clear balance{% if pending_clear.balance_count != 1 %}s{% endif %}.</p>
-  {% for balance in pending_clear.balances %}
-  <p class="wallet-clear-balance"><strong>{{ balance.display_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance.display_unit }} pending in {{ "{:,}".format(balance.count) }} receipt{% if balance.count != 1 %}s{% endif %}. <span>{{ balance.unit }} · {{ balance.mint }}</span></p>
-  {% endfor %}
-  {% endif %}
 </a>
 {% endif %}
 {% if pending_transactions %}
-<section class="pending-transaction-list" aria-label="Pending transaction arrivals">
-  <h2>Pending Transactions</h2>
-  <p class="pending-transaction-intro">These funds have arrived for this Acorn but are not spendable until mint confirmation completes.</p>
+<section class="pending-transaction-list" aria-label="Pending cash transaction arrivals">
+  <h2>Pending Cash Transactions</h2>
+  <p class="pending-transaction-intro">These cash funds have arrived for this Acorn but are not spendable until mint confirmation completes.</p>
   {% for pending in pending_transactions %}
   <article class="transaction-card pending">
     <header class="transaction-header">
@@ -46,30 +39,30 @@
   {% endfor %}
 </section>
 {% endif %}
-<section class="incoming-funds" aria-label="Pending transactions">
+<section class="incoming-funds" aria-label="Cash transaction finalization">
   {% if finalization_job and finalization_job.status == "RUNNING" %}
-  <p role="status"><strong>Finalizing pending incoming funds in the background.</strong></p>
+  <p role="status"><strong>Finalizing cash transactions in the background.</strong></p>
   <p>You can leave this page and return later. Current phase: {{ finalization_job.phase | lower }}.</p>
   {% elif finalization_job and finalization_job.status == "COMPLETE" %}
-  <p role="status"><strong>Background finalization completed.</strong>
+  <p role="status"><strong>Cash transaction finalization completed.</strong>
     {% if finalization_job.confirmed_count %}Finalized {{ "{:,}".format(finalization_job.confirmed_amount) }} sats from {{ "{:,}".format(finalization_job.confirmed_count) }} transfer event(s).{% endif %}
   </p>
   {% elif finalization_job and finalization_job.status in ("PARTIAL", "FAILED", "INTERRUPTED") %}
-  <p role="status"><strong>Background finalization requires another check.</strong>
+  <p role="status"><strong>Cash transaction finalization requires another check.</strong>
     {% if finalization_job.error %}{{ finalization_job.error }}{% endif %}
   </p>
   {% endif %}
   {% if not finalization_job or finalization_job.status != "RUNNING" %}
   <form method="post" action="/transactions/finalize-background"
-        data-progress-message="Starting background finalization. Please wait."
+        data-progress-message="Starting cash transaction finalization. Please wait."
         data-progress-button="Finalizing…">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit">Finalize Pending Transactions</button>
+    <button type="submit">Finalize Cash Transactions</button>
   </form>
   {% endif %}
 </section>
 {% if entries %}
-<section class="transaction-list" aria-label="Transaction history">
+<section class="transaction-list" aria-label="Cash transaction history">
   {% for entry in entries %}
   <article class="transaction-card {{ entry.style }}">
     <header class="transaction-header">
@@ -92,7 +85,7 @@
 <details class="transaction-advisories">
   <summary>Advisories</summary>
   <div class="transaction-advisories-content">
-    <p>Pending transactions are added to the confirmed balance and journal when
+    <p>Pending cash transactions are added to the confirmed balance and journal when
     their proofs can be finalized with the mint.</p>
     {{ retention_notice | safe }}
     <section class="force-finalization" aria-labelledby="force-finalization-heading">

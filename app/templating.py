@@ -12,6 +12,7 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIRECTORY))
 _MAIN_TEMPLATES = {"home.html", "onboard.html", "wallet.html"}
 _LONG_LIST_TEMPLATES = {
     "control_history.html",
+    "clear_transactions.html",
     "rates.html",
     "record.html",
     "records.html",
@@ -20,6 +21,7 @@ _LONG_LIST_TEMPLATES = {
 }
 _PARENT_NAVIGATION = {
     "blob_upload.html": ("/records", "Back to Records"),
+    "clear_transactions.html": ("/wallet", "Back to Wallet"),
     "control_history.html": (None, "Back to Record"),
     "receive_funds.html": ("/wallet", "Back to Wallet"),
     "receive_funds_request.html": ("/receive-funds", "Back to Receive Funds"),

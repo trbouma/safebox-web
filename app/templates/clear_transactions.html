@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="clear-balance-list" aria-labelledby="clear-balances-heading">
+  <h2 id="clear-balances-heading">Clear Balances</h2>
+  {% if clear_summary.pending %}
+  <p class="clear-balance-summary">{{ "{:,}".format(clear_summary.count) }} pending receipt{% if clear_summary.count != 1 %}s{% endif %} across {{ "{:,}".format(clear_summary.balance_count) }} Clear balance{% if clear_summary.balance_count != 1 %}s{% endif %}.</p>
+  {% for balance in clear_summary.balances %}
+  <article class="clear-balance-item">
+    <h3>{{ balance.display_name }}</h3>
+    <p class="clear-balance-amount">{{ "{:,}".format(balance.amount) }} <span>{{ balance.display_unit }}</span></p>
+    <p>{{ "{:,}".format(balance.count) }} pending receipt{% if balance.count != 1 %}s{% endif %}</p>
+    <dl class="clear-identity">
+      <div><dt>CMU</dt><dd>{{ balance.unit }}</dd></div>
+      <div><dt>Mint</dt><dd>{{ balance.mint }}</dd></div>
+    </dl>
+  </article>
+  {% endfor %}
+  {% else %}
+  <p>No Clear balances yet.</p>
+  {% endif %}
+</section>
+
+<section class="transaction-list clear-transaction-list" aria-labelledby="clear-history-heading">
+  <h2 id="clear-history-heading">Clear Transaction History</h2>
+  {% for entry in entries %}
+  <article class="transaction-card {% if entry.status == 'pending' %}advisory{% else %}credit{% endif %}">
+    <header class="transaction-header">
+      <span class="transaction-kind">{{ entry.status_label }} Clear Payment</span>
+      <time class="transaction-date">{{ entry.created }}</time>
+    </header>
+    <div class="transaction-amount">+{{ "{:,}".format(entry.amount) }} {{ entry.display_unit }}</div>
+    <p class="clear-transaction-name"><strong>{{ entry.display_name }}</strong></p>
+    <dl class="transaction-details clear-transaction-details">
+      <div><dt>Status</dt><dd>{{ entry.status_label }}</dd></div>
+      <div><dt>CMU</dt><dd>{{ entry.unit }}</dd></div>
+      <div><dt>Mint</dt><dd>{{ entry.mint }}</dd></div>
+    </dl>
+    {% if entry.comment %}<p class="transaction-note"><strong>Memo:</strong> {{ entry.comment }}</p>{% endif %}
+    {% if entry.sender_short or entry.event_short %}
+    <p class="pending-transaction-reference">
+      {% if entry.sender_short %}From {{ entry.sender_short }}{% endif %}
+      {% if entry.sender_short and entry.event_short %} · {% endif %}
+      {% if entry.event_short %}Event {{ entry.event_short }}{% endif %}
+    </p>
+    {% endif %}
+    {% if entry.keyset_ids %}<p class="clear-keysets"><strong>Keyset:</strong> {{ entry.keyset_ids | join(", ") }}</p>{% endif %}
+  </article>
+  {% else %}
+  <p>No Clear transactions found.</p>
+  {% endfor %}
+</section>
+{% endblock %}
