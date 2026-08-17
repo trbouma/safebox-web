@@ -179,12 +179,13 @@ claiming that they are the same thing.
 
 ## Current boundary
 
-The recipient experience stops at pending receipt. Safebox Web does not yet
-finalize the transfer into spendable kind `7380` Clear proof state or send CMUs
-onward from a Clear Balance.
+The recipient can now explicitly accept a pending transfer into spendable kind
+`7380` Clear proof state, with an append-only kind `7381` history entry. Safebox
+Web displays pending and spendable amounts separately for each exact mint and
+CMU.
 
-The next milestone requires Acorn's crash-recoverable acceptance workflow,
-kind `7380` persistence, kind `7381` history, and exact-balance spending.
+The next milestone requires the stronger pre-swap crash-recovery journal and
+exact-balance onward spending from a Clear Balance.
 
 All current Clear units should be treated as test units with no financial
 value. Clear, Acorn, and Safebox Web remain unaudited developer-stage software.

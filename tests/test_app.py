@@ -204,6 +204,9 @@ class FakeLoadedAcorn:
             "terminal_error_amount": 0,
         }
         self.clear_receipts: list[dict] = []
+        self.clear_balances: list[dict] = []
+        self.clear_transaction_history: list[dict] = []
+        self.accepted_clear_receipts: list[str] = []
         self.deleted_clear_receipts: list[str] = []
         self.clear_sweep_calls = 0
         self.clear_sweep_receipts: list[dict] = []
@@ -222,6 +225,54 @@ class FakeLoadedAcorn:
             for receipt in self.clear_receipts
             if str(receipt.get("status") or "pending") == status
         ]
+
+    async def get_clear_balances(self) -> list[dict]:
+        return list(self.clear_balances)
+
+    async def get_clear_transaction_history(self) -> list[dict]:
+        return list(self.clear_transaction_history)
+
+    async def accept_pending_clear_receipt(self, event_id: str) -> dict:
+        for receipt in self.clear_receipts:
+            if str(receipt.get("event_id") or "") != event_id:
+                continue
+            if str(receipt.get("status") or "pending") != "pending":
+                raise ValueError("Only pending Clear transfers can be accepted")
+            receipt["status"] = "accepted"
+            self.accepted_clear_receipts.append(event_id)
+            amount = int(receipt.get("amount") or 0)
+            mint = str(receipt.get("mint") or "")
+            unit = str(receipt.get("unit") or "")
+            matching = next(
+                (
+                    balance
+                    for balance in self.clear_balances
+                    if balance.get("mint") == mint and balance.get("unit") == unit
+                ),
+                None,
+            )
+            if matching is None:
+                self.clear_balances.append({
+                    "mint": mint,
+                    "unit": unit,
+                    "amount": amount,
+                    "proof_count": 1,
+                })
+            else:
+                matching["amount"] = int(matching.get("amount") or 0) + amount
+            self.clear_transaction_history.append({
+                "event_id": "history-" + event_id,
+                "direction": "in",
+                "operation": "accept",
+                "amount": amount,
+                "mint": mint,
+                "unit": unit,
+                "timestamp": int(receipt.get("timestamp") or 0),
+                "memo": str(receipt.get("comment") or ""),
+                "source_event": event_id,
+            })
+            return {"status": "OK", "event_id": event_id, "accepted": True}
+        raise ValueError("Pending Clear transfer was not found")
 
     async def delete_pending_clear_receipt(self, event_id: str) -> dict:
         for index, receipt in enumerate(self.clear_receipts):
@@ -2491,9 +2542,7 @@ def test_wallet_shows_pending_clear_transfers_separately(tmp_path) -> None:
     assert "Cash Balance" not in clear_pane
     assert "Clear Balances" in clear_pane
     assert "1 pending Clear transfer across 1 Clear balance." in clear_pane
-    assert (
-        "25 cmu-00ce29eeaf094301 pending in 1 transfer." in clear_pane
-    )
+    assert "0 cmu-00ce29eeaf094301 spendable; 25 pending." in clear_pane
     assert cash_pane.index("Cash Balance") < cash_pane.index(
         'class="wallet-balance-amount"'
     )
@@ -3168,8 +3217,9 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert "Check for Clear Transfers" in response.text
     assert '<h2 id="clear-balances-heading">Clear Balances</h2>' in response.text
     assert "1 pending Clear transfer across 1 Clear balance." in response.text
-    assert "25 <span>cmu-test</span>" in response.text
-    assert '<h2 id="clear-history-heading">Clear Transfer History</h2>' in response.text
+    assert "0 <span>cmu-test</span>" in response.text
+    assert "25 pending in 1 transfer" in response.text
+    assert '<h2 id="clear-history-heading">Clear Transaction History</h2>' in response.text
     assert "Pending Clear Transfer" in response.text
     assert "+25 cmu-test" in response.text
     assert "community supplies" in response.text
@@ -3177,6 +3227,8 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert "sender-pubke" in response.text
     assert "keyset-test" in response.text
     assert "Delete pending transfer" in response.text
+    assert "Accept Clear Transfer" in response.text
+    assert 'action="/clear/receipts/accept"' in response.text
     assert 'action="/clear/receipts/delete"' in response.text
     assert response.text.count('class="page-navigation') == 2
 
@@ -3215,7 +3267,8 @@ def test_user_can_check_for_new_clear_transfers(tmp_path) -> None:
     assert response.headers["location"] == "/clear?received=1"
     assert acorn.clear_sweep_calls == 1
     assert "Received 1 new Clear transfer." in result.text
-    assert "100 <span>cmu-test</span>" in result.text
+    assert "0 <span>cmu-test</span>" in result.text
+    assert "100 pending in 1 transfer" in result.text
     assert "Pending Clear Transfer" in result.text
 
 
@@ -3242,6 +3295,46 @@ def test_clear_transfer_check_reports_when_nothing_new(tmp_path) -> None:
     assert response.headers["location"] == "/clear?received=0"
     assert acorn.clear_sweep_calls == 1
     assert "No new Clear transfers found." in result.text
+
+
+def test_user_can_accept_clear_transfer_into_spendable_balance(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    event_id = "b" * 64
+    acorn.clear_receipts = [{
+        "event_id": event_id,
+        "sender_pubkey": "sender-pubkey",
+        "status": "pending",
+        "amount": 25,
+        "unit": "cmu-test",
+        "mint": "https://clear.example",
+        "comment": "guest passes",
+        "timestamp": 1_786_430_400,
+    }]
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.get("/clear")
+        token_match = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            page.text,
+        )
+        assert token_match is not None
+        response = client.post(
+            "/clear/receipts/accept",
+            data={"csrf_token": token_match.group(1), "event_id": event_id},
+            follow_redirects=False,
+        )
+        result = client.get(response.headers["location"])
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/clear?receipt_accepted=1"
+    assert acorn.accepted_clear_receipts == [event_id]
+    assert "Clear transfer accepted into your Clear balance." in result.text
+    assert "25 <span>cmu-test</span>" in result.text
+    assert "Accept Clear Transaction" in result.text
+    assert "guest passes" in result.text
+    assert "Accept Clear Transfer" not in result.text
 
 
 def test_clear_page_ignores_invalid_receive_notice_count(tmp_path) -> None:
@@ -3411,10 +3504,10 @@ def test_wallet_resolves_clear_aliases_without_summing_distinct_balances(
         '<a class="wallet-balance clear-balance"', 1
     )[1].split("</a>", 1)[0]
     assert "2 pending Clear transfers across 2 Clear balances." in balance_pane
-    assert "Clear Lab Credits</strong>: 25 credits pending in 1 transfer." in (
+    assert "Clear Lab Credits</strong>: 0 credits spendable; 25 pending." in (
         balance_pane
     )
-    assert "Harbour Lab Credits</strong>: 25 smiles pending in 1 transfer." in (
+    assert "Harbour Lab Credits</strong>: 0 smiles spendable; 25 pending." in (
         balance_pane
     )
     assert "cmu-new · https://clear.safebox.dev" in balance_pane

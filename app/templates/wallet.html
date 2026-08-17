@@ -66,10 +66,10 @@
 </a>
 <a class="wallet-balance clear-balance" href="/clear" aria-labelledby="clear-balance-heading">
   <h2 id="clear-balance-heading">Clear Balances</h2>
-  {% if pending_clear.pending %}
-  <p class="wallet-balance-state">{{ "{:,}".format(pending_clear.count) }} pending Clear transfer{% if pending_clear.count != 1 %}s{% endif %} across {{ "{:,}".format(pending_clear.balance_count) }} Clear balance{% if pending_clear.balance_count != 1 %}s{% endif %}.</p>
+  {% if pending_clear.balance_count %}
+  {% if pending_clear.pending %}<p class="wallet-balance-state">{{ "{:,}".format(pending_clear.count) }} pending Clear transfer{% if pending_clear.count != 1 %}s{% endif %} across {{ "{:,}".format(pending_clear.pending_balance_count) }} Clear balance{% if pending_clear.pending_balance_count != 1 %}s{% endif %}.</p>{% endif %}
   {% for balance in pending_clear.balances %}
-  <p class="wallet-clear-balance"><strong>{{ balance.display_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance.display_unit }} pending in {{ "{:,}".format(balance.count) }} transfer{% if balance.count != 1 %}s{% endif %}. <span>{{ balance.unit }} · {{ balance.mint }}</span></p>
+  <p class="wallet-clear-balance"><strong>{{ balance.display_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance.display_unit }} spendable{% if balance.pending_amount %}; {{ "{:,}".format(balance.pending_amount) }} pending{% endif %}. <span>{{ balance.unit }} · {{ balance.mint }}</span></p>
   {% endfor %}
   {% else %}
   <p class="wallet-balance-state">No Clear balances yet.</p>

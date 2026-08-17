@@ -640,7 +640,26 @@ async def _read_clear_receipts(
     return receipts if isinstance(receipts, list) else []
 
 
-def _pending_clear_summary(receipts: list[dict]) -> dict:
+async def _read_clear_balances(acorn, timeout: float) -> list[dict]:
+    reader = getattr(acorn, "get_clear_balances", None)
+    if reader is None:
+        return []
+    balances = await asyncio.wait_for(reader(), timeout=timeout)
+    return balances if isinstance(balances, list) else []
+
+
+async def _read_clear_history(acorn, timeout: float) -> list[dict]:
+    reader = getattr(acorn, "get_clear_transaction_history", None)
+    if reader is None:
+        return []
+    history = await asyncio.wait_for(reader(), timeout=timeout)
+    return history if isinstance(history, list) else []
+
+
+def _clear_balance_summary(
+    receipts: list[dict],
+    spendable_balances: list[dict] | None = None,
+) -> dict:
     pending = [
         receipt
         for receipt in receipts
@@ -648,6 +667,26 @@ def _pending_clear_summary(receipts: list[dict]) -> dict:
         and str(receipt.get("status") or "pending") == "pending"
     ]
     by_balance: dict[tuple[str, str], dict] = {}
+    for balance in spendable_balances or []:
+        if not isinstance(balance, dict):
+            continue
+        unit = str(balance.get("unit") or "unknown")
+        mint = str(balance.get("mint") or "unknown").rstrip("/")
+        try:
+            amount = max(0, int(balance.get("amount") or 0))
+        except (TypeError, ValueError):
+            amount = 0
+        by_balance[(mint, unit)] = {
+            "mint": mint,
+            "unit": unit,
+            "amount": amount,
+            "proof_count": max(0, int(balance.get("proof_count") or 0)),
+            "pending_amount": 0,
+            "count": 0,
+            "display_name": unit,
+            "display_unit": unit,
+            "metadata_resolved": False,
+        }
     for receipt in pending:
         unit = str(receipt.get("unit") or "unknown")
         mint = str(receipt.get("mint") or "unknown").rstrip("/")
@@ -657,6 +696,8 @@ def _pending_clear_summary(receipts: list[dict]) -> dict:
                 "mint": mint,
                 "unit": unit,
                 "amount": 0,
+                "proof_count": 0,
+                "pending_amount": 0,
                 "count": 0,
                 "display_name": unit,
                 "display_unit": unit,
@@ -664,14 +705,22 @@ def _pending_clear_summary(receipts: list[dict]) -> dict:
             },
         )
         try:
-            row["amount"] += int(receipt.get("amount") or 0)
+            row["pending_amount"] += int(receipt.get("amount") or 0)
         except (TypeError, ValueError):
             pass
         row["count"] += 1
     return {
         "pending": bool(pending),
         "count": len(pending),
+        "pending_balance_count": len({
+            (
+                str(receipt.get("mint") or "unknown").rstrip("/"),
+                str(receipt.get("unit") or "unknown"),
+            )
+            for receipt in pending
+        }),
         "balance_count": len(by_balance),
+        "spendable": any(row["amount"] > 0 for row in by_balance.values()),
         "balances": sorted(
             by_balance.values(),
             key=lambda row: (row["unit"], row["mint"]),
@@ -679,7 +728,17 @@ def _pending_clear_summary(receipts: list[dict]) -> dict:
     }
 
 
-def _clear_transaction_view(receipts: list[dict], summary: dict) -> list[dict]:
+def _pending_clear_summary(receipts: list[dict]) -> dict:
+    """Compatibility wrapper for callers that only need pending receipts."""
+
+    return _clear_balance_summary(receipts)
+
+
+def _clear_transaction_view(
+    receipts: list[dict],
+    summary: dict,
+    history: list[dict] | None = None,
+) -> list[dict]:
     """Present Clear receipts without combining distinct mint-unit balances."""
 
     metadata = {
@@ -733,8 +792,44 @@ def _clear_transaction_view(receipts: list[dict], summary: dict) -> list[dict]:
                     str(keyset_id)
                     for keyset_id in (receipt.get("keyset_ids") or [])
                 ],
+                "direction": "in",
+                "operation": "receive",
             }
         )
+    for entry in history or []:
+        if not isinstance(entry, dict):
+            continue
+        mint = str(entry.get("mint") or "unknown").rstrip("/")
+        unit = str(entry.get("unit") or "unknown")
+        display = metadata.get((mint, unit), {})
+        timestamp = max(0, int(entry.get("timestamp") or 0))
+        direction = str(entry.get("direction") or "in")
+        operation = str(entry.get("operation") or "transfer")
+        event_id = str(entry.get("event_id") or "")
+        cards.append({
+            "amount": max(0, int(entry.get("amount") or 0)),
+            "mint": mint,
+            "unit": unit,
+            "display_name": str(display.get("display_name") or unit),
+            "display_unit": str(display.get("display_unit") or unit),
+            "status": "completed",
+            "status_label": operation.title(),
+            "created": (
+                datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M UTC"
+                )
+                if timestamp > 0
+                else "Transaction time unavailable"
+            ),
+            "timestamp": timestamp,
+            "event_id": event_id,
+            "event_short": event_id[:12],
+            "sender_short": str(entry.get("counterparty") or "")[:12],
+            "comment": str(entry.get("memo") or "").strip(),
+            "keyset_ids": [],
+            "direction": direction,
+            "operation": operation,
+        })
     return sorted(
         cards,
         key=lambda card: (card["timestamp"], card["event_id"]),
@@ -743,6 +838,8 @@ def _clear_transaction_view(receipts: list[dict], summary: dict) -> list[dict]:
 
 
 def _clear_page_notice(query_params) -> str | None:
+    if query_params.get("receipt_accepted") == "1":
+        return "Clear transfer accepted into your Clear balance."
     if query_params.get("receipt_deleted") == "1":
         return "Pending Clear transfer deleted."
     raw_received = query_params.get("received")
@@ -2643,13 +2740,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             incoming_preview,
         )
         try:
-            pending_clear = await _resolve_clear_aliases(
-                _pending_clear_summary(
-                    await _read_clear_receipts(
-                        acorn,
-                        settings.wallet_load_timeout_seconds,
-                    )
+            clear_receipts, clear_balances = await asyncio.gather(
+                _read_clear_receipts(
+                    acorn,
+                    settings.wallet_load_timeout_seconds,
                 ),
+                _read_clear_balances(
+                    acorn,
+                    settings.wallet_load_timeout_seconds,
+                ),
+            )
+            pending_clear = await _resolve_clear_aliases(
+                _clear_balance_summary(clear_receipts, clear_balances),
                 timeout=settings.wallet_load_timeout_seconds,
                 configured_mints=settings.clear_mints,
                 cache=request.app.state.clear_mint_metadata_cache,
@@ -4085,7 +4187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             receipts = await _read_clear_receipts(
                 acorn,
                 settings.wallet_load_timeout_seconds,
-                status=None,
+                status="pending",
             )
         except Exception as exc:
             logger.warning(
@@ -4102,8 +4204,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         try:
+            spendable_balances, history = await asyncio.gather(
+                _read_clear_balances(acorn, settings.wallet_load_timeout_seconds),
+                _read_clear_history(acorn, settings.wallet_load_timeout_seconds),
+            )
+        except Exception as exc:
+            logger.warning(
+                "clear balance or history lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            spendable_balances, history = [], []
+
+        try:
             clear_summary = await _resolve_clear_aliases(
-                _pending_clear_summary(receipts),
+                _clear_balance_summary(receipts, spendable_balances),
                 timeout=settings.wallet_load_timeout_seconds,
                 configured_mints=settings.clear_mints,
                 cache=request.app.state.clear_mint_metadata_cache,
@@ -4113,7 +4227,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "clear mint metadata lookup failed error_type=%s",
                 type(exc).__name__,
             )
-            clear_summary = _pending_clear_summary(receipts)
+            clear_summary = _clear_balance_summary(receipts, spendable_balances)
 
         return HTMLResponse(
             render_template(
@@ -4121,7 +4235,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 title="Clear Transactions",
                 headline_class="transaction-headline",
                 clear_summary=clear_summary,
-                entries=_clear_transaction_view(receipts, clear_summary),
+                entries=_clear_transaction_view(receipts, clear_summary, history),
                 csrf_token=CsrfProtector(settings).issue(),
                 notice=_clear_page_notice(request.query_params),
             )
@@ -4178,6 +4292,72 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         stored_count = max(0, int((result or {}).get("stored_count", 0)))
         return RedirectResponse(f"/clear?received={stored_count}", status_code=303)
+
+    @app.post("/clear/receipts/accept", response_class=HTMLResponse)
+    async def accept_pending_clear_receipt(
+        request: Request,
+        acorn: LoadedAcornDependency,
+        event_id: str = Form(...),
+        csrf_token: str = Form(...),
+    ):
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            return HTMLResponse(
+                _page(
+                    "Clear transfer not accepted",
+                    '<p class="error">The form token is invalid or expired.</p>'
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=403,
+            )
+
+        accepter = getattr(acorn, "accept_pending_clear_receipt", None)
+        if accepter is None:
+            return HTMLResponse(
+                _page(
+                    "Clear transfer acceptance unavailable",
+                    '<p class="error">This Safebox Acorn installation does not '
+                    "support accepting Clear transfers. Update the component "
+                    "before trying again.</p>"
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=501,
+            )
+        try:
+            await accepter(event_id)
+        except ValueError as exc:
+            error_text = str(exc).lower()
+            if "not found" in error_text:
+                message = "Pending Clear transfer was not found."
+            elif "only pending" in error_text:
+                message = "Only pending Clear transfers can be accepted."
+            else:
+                message = "The pending Clear transfer could not be accepted."
+            return HTMLResponse(
+                _page(
+                    "Clear transfer not accepted",
+                    f'<p class="error">{escape(message)}</p>'
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=400,
+            )
+        except Exception as exc:
+            logger.warning(
+                "pending Clear transfer acceptance failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Clear transfer not accepted",
+                    '<p class="error">Safebox could not safely accept the '
+                    "pending Clear transfer. Its receipt remains available for "
+                    "review.</p>"
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=502,
+            )
+
+        return RedirectResponse("/clear?receipt_accepted=1", status_code=303)
 
     @app.post("/clear/receipts/delete", response_class=HTMLResponse)
     async def delete_pending_clear_receipt(

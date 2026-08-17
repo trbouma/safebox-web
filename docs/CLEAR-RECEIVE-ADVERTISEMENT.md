@@ -43,7 +43,7 @@ ids, and token payload after decrypting the transfer.
 
 ## Wallet display metadata
 
-For each pending Clear balance, Safebox Web reads the mint's `/v1/info`
+For each pending or spendable Clear balance, Safebox Web reads the mint's `/v1/info`
 metadata and prefers `currency.friendly_alias` and
 `currency.friendly_unit_alias` for display. The canonical mint URL and complete
 CMU remain visible and continue to identify the balance. Metadata is accepted
@@ -60,6 +60,13 @@ with cash transaction history and finalization controls. Clear Balances opens
 `/clear`, which presents CMU movement as Clear transfers grouped by exact mint
 and CMU, followed by independent Clear transfer history. Cash payment
 finalization does not process Clear transfers.
+
+Each pending transfer offers an explicit **Accept Clear Transfer** action.
+Acorn refreshes the bearer proofs with the exact issuing mint and CMU, verifies
+their separate kind `7380` storage, appends kind `7381` history, marks the
+receipt accepted, and erases its bearer token. The resulting amount is shown as
+spendable in that exact Clear Balance. Pending and spendable amounts are never
+combined in the display.
 
 This terminology is deliberate: cash is used for payments, while CMUs are
 transferred as credits for the products, services, or purposes defined by their

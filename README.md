@@ -158,9 +158,11 @@ mutation initiated by the user.
 
 Safebox Web also exposes a separate **Clear Transactions** page. It calls
 Acorn's kind `7379` receiver through **Check for Clear Transfers**, groups
-pending amounts by exact mint and CMU, resolves safe mint aliases, and permits
-confirmed deletion of a pending transfer. Clear transfers never enter the
-kind `7378` cash receive path or the sat-denominated Cash Balance.
+pending and spendable amounts by exact mint and CMU, resolves safe mint aliases,
+and permits acceptance or confirmed deletion of a pending transfer. Acceptance
+refreshes the token at its Clear mint, stores spendable kind `7380` proofs, and
+adds kind `7381` Clear history. Clear transfers never enter the kind `7378`
+cash receive path or the sat-denominated Cash Balance.
 
 The complete cross-product result is documented in the
 [Clear Transfer Product Milestone](docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md).
