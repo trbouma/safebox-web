@@ -203,12 +203,22 @@ class FakeLoadedAcorn:
             "terminal_error_count": 0,
             "terminal_error_amount": 0,
         }
+        self.clear_receipts: list[dict] = []
 
     async def load_data(self) -> None:
         self.loaded = True
 
     async def get_deferred_recovery_status(self) -> dict:
         return self.deferred_recovery_state
+
+    async def get_clear_receipts(self, status: str | None = None) -> list[dict]:
+        if status is None:
+            return list(self.clear_receipts)
+        return [
+            receipt
+            for receipt in self.clear_receipts
+            if str(receipt.get("status") or "pending") == status
+        ]
 
     async def get_deferred_recovery(self) -> dict:
         return self.deferred_recovery
@@ -2419,6 +2429,32 @@ def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) 
     assert "Do not make a payment" in response.text
 
 
+def test_wallet_shows_pending_clear_payments_separately(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn(balance=9_836)
+    acorn.clear_receipts = [
+        {
+            "event_id": "clear-1",
+            "status": "pending",
+            "amount": 25,
+            "unit": "cmu-00ce29eeaf094301",
+            "mint": "http://127.0.0.1:3338",
+        }
+    ]
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "9,836 sats" in response.text
+    assert (
+        "Pending Clear payments: 25 cmu-00ce29eeaf094301 in 1 receipt(s)."
+        in response.text
+    )
+    assert "Pending incoming funds: 25 sats" not in response.text
+
+
 def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
     settings = database_settings(tmp_path)
     database_path = tmp_path / "database.db"
@@ -3023,6 +3059,33 @@ def test_wallet_uses_balance_as_the_transaction_history_link(tmp_path) -> None:
     assert response.status_code == 200
     assert '<a class="wallet-balance" href="/transactions"' in response.text
     assert '<a href="/transactions">Pending Transactions</a>' not in response.text
+
+
+def test_transactions_show_pending_clear_payments_separately(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    acorn.clear_receipts = [
+        {
+            "event_id": "clear-1",
+            "status": "pending",
+            "amount": 16,
+            "unit": "cmu-test",
+        },
+        {
+            "event_id": "clear-2",
+            "status": "pending",
+            "amount": 9,
+            "unit": "cmu-test",
+        },
+    ]
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/transactions")
+
+    assert response.status_code == 200
+    assert "Pending Clear payments: 25 cmu-test in 2 receipt(s)." in response.text
+    assert "Pending incoming funds: 25 sats" not in response.text
 
 
 def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:

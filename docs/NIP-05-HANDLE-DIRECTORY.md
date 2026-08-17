@@ -101,6 +101,39 @@ For a registered name, Safebox returns the NIP-05 shape:
 
 The endpoint permits cross-origin reads. Unknown valid names return `404`.
 
+## Clear receive advertisement
+
+Safebox Web can optionally advertise that claimed handles support Clear token
+delivery. This is controlled by:
+
+```env
+SAFEBOX_CLEAR_RECEIVE_ENABLED=true
+SAFEBOX_CLEAR_MINTS=
+SAFEBOX_CLEAR_UNITS=
+```
+
+When enabled, the well-known response includes a `clear` descriptor for the
+requested handle:
+
+```json
+{
+  "clear": {
+    "alice": {
+      "protocols": ["clear-token-transfer"],
+      "transports": ["nip59"],
+      "kinds": [7379]
+    }
+  }
+}
+```
+
+The advertised transfer format is a relay-visible kind `1059` NIP-59 gift wrap
+containing an inner kind `7379` Clear transfer. Optional mint and unit filters
+can restrict the advertisement; leaving them empty means the receiver advertises
+general Clear support and validates the encrypted payload later.
+
+See [Clear Receive Advertisement](CLEAR-RECEIVE-ADVERTISEMENT.md).
+
 ## Trust model
 
 The claim operation proves that the connected Acorn key authorized the mapping
