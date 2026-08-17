@@ -18,6 +18,11 @@ payments, incoming ecash,
 Continuity Payments, confirmed-versus-pending balance signals, pending
 transaction finalization, and selected evidence-verification workflows.
 
+It also presents organization-issued Clear transfers through a separate wallet
+path: NIP-05 receive advertisement, explicit kind `7379` relay checking,
+multi-mint Clear Balances, mint alias resolution, independent Clear Transfer
+History, and durable pending-transfer deletion.
+
 The application is intentionally modest in browser-side authority. JavaScript
 is used for progressive interaction and device input such as QR acquisition;
 workflow authority remains server-side and Acorn-centered.
@@ -39,6 +44,22 @@ force.
 
 [Read the complete milestone](https://github.com/trbouma/safebox-web/blob/main/docs/FUNDS-ARRIVAL-AND-FINALIZATION-MILESTONE-2026-08-13.md){ .md-button .md-button--primary }
 
+## August 2026 Clear transfer milestone
+
+Safebox Web now demonstrates an approachable wallet model for organization-
+issued value. A public Clear mint issued CMUs into its treasury, sent an exact
+amount to a Safebox NIP-05 address, and published a private kind `7379`
+transfer. The recipient used **Check for Clear Transfers** and saw the amount
+under a distinct Clear Balance with mint-provided aliases.
+
+The same workflow demonstrated durable deletion of an unwanted pending
+transfer. Ordinary kind `7378` cash payment receipt continued to operate
+through its existing path.
+
+Recipient finalization and onward Clear spending remain future work.
+
+[Read the Clear transfer product milestone](https://github.com/trbouma/safebox-web/blob/main/docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md){ .md-button .md-button--primary }
+
 ## Current focus
 
 - clearer local development and deployment paths;
@@ -59,3 +80,4 @@ with:
 - [Deployment](https://github.com/trbouma/safebox-web/blob/main/docs/DEPLOYMENT.md)
 - [Local Acorn Vault Design Note](https://github.com/trbouma/safebox-web/blob/main/docs/LOCAL-ACORN-VAULT-DESIGN-NOTE.md)
 - [Funds Arrival and Finalization Milestone](https://github.com/trbouma/safebox-web/blob/main/docs/FUNDS-ARRIVAL-AND-FINALIZATION-MILESTONE-2026-08-13.md)
+- [Clear Transfer Product Milestone](https://github.com/trbouma/safebox-web/blob/main/docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md)

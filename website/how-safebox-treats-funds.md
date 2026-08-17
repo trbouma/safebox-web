@@ -8,6 +8,15 @@ description: Why Safebox separates payment arrival, mint confirmation, and spend
 A payment should feel immediate without pretending that every part of the
 network has already finished.
 
+Safebox now applies that honesty to two separate value models. Cash activity is
+presented as payments. Organization-issued Clear activity is presented as
+transfers.
+
+```text
+Cash Balance   -> one sat-denominated payment balance
+Clear Balances -> several mint-and-CMU-specific transfer balances
+```
+
 Safebox therefore separates three useful facts:
 
 ```text
@@ -72,6 +81,22 @@ The lesson is broader than that one defect:
 
 > A trustworthy balance is a conclusion built from several kinds of evidence,
 > not merely a number read from storage.
+
+## Clear transfers remain separate
+
+An incoming Clear transfer uses kind `7379`, not the ordinary kind `7378`
+cash/ecash path. Acorn stores it in a separate pending journal, and Safebox Web
+groups it by exact mint and canonical CMU.
+
+Clear amounts never increase the Cash Balance. Amounts from different Clear
+mints or CMUs are never added together. Friendly aliases make the balances
+readable while the mint URL and complete CMU remain visible.
+
+The user explicitly checks for Clear transfers from the Clear Transactions
+page. A pending transfer can be deleted before finalization; its bearer token
+is erased and a tombstone prevents relay rediscovery.
+
+[Understand Cash and Clear](cash-and-clear.md){ .md-button .md-button--primary }
 
 ## Coordination is not wallet ownership
 

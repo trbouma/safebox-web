@@ -35,6 +35,13 @@ Underneath the app is Acorn: the portable protocol state for keys, funds,
 records, and recovery. The design keeps application convenience separate from
 user authority, so Safebox Web can be replaced without replacing the wallet.
 
+Safebox Web now makes a further distinction visible: one **Cash Balance** for
+sat-denominated payments and plural **Clear Balances** for transfers of
+organization-issued credits. The balances coexist in one wallet without being
+summed or presented as interchangeable.
+
+[Understand Cash and Clear](cash-and-clear.md){ .md-button .md-button--primary }
+
 <section class="safebox-brand" markdown>
 
 <img class="safebox-brand-mark" src="assets/images/safebox-logo.png" alt="Safebox logo">
@@ -150,6 +157,28 @@ private wallet state.
 </div>
 
 [See how Safebox treats funds](how-safebox-treats-funds.md){ .md-button .md-button--primary }
+
+## Organization-issued value has reached the wallet
+
+The current Clear milestone crosses the full delivery boundary:
+
+```text
+Clear mint
+  -> clear-lab treasury
+  -> NIP-05 discovery
+  -> private kind 7379 transfer
+  -> Acorn pending wallet state
+  -> Safebox Web Clear Balance
+```
+
+The recipient can explicitly check the relay for Clear transfers, inspect the
+mint and canonical CMU, use friendly program aliases, and delete a pending
+transfer without having it return on the next scan.
+
+This is still a lab milestone. Acceptance into spendable Clear proof state and
+onward wallet spending remain under development.
+
+[Read about Cash and Clear](cash-and-clear.md){ .md-button .md-button--primary }
 
 ## Part of the Mainstay product family
 
