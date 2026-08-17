@@ -15,6 +15,13 @@ The receiver wallet, currently Acorn, later queries its relay, unwraps the
 NIP-59 gift wrap, validates the encrypted payload, and stores the Clear token
 in its own pending Clear transfer receipt storage.
 
+Safebox Web keeps ordinary page reads non-mutating. A connected user opens
+`/clear` and selects **Check for Clear Transfers** to invoke Acorn's
+`sweep_clear_transfers()` receiver. The receiver queries kind `1059` gift
+wraps, accepts only inner kind `7379`, stores new transfers as pending, and
+then reloads Clear Balances. This action is separate from cash payment
+finalization and does not process kind `7378` ecash transfers.
+
 ## Settings
 
 Enable the advertisement with:

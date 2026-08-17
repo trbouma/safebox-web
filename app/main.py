@@ -742,6 +742,22 @@ def _clear_transaction_view(receipts: list[dict], summary: dict) -> list[dict]:
     )
 
 
+def _clear_page_notice(query_params) -> str | None:
+    if query_params.get("receipt_deleted") == "1":
+        return "Pending Clear transfer deleted."
+    raw_received = query_params.get("received")
+    if raw_received is None:
+        return None
+    try:
+        received = max(0, int(raw_received))
+    except (TypeError, ValueError):
+        return None
+    if received == 0:
+        return "No new Clear transfers found."
+    suffix = "" if received == 1 else "s"
+    return f"Received {received:,} new Clear transfer{suffix}."
+
+
 def _clear_metadata_url(mint: str, configured_mints: tuple[str, ...]) -> str | None:
     normalized = mint.rstrip("/")
     parsed = urlsplit(normalized)
@@ -4107,13 +4123,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 clear_summary=clear_summary,
                 entries=_clear_transaction_view(receipts, clear_summary),
                 csrf_token=CsrfProtector(settings).issue(),
-                notice=(
-                    "Pending Clear transfer deleted."
-                    if request.query_params.get("receipt_deleted") == "1"
-                    else None
-                ),
+                notice=_clear_page_notice(request.query_params),
             )
         )
+
+    @app.post("/clear/receive", response_class=HTMLResponse)
+    async def receive_clear_transfers(
+        request: Request,
+        acorn: LoadedAcornDependency,
+        csrf_token: str = Form(...),
+    ):
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            return HTMLResponse(
+                _page(
+                    "Clear transfers not checked",
+                    '<p class="error">The form token is invalid or expired.</p>'
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=403,
+            )
+
+        receiver = getattr(acorn, "sweep_clear_transfers", None)
+        if receiver is None:
+            return HTMLResponse(
+                _page(
+                    "Clear transfer receive unavailable",
+                    "<p class=\"error\">This Safebox Acorn installation does not "
+                    "support receiving Clear transfers. Update the component "
+                    "before trying again.</p>"
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=501,
+            )
+        try:
+            result = await asyncio.wait_for(
+                receiver(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Clear transfer receive failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Clear transfers not checked",
+                    '<p class="error">Safebox could not complete the Clear '
+                    "transfer relay check.</p>"
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=502,
+            )
+
+        stored_count = max(0, int((result or {}).get("stored_count", 0)))
+        return RedirectResponse(f"/clear?received={stored_count}", status_code=303)
 
     @app.post("/clear/receipts/delete", response_class=HTMLResponse)
     async def delete_pending_clear_receipt(

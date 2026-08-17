@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
+<section class="incoming-funds" aria-label="Clear transfer receive">
+  <form method="post" action="/clear/receive"
+        data-progress-message="Checking for Clear transfers. Please wait."
+        data-progress-button="Checking…">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">Check for Clear Transfers</button>
+  </form>
+</section>
 <section class="clear-balance-list" aria-labelledby="clear-balances-heading">
   <h2 id="clear-balances-heading">Clear Balances</h2>
   {% if clear_summary.pending %}
