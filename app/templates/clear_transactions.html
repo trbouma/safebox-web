@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
+{% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
 <section class="clear-balance-list" aria-labelledby="clear-balances-heading">
   <h2 id="clear-balances-heading">Clear Balances</h2>
   {% if clear_summary.pending %}
-  <p class="clear-balance-summary">{{ "{:,}".format(clear_summary.count) }} pending receipt{% if clear_summary.count != 1 %}s{% endif %} across {{ "{:,}".format(clear_summary.balance_count) }} Clear balance{% if clear_summary.balance_count != 1 %}s{% endif %}.</p>
+  <p class="clear-balance-summary">{{ "{:,}".format(clear_summary.count) }} pending Clear transfer{% if clear_summary.count != 1 %}s{% endif %} across {{ "{:,}".format(clear_summary.balance_count) }} Clear balance{% if clear_summary.balance_count != 1 %}s{% endif %}.</p>
   {% for balance in clear_summary.balances %}
   <article class="clear-balance-item">
     <h3>{{ balance.display_name }}</h3>
     <p class="clear-balance-amount">{{ "{:,}".format(balance.amount) }} <span>{{ balance.display_unit }}</span></p>
-    <p>{{ "{:,}".format(balance.count) }} pending receipt{% if balance.count != 1 %}s{% endif %}</p>
+    <p>{{ "{:,}".format(balance.count) }} pending transfer{% if balance.count != 1 %}s{% endif %}</p>
     <dl class="clear-identity">
       <div><dt>CMU</dt><dd>{{ balance.unit }}</dd></div>
       <div><dt>Mint</dt><dd>{{ balance.mint }}</dd></div>
@@ -21,11 +22,11 @@
 </section>
 
 <section class="transaction-list clear-transaction-list" aria-labelledby="clear-history-heading">
-  <h2 id="clear-history-heading">Clear Transaction History</h2>
+  <h2 id="clear-history-heading">Clear Transfer History</h2>
   {% for entry in entries %}
   <article class="transaction-card {% if entry.status == 'pending' %}advisory{% else %}credit{% endif %}">
     <header class="transaction-header">
-      <span class="transaction-kind">{{ entry.status_label }} Clear Payment</span>
+      <span class="transaction-kind">{{ entry.status_label }} Clear Transfer</span>
       <time class="transaction-date">{{ entry.created }}</time>
     </header>
     <div class="transaction-amount">+{{ "{:,}".format(entry.amount) }} {{ entry.display_unit }}</div>
@@ -44,6 +45,19 @@
     </p>
     {% endif %}
     {% if entry.keyset_ids %}<p class="clear-keysets"><strong>Keyset:</strong> {{ entry.keyset_ids | join(", ") }}</p>{% endif %}
+    {% if entry.status == "pending" and entry.event_id %}
+    <details class="pending-receipt-actions">
+      <summary>Delete pending transfer</summary>
+      <form method="post" action="/clear/receipts/delete"
+            data-progress-message="Deleting pending Clear transfer. Please wait."
+            data-progress-button="Deleting…">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="event_id" value="{{ entry.event_id }}">
+        <label><input type="checkbox" name="confirmed" value="yes" required> I understand this removes the pending transfer and its token.</label>
+        <button type="submit" class="danger-button">Delete Pending Transfer</button>
+      </form>
+    </details>
+    {% endif %}
   </article>
   {% else %}
   <p>No Clear transactions found.</p>

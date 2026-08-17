@@ -204,6 +204,7 @@ class FakeLoadedAcorn:
             "terminal_error_amount": 0,
         }
         self.clear_receipts: list[dict] = []
+        self.deleted_clear_receipts: list[str] = []
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -219,6 +220,17 @@ class FakeLoadedAcorn:
             for receipt in self.clear_receipts
             if str(receipt.get("status") or "pending") == status
         ]
+
+    async def delete_pending_clear_receipt(self, event_id: str) -> dict:
+        for index, receipt in enumerate(self.clear_receipts):
+            if str(receipt.get("event_id") or "") != event_id:
+                continue
+            if str(receipt.get("status") or "pending") != "pending":
+                raise ValueError("Only pending Clear transfers can be deleted")
+            self.deleted_clear_receipts.append(event_id)
+            self.clear_receipts.pop(index)
+            return {"status": "OK", "event_id": event_id, "deleted": True}
+        raise ValueError("Pending Clear transfer was not found")
 
     async def get_deferred_recovery(self) -> dict:
         return self.deferred_recovery
@@ -2430,7 +2442,7 @@ def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) 
     assert "Do not make a payment" in response.text
 
 
-def test_wallet_shows_pending_clear_payments_separately(tmp_path) -> None:
+def test_wallet_shows_pending_clear_transfers_separately(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=9_836)
@@ -2458,15 +2470,17 @@ def test_wallet_shows_pending_clear_payments_separately(tmp_path) -> None:
     assert "Clear Balances" not in cash_pane
     assert "Cash Balance" not in clear_pane
     assert "Clear Balances" in clear_pane
-    assert "1 pending receipt across 1 Clear balance." in clear_pane
+    assert "1 pending Clear transfer across 1 Clear balance." in clear_pane
     assert (
-        "25 cmu-00ce29eeaf094301 pending in 1 receipt." in clear_pane
+        "25 cmu-00ce29eeaf094301 pending in 1 transfer." in clear_pane
     )
     assert cash_pane.index("Cash Balance") < cash_pane.index(
         'class="wallet-balance-amount"'
     )
-    assert clear_pane.index("Clear Balances") < clear_pane.index("1 pending receipt")
-    assert "Pending incoming funds: 25 sats" not in response.text
+    assert clear_pane.index("Clear Balances") < clear_pane.index(
+        "1 pending Clear transfer"
+    )
+    assert "Pending cash payments: 25 sats" not in response.text
 
 
 def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
@@ -3008,7 +3022,7 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert '<details class="transaction-advisories">' in response.text
     assert "<summary>Advisories</summary>" in response.text
     assert response.text.index('aria-label="Cash transaction history"') < response.text.index(
-        "Pending cash transactions are added to the confirmed balance"
+        "Pending cash payments are added to the confirmed balance"
     )
     assert response.text.index("Force Finalization") > response.text.index(
         "<summary>Advisories</summary>"
@@ -3075,7 +3089,7 @@ def test_wallet_uses_balance_as_the_transaction_history_link(tmp_path) -> None:
     assert '<a href="/transactions">Pending Transactions</a>' not in response.text
 
 
-def test_cash_transactions_do_not_include_clear_payments(tmp_path) -> None:
+def test_cash_transactions_do_not_include_clear_transfers(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
     acorn.clear_receipts = [
@@ -3104,7 +3118,7 @@ def test_cash_transactions_do_not_include_clear_payments(tmp_path) -> None:
     assert "Cash Balance" in balance_pane
     assert "Clear Balances" not in response.text
     assert "cmu-test" not in response.text
-    assert "Pending incoming funds: 25 sats" not in response.text
+    assert "Pending cash payments: 25 sats" not in response.text
 
 
 def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
@@ -3131,16 +3145,93 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert response.status_code == 200
     assert '<h1 class="transaction-headline">Clear Transactions</h1>' in response.text
     assert '<h2 id="clear-balances-heading">Clear Balances</h2>' in response.text
-    assert "1 pending receipt across 1 Clear balance." in response.text
+    assert "1 pending Clear transfer across 1 Clear balance." in response.text
     assert "25 <span>cmu-test</span>" in response.text
-    assert '<h2 id="clear-history-heading">Clear Transaction History</h2>' in response.text
-    assert "Pending Clear Payment" in response.text
+    assert '<h2 id="clear-history-heading">Clear Transfer History</h2>' in response.text
+    assert "Pending Clear Transfer" in response.text
     assert "+25 cmu-test" in response.text
     assert "community supplies" in response.text
     assert "clear-event" in response.text
     assert "sender-pubke" in response.text
     assert "keyset-test" in response.text
+    assert "Delete pending transfer" in response.text
+    assert 'action="/clear/receipts/delete"' in response.text
     assert response.text.count('class="page-navigation') == 2
+
+
+def test_user_can_delete_pending_clear_receipt(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    event_id = "e" * 64
+    acorn.clear_receipts = [
+        {
+            "event_id": event_id,
+            "status": "pending",
+            "amount": 25,
+            "unit": "cmu-test",
+            "mint": "https://clear.example",
+            "timestamp": 1_786_430_400,
+        }
+    ]
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.get("/clear")
+        token_match = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            page.text,
+        )
+        assert token_match is not None
+        response = client.post(
+            "/clear/receipts/delete",
+            data={
+                "csrf_token": token_match.group(1),
+                "event_id": event_id,
+                "confirmed": "yes",
+            },
+            follow_redirects=False,
+        )
+        result = client.get(response.headers["location"])
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/clear?receipt_deleted=1"
+    assert acorn.deleted_clear_receipts == [event_id]
+    assert "Pending Clear transfer deleted." in result.text
+    assert "No Clear transactions found." in result.text
+
+
+def test_clear_receipt_deletion_requires_confirmation(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    event_id = "f" * 64
+    acorn.clear_receipts = [
+        {
+            "event_id": event_id,
+            "status": "pending",
+            "amount": 10,
+            "unit": "cmu-test",
+            "mint": "https://clear.example",
+        }
+    ]
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.get("/clear")
+        token_match = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            page.text,
+        )
+        assert token_match is not None
+        response = client.post(
+            "/clear/receipts/delete",
+            data={
+                "csrf_token": token_match.group(1),
+                "event_id": event_id,
+            },
+        )
+
+    assert response.status_code == 400
+    assert acorn.deleted_clear_receipts == []
 
 
 def test_wallet_resolves_clear_aliases_without_summing_distinct_balances(
@@ -3222,11 +3313,11 @@ def test_wallet_resolves_clear_aliases_without_summing_distinct_balances(
     balance_pane = response.text.split(
         '<a class="wallet-balance clear-balance"', 1
     )[1].split("</a>", 1)[0]
-    assert "2 pending receipts across 2 Clear balances." in balance_pane
-    assert "Clear Lab Credits</strong>: 25 credits pending in 1 receipt." in (
+    assert "2 pending Clear transfers across 2 Clear balances." in balance_pane
+    assert "Clear Lab Credits</strong>: 25 credits pending in 1 transfer." in (
         balance_pane
     )
-    assert "Harbour Lab Credits</strong>: 25 smiles pending in 1 receipt." in (
+    assert "Harbour Lab Credits</strong>: 25 smiles pending in 1 transfer." in (
         balance_pane
     )
     assert "cmu-new · https://clear.safebox.dev" in balance_pane
@@ -3253,7 +3344,7 @@ def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "Pending incoming funds: 5 sats in 1 transfer event(s)." in response.text
+    assert "Pending cash payments: 5 sats in 1 payment." in response.text
     assert "100 <span>sats</span>" in response.text
 
 
@@ -3269,7 +3360,7 @@ def test_wallet_balance_previews_unprocessed_incoming_payments_without_receiving
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "Pending incoming funds: 7 sats in 2 transfer event(s)." in response.text
+    assert "Pending cash payments: 7 sats in 2 payments." in response.text
     assert "100 <span>sats</span>" in response.text
     assert acorn.preview_calls == 1
     assert acorn.receive_calls == 0
@@ -3311,10 +3402,10 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
         response = client.get("/transactions")
 
     assert response.status_code == 200
-    assert "Pending incoming funds: 12 sats in 3 transfer event(s)." in response.text
+    assert "Pending cash payments: 12 sats in 3 payments." in response.text
     assert "100 <span>sats</span>" in response.text
-    assert "Pending Cash Transactions" in response.text
-    assert "These cash funds have arrived for this Acorn" in response.text
+    assert "Pending Cash Payments" in response.text
+    assert "These cash payments have arrived for this Acorn" in response.text
     assert "Awaiting mint confirmation" in response.text
     assert "Received on relay; finalization pending" in response.text
     assert "+5 sats" in response.text
@@ -3359,7 +3450,7 @@ def test_pending_transaction_list_deduplicates_staged_event(tmp_path) -> None:
         response = client.get("/transactions")
 
     assert response.status_code == 200
-    assert "Pending incoming funds: 9 sats in 1 transfer event(s)." in response.text
+    assert "Pending cash payments: 9 sats in 1 payment." in response.text
     assert response.text.count("+9 sats") == 1
     assert "Awaiting mint confirmation" in response.text
 
@@ -3415,7 +3506,7 @@ def test_transaction_finalization_runs_in_background(tmp_path) -> None:
     assert acorn.receive_calls == 1
     assert acorn.receive_finalize_values == [False]
     assert "Cash transaction finalization completed." in page.text
-    assert "Finalized 50 sats from 3 transfer event(s)." in page.text
+    assert "Finalized 50 sats from 3 payments." in page.text
 
 
 def test_transaction_history_can_receive_incoming_ecash() -> None:
@@ -4098,7 +4189,7 @@ def test_receive_funds_rejects_unavailable_payment_method() -> None:
         data={
             "csrf_token": valid_csrf_token(),
             "amount": "21",
-            "payment_method": "clear-mnu",
+            "payment_method": "clear-cmu",
         },
     )
 

@@ -4106,8 +4106,92 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headline_class="transaction-headline",
                 clear_summary=clear_summary,
                 entries=_clear_transaction_view(receipts, clear_summary),
+                csrf_token=CsrfProtector(settings).issue(),
+                notice=(
+                    "Pending Clear transfer deleted."
+                    if request.query_params.get("receipt_deleted") == "1"
+                    else None
+                ),
             )
         )
+
+    @app.post("/clear/receipts/delete", response_class=HTMLResponse)
+    async def delete_pending_clear_receipt(
+        request: Request,
+        acorn: LoadedAcornDependency,
+        event_id: str = Form(...),
+        csrf_token: str = Form(...),
+        confirmed: str | None = Form(None),
+    ):
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            return HTMLResponse(
+                _page(
+                    "Clear transfer not deleted",
+                    '<p class="error">The form token is invalid or expired.</p>'
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=403,
+            )
+        if confirmed != "yes":
+            return HTMLResponse(
+                _page(
+                    "Clear transfer not deleted",
+                    '<p class="error">Explicit deletion confirmation is required.</p>'
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=400,
+            )
+
+        deleter = getattr(acorn, "delete_pending_clear_receipt", None)
+        if deleter is None:
+            return HTMLResponse(
+                _page(
+                    "Clear transfer deletion unavailable",
+                    "<p class=\"error\">This Safebox Acorn installation does not "
+                    "support pending Clear transfer deletion. Update the component "
+                    "before trying again.</p>"
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=501,
+            )
+        try:
+            await asyncio.wait_for(
+                deleter(event_id),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except ValueError as exc:
+            error_text = str(exc).lower()
+            if "not found" in error_text:
+                message = "Pending Clear transfer was not found."
+            elif "only pending" in error_text:
+                message = "Only pending Clear transfers can be deleted."
+            else:
+                message = "The pending Clear transfer could not be deleted."
+            return HTMLResponse(
+                _page(
+                    "Clear transfer not deleted",
+                    f'<p class="error">{escape(message)}</p>'
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=400,
+            )
+        except Exception as exc:
+            logger.warning(
+                "pending Clear transfer deletion failed error_type=%s",
+                type(exc).__name__,
+            )
+            return HTMLResponse(
+                _page(
+                    "Clear transfer not deleted",
+                    '<p class="error">Safebox could not confirm deletion of the '
+                    "pending Clear transfer.</p>"
+                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+                ),
+                status_code=502,
+            )
+
+        return RedirectResponse("/clear?receipt_deleted=1", status_code=303)
 
     @app.post("/transactions/finalize-background")
     async def start_background_funds_finalization(

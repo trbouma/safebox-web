@@ -56,11 +56,11 @@ remove SQLite or singleton-worker limits. See
 [Concurrency and Provider-Job Coordination](CONCURRENCY-AND-JOB-COORDINATION.md).
 
 The web process can also run a session-bound background task when a connected
-user asks to finalize pending incoming funds. This is not service-Acorn work:
+user asks to finalize pending cash payments. This is not service-Acorn work:
 the recipient nsec remains only in that web process's memory. SQLite or
 PostgreSQL stores only a public-key-scoped lease and non-secret progress. A
 deployment restart interrupts that task, after which the user can reconnect
-and resume from relay-backed transfer receipts. Do not delete the database
+and resume from relay-backed payment receipts. Do not delete the database
 volume merely to clear a job; an expired lease is safely reclaimable.
 
 ## 1. Prepare the Acorn dependency

@@ -13,7 +13,7 @@ in this flow.
 
 The receiver wallet, currently Acorn, later queries its relay, unwraps the
 NIP-59 gift wrap, validates the encrypted payload, and stores the Clear token
-in its own pending Clear receipt storage.
+in its own pending Clear transfer receipt storage.
 
 ## Settings
 
@@ -48,10 +48,16 @@ mints or CMUs. The summary reports receipt and balance counts instead of a
 cross-currency amount.
 
 The wallet presents Cash Balance and Clear Balances as separate links. Cash
-Balance opens `/transactions`, which contains only cash receipts, history, and
-finalization controls. Clear Balances opens `/clear`, which shows balances
-grouped by exact mint and CMU followed by the independent Clear receipt
-history. Cash finalization does not process Clear receipts.
+Balance opens `/transactions`, which presents incoming value as cash payments
+with cash transaction history and finalization controls. Clear Balances opens
+`/clear`, which presents CMU movement as Clear transfers grouped by exact mint
+and CMU, followed by independent Clear transfer history. Cash payment
+finalization does not process Clear transfers.
+
+This terminology is deliberate: cash is used for payments, while CMUs are
+transferred as credits for the products, services, or purposes defined by their
+issuing program. A Clear transfer may support an exchange, allocation, gift, or
+disbursement without being represented as cash payment.
 
 Alias lookup follows a narrow network policy: public HTTPS mint URLs may be
 queried without redirects, while an HTTP mint is queried only when its exact
@@ -133,6 +139,13 @@ This is an application-level setting. It says that this Safebox Web deployment
 currently advertises Clear receive support for claimed handles.
 
 The advertisement does not prove that a particular user will accept every
-Clear token, does not finalize payment, and does not bind the wallet to a
+Clear token, does not finalize a transfer, and does not bind the wallet to a
 particular Clear mint unless `SAFEBOX_CLEAR_MINTS` or `SAFEBOX_CLEAR_UNITS` are
 configured.
+
+Pending Clear transfers can be deleted individually before finalization.
+Deletion erases the stored bearer token and leaves only a minimal tombstone in
+the relay-backed receipt journal so a later relay scan does not restore the
+transfer.
+Finalized Clear proof state and transaction history cannot be deleted through
+this pending-transfer action.

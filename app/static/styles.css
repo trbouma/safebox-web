@@ -267,6 +267,10 @@ figure.blob-preview { padding: .75rem; }
 .clear-transaction-name { margin: -.35rem 0 .75rem; }
 .clear-transaction-details { grid-template-columns: minmax(0, .65fr) minmax(0, 1fr) minmax(0, 1.5fr); }
 .clear-keysets { margin: .65rem 0 0; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+.pending-receipt-actions { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: .75rem; }
+.pending-receipt-actions > summary { color: var(--error); cursor: pointer; font-weight: 700; }
+.pending-receipt-actions label { margin-top: .75rem; color: var(--muted); }
+.pending-receipt-actions button { margin-top: .75rem; }
 .transaction-card { border: 1px solid var(--border); border-left: .35rem solid #777; border-radius: .8rem; padding: 1rem; background: var(--surface); min-width: 0; }
 .transaction-card.credit { border-left-color: var(--credit); }
 .transaction-card.debit { border-left-color: var(--debit); }

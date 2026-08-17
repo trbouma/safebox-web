@@ -1,6 +1,6 @@
-# Receive Funds and Payment Requests
+# Receive Funds: Cash Payments and Clear Transfers
 
-Status: Lightning method implemented; Clear CMU method proposed
+Status: Lightning cash payment method implemented; Clear CMU transfer method proposed
 
 ## Purpose
 
@@ -9,7 +9,7 @@ attached Acorn:
 
 ```text
 Receive Funds
-  -> choose payment method
+  -> choose receive method
   -> enter amount
   -> create payment request
   -> present or transmit request
@@ -30,11 +30,11 @@ checking and finalizing the payment.
 No polling or browser-side wallet logic is introduced. The server remains the
 authority for form validation and Acorn performs mint and proof mutations.
 
-## Proposed Clear CMU method
+## Proposed Clear CMU transfer method
 
-The same page will later discover the Clear MNUs the connected Acorn can
-receive and offer them as payment methods. Selecting one creates a Cashu NUT-18
-request with:
+The same page will later discover the Clear Mint Units (CMUs) the connected
+Acorn can receive and offer them as transfer units. Selecting one creates a
+Cashu NUT-18 transfer request with:
 
 - the requested amount;
 - the exact `cmu-<keyset-id>` as its unit;
@@ -46,8 +46,8 @@ request with:
 The resulting `creqA...` request can be displayed as a QR code or transmitted
 through an explicitly supported transport. It is not a Lightning invoice.
 
-When Mint Notes arrive, Safebox validates the request ID, CMU, proof keyset,
-mint, amount, and replay state. The payment remains pending until Acorn
+When proofs arrive, Safebox validates the request ID, CMU, proof keyset, mint,
+amount, and replay state. The transfer remains pending until Acorn
 refreshes the proofs through the issuing Clear mint.
 
 ## Route boundary
@@ -61,8 +61,10 @@ POST /receive-funds/check
 ```
 
 The submitted `payment_method` is server validated. `lightning` is currently
-implemented. A later Clear method should dispatch to a separate service-layer
-function while returning representations through this same route family.
+implemented. The field remains a compatibility name for the current cash
+payment form. A later Clear transfer method should dispatch to a separate
+service-layer function while returning representations through this same route
+family.
 
 The existing `DepositQuoteState` and `DepositQuoteCipher` remain internal names
 for the Lightning-specific quote state. A future generalized request-state
@@ -92,14 +94,14 @@ the Lightning structure.
 
 1. Complete canonical CMU and keyset-ID support in Clear and Acorn.
 2. Add shared NUT-18 request and payload codecs.
-3. Discover eligible MNUs for the connected Acorn.
+3. Discover eligible CMUs for the connected Acorn.
 4. Render the selected CMU and logical mint clearly before confirmation.
 5. Generate the NUT-18 request and QR representation.
-6. Receive the payment payload through a supported transport.
+6. Receive the transfer payload through a supported transport.
 7. Validate and refresh the proofs through Acorn.
 8. Mark a single-use request complete only after successful finalization.
 
 ## References
 
 - [Cashu NUT-18 Payment Requests](https://github.com/cashubtc/nuts/blob/main/18.md)
-- [Clear CMU Payment Request Design](https://github.com/trbouma/clear/blob/main/docs/CMU-PAYMENT-REQUEST-DESIGN.md)
+- [Clear CMU Transfer Request Design](https://github.com/trbouma/clear/blob/main/docs/CMU-PAYMENT-REQUEST-DESIGN.md)
