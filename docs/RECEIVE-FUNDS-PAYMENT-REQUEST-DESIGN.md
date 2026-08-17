@@ -1,6 +1,6 @@
 # Receive Funds and Payment Requests
 
-Status: Lightning method implemented; Clear MNU method proposed
+Status: Lightning method implemented; Clear CMU method proposed
 
 ## Purpose
 
@@ -30,14 +30,14 @@ checking and finalizing the payment.
 No polling or browser-side wallet logic is introduced. The server remains the
 authority for form validation and Acorn performs mint and proof mutations.
 
-## Proposed Clear MNU method
+## Proposed Clear CMU method
 
 The same page will later discover the Clear MNUs the connected Acorn can
 receive and offer them as payment methods. Selecting one creates a Cashu NUT-18
 request with:
 
 - the requested amount;
-- the exact `MNU-<keyset-id>` as its unit;
+- the exact `cmu-<keyset-id>` as its unit;
 - a strict accepted-mint list;
 - a receiver-generated request ID;
 - single-use behavior; and
@@ -46,7 +46,7 @@ request with:
 The resulting `creqA...` request can be displayed as a QR code or transmitted
 through an explicitly supported transport. It is not a Lightning invoice.
 
-When Mint Notes arrive, Safebox validates the request ID, MNU, proof keyset,
+When Mint Notes arrive, Safebox validates the request ID, CMU, proof keyset,
 mint, amount, and replay state. The payment remains pending until Acorn
 refreshes the proofs through the issuing Clear mint.
 
@@ -90,10 +90,10 @@ the Lightning structure.
 
 ## Implementation sequence for Clear
 
-1. Complete canonical MNU and keyset-ID support in Clear and Acorn.
+1. Complete canonical CMU and keyset-ID support in Clear and Acorn.
 2. Add shared NUT-18 request and payload codecs.
 3. Discover eligible MNUs for the connected Acorn.
-4. Render the selected MNU and logical mint clearly before confirmation.
+4. Render the selected CMU and logical mint clearly before confirmation.
 5. Generate the NUT-18 request and QR representation.
 6. Receive the payment payload through a supported transport.
 7. Validate and refresh the proofs through Acorn.
@@ -102,4 +102,4 @@ the Lightning structure.
 ## References
 
 - [Cashu NUT-18 Payment Requests](https://github.com/cashubtc/nuts/blob/main/18.md)
-- [Clear MNU Payment Request Design](https://github.com/trbouma/clear/blob/main/docs/MNU-PAYMENT-REQUEST-DESIGN.md)
+- [Clear CMU Payment Request Design](https://github.com/trbouma/clear/blob/main/docs/CMU-PAYMENT-REQUEST-DESIGN.md)

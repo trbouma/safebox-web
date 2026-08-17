@@ -2734,6 +2734,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/.well-known/nostr.json", response_class=JSONResponse)
     async def resolve_nip05(
+        request: Request,
         name: str,
         session: DatabaseSessionDependency,
     ):
@@ -2767,11 +2768,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Access-Control-Allow-Origin": "*"},
             )
 
+        content = {
+            "names": {normalized_name: pubkey_hex},
+            "relays": {pubkey_hex: [registration.home_relay]},
+        }
+        settings = request.app.state.settings
+        if settings.clear_receive_enabled:
+            clear_descriptor = {
+                "protocols": ["clear-token-transfer"],
+                "transports": ["nip59"],
+                "kinds": [7379],
+            }
+            if settings.clear_mints:
+                clear_descriptor["mints"] = list(settings.clear_mints)
+            if settings.clear_units:
+                clear_descriptor["units"] = list(settings.clear_units)
+            content["clear"] = {
+                normalized_name: clear_descriptor,
+            }
+
         return JSONResponse(
-            content={
-                "names": {normalized_name: pubkey_hex},
-                "relays": {pubkey_hex: [registration.home_relay]},
-            },
+            content=content,
             headers={"Access-Control-Allow-Origin": "*"},
         )
 

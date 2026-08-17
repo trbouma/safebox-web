@@ -63,6 +63,14 @@ def _openetr_relays_from_env() -> tuple[str, ...]:
     return relays or DEFAULT_OPENETR_RELAYS
 
 
+def _comma_list_from_env(name: str) -> tuple[str, ...]:
+    return tuple(
+        value.strip()
+        for value in os.getenv(name, "").split(",")
+        if value.strip()
+    )
+
+
 def _currency_codes_from_env() -> tuple[str, ...]:
     codes = tuple(
         dict.fromkeys(
@@ -281,6 +289,9 @@ class Settings:
     currency_rate_currencies: tuple[str, ...] = DEFAULT_CURRENCY_RATE_CURRENCIES
     default_display_currency: str = DEFAULT_DISPLAY_CURRENCY
     currency_rate_stale_seconds: int = DEFAULT_CURRENCY_RATE_STALE_SECONDS
+    clear_receive_enabled: bool = False
+    clear_mints: tuple[str, ...] = ()
+    clear_units: tuple[str, ...] = ()
 
     @property
     def onboard_invite_code(self) -> str:
@@ -515,4 +526,7 @@ class Settings:
                 DEFAULT_DISPLAY_CURRENCY,
             ).strip().upper(),
             currency_rate_stale_seconds=currency_rate_stale_seconds,
+            clear_receive_enabled=_env_bool("SAFEBOX_CLEAR_RECEIVE_ENABLED", False),
+            clear_mints=_comma_list_from_env("SAFEBOX_CLEAR_MINTS"),
+            clear_units=_comma_list_from_env("SAFEBOX_CLEAR_UNITS"),
         )

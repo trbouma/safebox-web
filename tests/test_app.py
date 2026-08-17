@@ -2638,6 +2638,50 @@ def test_connected_acorn_can_claim_and_resolve_a_nip05_handle(tmp_path) -> None:
         assert "NIP-05 address" not in client.get("/wallet").text
 
 
+def test_nip05_handle_can_advertise_clear_receive_support(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        clear_receive_enabled=True,
+    )
+    app = create_app(settings)
+    acorn = main_module.Acorn(
+        nsec=TEST_NSEC,
+        home_relay="wss://relay.one.example",
+        relays=["wss://relay.one.example"],
+    )
+    stub_deferred_recovery_status(acorn)
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        claim = client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "Alice",
+            },
+            follow_redirects=False,
+        )
+        assert claim.status_code == 303
+
+        resolution = client.get(
+            "/.well-known/nostr.json", params={"name": "alice"}
+        )
+
+    assert resolution.status_code == 200
+    assert resolution.json() == {
+        "names": {"alice": acorn.pubkey_hex},
+        "relays": {acorn.pubkey_hex: ["wss://relay.one.example"]},
+        "clear": {
+            "alice": {
+                "protocols": ["clear-token-transfer"],
+                "transports": ["nip59"],
+                "kinds": [7379],
+            }
+        },
+    }
+
+
 def test_wallet_shows_plain_address_with_lnurl_qr(
     tmp_path,
     monkeypatch,

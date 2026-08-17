@@ -1,6 +1,6 @@
 ---
 title: Receiving Funds
-description: One Safebox flow for Lightning and future Clear MNU payment requests.
+description: One Safebox flow for Lightning and future Clear CMU payment requests.
 ---
 
 # Receiving Funds
@@ -21,7 +21,7 @@ The browser does not poll the mint or hold application wallet state.
 
 The same page is designed to request Mint Notes from a particular Clear Mint
 Unit. A compatible request will use Cashu NUT-18 with the exact
-`MNU-<keyset-id>` and a strict accepted-mint list.
+`cmu-<keyset-id>` and a strict accepted-mint list.
 
 The payment remains pending until the received proofs have been validated and
 refreshed. This gives Lightning and direct Mint Note transfer one coherent
