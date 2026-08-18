@@ -121,6 +121,11 @@ That is why an incoming payment can be visibly present but not yet part of the
 spendable balance. It is also why the application database can coordinate a
 background task without becoming the wallet.
 
+The same pattern applies to records. Safebox's
+[Deep Verification](deep-verification.md) model keeps exact bytes, digest
+anchors, signed control evidence, recognition, policy, and presentation in
+separate layers that can reinforce each other.
+
 These boundaries contain failures and keep authority legible. Open protocols
 prevent them from becoming barriers: each component can remain independently
 deployable and replaceable while Mainstay and Safebox Web coordinate a

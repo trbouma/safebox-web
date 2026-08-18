@@ -218,7 +218,16 @@ authenticated, and decrypted the attachment. No browser-side upload API, key
 handling, or decryption logic is introduced. The multipart implementation may
 use transient system temporary storage and therefore does not claim that
 plaintext exists only in RAM, only that Safebox Web retains no application or
-database copy.
+database copy of the uploaded bytes.
+
+PKPASS Original Record preview is a specialized server-rendered representation
+of the same attachment boundary. Safebox Web uses Acorn's effective MIME result
+to recognize `application/vnd.apple.pkpass`, reads the Wallet pass package only
+to render a bounded HTML preview, and keeps the install/open action as an
+ordinary `/record/blob` link. Barcode symbols declared in `pass.json`, including
+boarding-pass Aztec codes, are generated server-side for display. The original
+PKPASS bytes are not rewritten or re-signed. See
+[PKPASS Preview Feature](./PKPASS-PREVIEW-FEATURE.md).
 
 Safe raster images and PDFs use ordinary authenticated GET resources. Images
 are rendered with a native `img` element. PDFs are progressively enhanced with
