@@ -43,13 +43,13 @@
   {% if pkpass_preview %}
   <article class="pkpass-preview" aria-label="Wallet pass preview">
     {% if pkpass_preview.images.strip %}
-    <img class="pkpass-strip" src="{{ pkpass_preview.images.strip }}" alt="">
+    <img class="pkpass-strip" src="{{ pkpass_preview.images.strip|safe }}" alt="">
     {% endif %}
     <div class="pkpass-header">
       {% if pkpass_preview.images.logo %}
-      <img class="pkpass-logo" src="{{ pkpass_preview.images.logo }}" alt="">
+      <img class="pkpass-logo" src="{{ pkpass_preview.images.logo|safe }}" alt="">
       {% elif pkpass_preview.images.icon %}
-      <img class="pkpass-logo" src="{{ pkpass_preview.images.icon }}" alt="">
+      <img class="pkpass-logo" src="{{ pkpass_preview.images.icon|safe }}" alt="">
       {% endif %}
       <div>
         <p class="pkpass-org">{{ pkpass_preview.logo_text or pkpass_preview.organization or "Wallet Pass" }}</p>
