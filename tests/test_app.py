@@ -5877,6 +5877,7 @@ def test_pkpass_blob_download_uses_wallet_pass_headers_from_metadata() -> None:
     assert "downloads.timoliver.com.au" in detail.text
     assert 'src="data:image/png;base64,' in detail.text
     assert "&#34;data:image" not in detail.text
+    assert "img-src 'self' data:" in detail.headers["content-security-policy"]
     assert response.status_code == 200
     assert response.content == pkpass_data
     assert response.headers["content-type"].startswith(PKPASS_MIME_TYPE)

@@ -1882,6 +1882,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "default-src 'self'; script-src 'self'; style-src 'self'; "
             "form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
         )
+        if request.url.path == "/record":
+            content_security_policy += "; img-src 'self' data:"
         if request.url.path == "/scan/lightning":
             # qr-scanner uses a same-origin module that creates its decoder
             # worker from a blob URL when the browser's native BarcodeDetector
