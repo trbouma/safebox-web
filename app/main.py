@@ -19,6 +19,7 @@ from time import monotonic
 from urllib.parse import quote, urlencode, urlsplit
 import zipfile
 
+from aztec_code_generator import AztecCode
 import bolt11
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (
@@ -1375,7 +1376,20 @@ def _pkpass_field_rows(pass_json: dict) -> list[dict[str, str]]:
     return rows
 
 
-def _pkpass_barcode(pass_json: dict) -> dict[str, str] | None:
+def _pkpass_barcode_svg(format_name: str, message: str, encoding: str) -> str | None:
+    if format_name == "QR":
+        return _qr_svg(message)
+    if format_name == "Aztec":
+        try:
+            svg = AztecCode(message, encoding=encoding or None).svg()
+        except (LookupError, TypeError, ValueError):
+            return None
+        svg = re.sub(r"^<\?xml[^>]*\?>", "", svg, count=1)
+        return svg.replace("<svg ", '<svg class="pkpass-barcode-symbol" ', 1)
+    return None
+
+
+def _pkpass_barcode(pass_json: dict) -> dict[str, str | None] | None:
     candidates = pass_json.get("barcodes")
     if isinstance(candidates, list) and candidates:
         barcode = candidates[0]
@@ -1386,9 +1400,16 @@ def _pkpass_barcode(pass_json: dict) -> dict[str, str] | None:
     message = str(barcode.get("message") or "").strip()
     if not message:
         return None
+    format_name = str(barcode.get("format") or "barcode").replace(
+        "PKBarcodeFormat", ""
+    )
+    encoding = str(barcode.get("messageEncoding") or "").strip()
+    alt_text = str(barcode.get("altText") or "").strip()
     return {
-        "format": str(barcode.get("format") or "barcode").replace("PKBarcodeFormat", ""),
+        "format": format_name,
         "message": message[:240],
+        "alt_text": alt_text[:120],
+        "symbol": _pkpass_barcode_svg(format_name, message, encoding),
     }
 
 

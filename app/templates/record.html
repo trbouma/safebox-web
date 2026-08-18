@@ -69,10 +69,17 @@
     </dl>
     {% endif %}
     {% if pkpass_preview.barcode %}
-    <p class="pkpass-barcode">
-      <span>{{ pkpass_preview.barcode.format }}</span>
-      <code>{{ pkpass_preview.barcode.message }}</code>
-    </p>
+    <div class="pkpass-barcode">
+      {% if pkpass_preview.barcode.symbol %}
+      <div class="pkpass-barcode-image" aria-label="{{ pkpass_preview.barcode.format }} barcode">
+        {{ pkpass_preview.barcode.symbol | safe }}
+      </div>
+      {% endif %}
+      <p>
+        <span>{{ pkpass_preview.barcode.format }}</span>
+        <code>{{ pkpass_preview.barcode.alt_text or pkpass_preview.barcode.message }}</code>
+      </p>
+    </div>
     {% endif %}
     {% if pkpass_preview.serial %}
     <p class="pkpass-serial">Serial: <code>{{ pkpass_preview.serial }}</code></p>

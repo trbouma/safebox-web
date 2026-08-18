@@ -170,7 +170,11 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .pkpass-fields dt { color: var(--muted); font-size: .78rem; font-weight: 750; text-transform: uppercase; }
 .pkpass-fields dd { margin: .1rem 0 0; font-weight: 750; overflow-wrap: anywhere; }
 .pkpass-barcode, .pkpass-serial { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.pkpass-barcode { display: grid; justify-items: center; gap: .6rem; }
+.pkpass-barcode p { width: 100%; margin: 0; }
 .pkpass-barcode span { display: block; font-size: .78rem; font-weight: 750; text-transform: uppercase; }
+.pkpass-barcode-image { display: flex; max-width: 18rem; padding: .8rem; justify-content: center; border-radius: .35rem; background: #fff; }
+.pkpass-barcode-image svg { display: block; width: min(100%, 15rem); height: auto; color: #000; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .openetr-history { margin: 1.25rem 0; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); }
 .openetr-history > summary { cursor: pointer; padding: 1rem; font-weight: 700; }

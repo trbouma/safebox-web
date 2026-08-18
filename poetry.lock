@@ -267,6 +267,25 @@ files = [
 ]
 
 [[package]]
+name = "aztec-py"
+version = "1.2.1"
+description = "GS1 2027-compliant pure-Python Aztec Code generator. FLG(0) Reader Initialisation, batch encoding, SVG/PDF/PNG, CLI, boarding passes, GS1 labels. ISO 24778."
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "aztec_py-1.2.1-py3-none-any.whl", hash = "sha256:41c63ce2b6ace0454f366dfe6031ffbaaaafd4bf64430ea9013aaff6b051b15c"},
+    {file = "aztec_py-1.2.1.tar.gz", hash = "sha256:6884f8e14d5ec8c9cd44121afa012e3e167203b8fd64457ba61479973d884d5a"},
+]
+
+[package.extras]
+decode = ["zxing (>=1.0.4)"]
+decode-fast = ["pillow (>=8.0)", "zxingcpp (>=2.2)"]
+dev = ["fpdf2 (>=2.7)", "hypothesis (>=6.0)", "mypy (>=1.0)", "pillow (>=8.0)", "pytest (>=8.0)", "pytest-cov (>=5.0)", "ruff (>=0.5)"]
+image = ["pillow (>=8.0)"]
+pdf = ["fpdf2 (>=2.7)", "pillow (>=8.0)"]
+svg = ["lxml (>=4.9)"]
+
+[[package]]
 name = "babel"
 version = "2.18.0"
 description = "Internationalization utilities"
@@ -337,16 +356,16 @@ files = [
 [package.dependencies]
 cbor2 = {version = ">=5.5.0,<7.0.0", markers = "python_version >= \"3.9\""}
 coincurve = [
-    {version = ">=21.0.0", markers = "python_version >= \"3.13\""},
     {version = ">=18.0.0", markers = "python_version == \"3.11\""},
+    {version = ">=21.0.0", markers = "python_version >= \"3.13\""},
     {version = ">=19.0.1", markers = "python_version >= \"3.12\" and python_version < \"3.13\""},
 ]
 crcmod = ">=1.7,<2.0"
 ecdsa = ">=0.17,<1.0"
 ed25519-blake2b-fork = ">=1.4.2,<2.0.0"
 py-sr25519-bindings = [
-    {version = ">=0.2.2,<1.0.0", markers = "python_version >= \"3.13\""},
     {version = ">=0.2.0,<1.0.0", markers = "python_version >= \"3.11\" and python_version < \"3.13\""},
+    {version = ">=0.2.2,<1.0.0", markers = "python_version >= \"3.13\""},
 ]
 pycryptodome = ">=3.15,<4.0"
 pynacl = ">=1.5,<2.0"
@@ -600,8 +619,8 @@ files = [
 
 [package.dependencies]
 cffi = [
-    {version = ">=1.17", markers = "python_version == \"3.13\""},
     {version = ">=1.6", markers = "python_version < \"3.13\""},
+    {version = ">=1.17", markers = "python_version == \"3.13\""},
 ]
 
 [[package]]
@@ -3937,4 +3956,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.14"
-content-hash = "6ed0ed611f82c7c61bbe2d5d282bd0ba38b8919ceb66f2dfbaa8d3189f7cba78"
+content-hash = "3bc00765a76a8ac963089d779d30ec96e99b62d42dd86a9faa4d8efc0798e1ec"

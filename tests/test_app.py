@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from html import unescape
+import io
 import json
 import os
 import re
@@ -11,6 +12,7 @@ import sqlite3
 import time
 from types import SimpleNamespace
 from pathlib import Path
+import zipfile
 
 from cryptography.fernet import Fernet
 import pytest
@@ -5884,6 +5886,62 @@ def test_pkpass_blob_download_uses_wallet_pass_headers_from_metadata() -> None:
     assert 'filename="Example_Pass.pkpass"' in response.headers["content-disposition"]
     assert "attachment" in attempted_inline.headers["content-disposition"]
     assert acorn.blob_reads == ["Example Pass", "Example Pass", "Example Pass"]
+
+
+def test_pkpass_preview_renders_aztec_boarding_pass_barcode() -> None:
+    pass_json = {
+        "description": "Porter Airlines",
+        "organizationName": "Porter Airlines",
+        "serialNumber": "OB6Z6A-0-20260323_PD_179_YYZYOW",
+        "barcodes": [
+            {
+                "format": "PKBarcodeFormatAztec",
+                "message": (
+                    "M1BOUMA/TIMOTHY       EOB6Z6A YYZYOWPD 0179 082Y028B0025 "
+                    "148>5180Ms6081BPD 00000000000002A4516025526441 0"
+                ),
+                "messageEncoding": "ISO-8859-1",
+                "altText": "Conf. OB6Z6A    025",
+            }
+        ],
+        "boardingPass": {
+            "headerFields": [
+                {"key": "flightnumber", "label": "FLIGHT", "value": "PD179"}
+            ],
+            "primaryFields": [
+                {"key": "origin", "label": "Toronto-Pearson, ON", "value": "YYZ"},
+                {"key": "destination", "label": "Ottawa, ON", "value": "YOW"},
+            ],
+        },
+    }
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("pass.json", json.dumps(pass_json))
+    pkpass_data = buffer.getvalue()
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        existing_labels={"Boarding Pass"},
+        downloaded_type=PKPASS_MIME_TYPE,
+        downloaded_data=pkpass_data,
+        blob_type=PKPASS_MIME_TYPE,
+        payload={
+            "filename": "boarding.pkpass",
+            "content_type": PKPASS_MIME_TYPE,
+            "size": len(pkpass_data),
+        },
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    detail = client.get("/record", params={"label": "Boarding Pass"})
+
+    assert detail.status_code == 200
+    assert "Porter Airlines" in detail.text
+    assert "PD179" in detail.text
+    assert "Conf. OB6Z6A    025" in detail.text
+    assert '<div class="pkpass-barcode-image" aria-label="Aztec barcode">' in detail.text
+    assert '<svg class="pkpass-barcode-symbol"' in detail.text
+    assert "M1BOUMA/TIMOTHY" not in detail.text
 
 
 def test_record_offers_control_history_button_without_querying(monkeypatch) -> None:
