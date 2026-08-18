@@ -41,7 +41,7 @@ h1, h2 { line-height: 1.2; }
 .continuity-mode { margin: -.75rem 0 1.25rem; color: var(--link); font-size: .9rem; font-weight: 700; letter-spacing: .04em; text-align: center; text-transform: uppercase; }
 img, svg { max-width: 100%; }
 a { color: var(--link); }
-.nav-button { display: inline-flex; box-sizing: border-box; min-height: 2.75rem; align-items: center; justify-content: center; padding: .55rem .85rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--control); color: var(--text); font-weight: 650; text-align: center; text-decoration: none; }
+.nav-button { display: inline-flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; padding: .55rem .85rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--control); color: var(--text); font-weight: 650; text-align: center; text-decoration: none; }
 .nav-button:hover, .nav-button:focus-visible { border-color: var(--link); color: var(--link); }
 .page-navigation { display: grid; gap: .65rem; margin: 0 0 1.5rem; }
 .page-navigation .nav-button { width: 100%; }
@@ -213,13 +213,13 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 figure.blob-preview { padding: .75rem; }
 .blob-preview img { display: block; width: auto; max-height: 38rem; margin: 0 auto; object-fit: contain; }
 .blob-preview-pdf { min-height: 12rem; padding: .75rem; text-align: center; }
-.pdf-controls { display: flex; align-items: center; justify-content: center; gap: .75rem; margin-bottom: .75rem; }
-.pdf-controls button { width: auto; min-width: 6.5rem; margin: 0; }
+.pdf-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .75rem; margin-bottom: .75rem; }
+.pdf-controls button { width: 100%; min-width: 0; margin: 0; }
 .pdf-canvas { display: block; max-width: 100%; height: auto; margin: 0 auto; background: #fff; }
 .pdf-controls[hidden], .pdf-canvas[hidden] { display: none; }
 .pdf-open-link { display: inline-flex; min-height: 2.75rem; align-items: center; padding: .55rem .8rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); font-weight: 700; }
-.record-actions { display: flex; justify-content: flex-end; margin: 1rem 0; }
-.record-add { display: inline-flex; min-height: 2.75rem; box-sizing: border-box; align-items: center; justify-content: center; padding: .55rem .85rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); font-weight: 700; text-decoration: none; }
+.record-actions { display: grid; margin: 1rem 0; }
+.record-add { display: inline-flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; padding: .55rem .85rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--surface); font-weight: 700; text-align: center; text-decoration: none; }
 .record-view-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 1rem 0; }
 .record-view-switcher .active { border-color: var(--link); background: var(--surface-soft); color: var(--link); }
 .record-breadcrumbs { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin: 1rem 0; color: var(--muted); }
@@ -253,7 +253,11 @@ figure.blob-preview { padding: .75rem; }
 .incoming-funds { margin: 0 0 1.25rem; }
 .transaction-list { display: grid; gap: 1rem; margin: 1.5rem 0; }
 .clear-balance-list { display: grid; gap: .75rem; margin: 0 0 1.5rem; }
-.clear-balance-list > h2, .clear-transaction-list > h2 { margin: 0; font-size: 1.15rem; }
+.clear-balance-list > h2, .clear-transaction-list > h2, .clear-section-heading h2 { margin: 0; font-size: 1.15rem; }
+.clear-section-heading { display: grid; grid-template-columns: 1fr; gap: .75rem; align-items: center; }
+.clear-section-heading form { width: 100%; margin: 0; }
+.clear-section-heading button { width: 100%; margin: 0; }
+.secondary-button { background: var(--surface); color: var(--link); }
 .clear-balance-summary { margin: -.25rem 0 .15rem; color: var(--muted); }
 .clear-balance-item { padding: 1rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); }
 .clear-balance-item h3 { margin: 0; font-size: 1rem; }
@@ -313,8 +317,6 @@ figure.blob-preview { padding: .75rem; }
   .invoice-qr svg, .wallet-address-qr svg, .silent-payment-qr svg { width: min(100%, 17rem); }
   .receive-payment-card, .retention-notice, .transaction-card { border-radius: .7rem; }
   .blob-preview-pdf { min-height: 24rem; }
-  .record-actions { justify-content: stretch; }
-  .record-add { width: 100%; }
   .record-pagination { grid-template-columns: 1fr; }
   .record-pagination .nav-button { width: 100%; }
   .transaction-header { align-items: flex-start; flex-direction: column; gap: .2rem; }

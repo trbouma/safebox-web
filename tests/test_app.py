@@ -10,6 +10,7 @@ import re
 import sqlite3
 import time
 from types import SimpleNamespace
+from pathlib import Path
 
 from cryptography.fernet import Fernet
 import pytest
@@ -40,6 +41,9 @@ from app.config import (
     DEFAULT_SESSION_TTL_SECONDS,
     Settings,
 )
+
+PKPASS_FIXTURE = Path("/Users/trbouma/projects/safebox-acorn/tests/fixtures/Example.pkpass")
+PKPASS_MIME_TYPE = "application/vnd.apple.pkpass"
 from app.dependencies import (
     get_acorn,
     get_deposit_acorn,
@@ -579,6 +583,7 @@ class FakeBlobAcorn(FakeLoadedAcorn):
         downloaded_data: bytes | None = b"private blob contents",
         record_lookup_error: ValueError | None = None,
         blob_type: str | None = "text/plain",
+        payload: dict | None = None,
         orig_sha256: str | None = "1ea23f2b" + "0" * 56,
     ) -> None:
         super().__init__()
@@ -587,6 +592,7 @@ class FakeBlobAcorn(FakeLoadedAcorn):
         self.downloaded_data = downloaded_data
         self.record_lookup_error = record_lookup_error
         self.blob_type = blob_type
+        self.payload = payload or {"filename": "notes.txt", "description": "Private notes"}
         self.orig_sha256 = orig_sha256
         self.blob_reads: list[str] = []
 
@@ -597,7 +603,7 @@ class FakeBlobAcorn(FakeLoadedAcorn):
             raise ValueError("record not found")
         return SimpleNamespace(
             type="blob",
-            payload={"filename": "notes.txt", "description": "Private notes"},
+            payload=self.payload,
             blobref="https://blossom.example/encrypted-sha256",
             blobtype=self.blob_type,
             origsha256=self.orig_sha256,
@@ -1562,9 +1568,13 @@ def test_pages_include_mobile_layout_safeguards() -> None:
     assert "@media (max-width: 24rem)" in stylesheet.text
     assert ".transaction-details { grid-template-columns: 1fr; }" in stylesheet.text
     assert ".safekeeping-message" in stylesheet.text
+    assert ".nav-button { display: inline-flex; box-sizing: border-box; width: 100%;" in stylesheet.text
     assert ".page-navigation .nav-button { width: 100%; }" in stylesheet.text
     assert ".wallet-address-disclosure { box-sizing: border-box; width: 100%; margin: 0; }" in stylesheet.text
     assert ".wallet-address-panel button, .wallet-address-panel .nav-button { width: 100%; margin-top: 1rem; }" in stylesheet.text
+    assert ".record-add { display: inline-flex; box-sizing: border-box; width: 100%;" in stylesheet.text
+    assert ".clear-section-heading button { width: 100%; margin: 0; }" in stylesheet.text
+    assert ".pdf-controls button { width: 100%; min-width: 0; margin: 0; }" in stylesheet.text
 
 
 def test_secondary_pages_have_consistent_top_level_navigation() -> None:
@@ -3278,7 +3288,8 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert 'action="/clear/receive"' in response.text
     assert "Check for Clear Transfers" in response.text
     assert '<h2 id="clear-balances-heading">Clear Balances</h2>' in response.text
-    assert "1 pending Clear transfer across 1 Clear balance." in response.text
+    assert '<h2 id="clear-pending-heading">Pending Clear Transfers</h2>' in response.text
+    assert "1 pending transfer across 1 Clear balance." in response.text
     assert "0 <span>cmu-test</span>" in response.text
     assert "25 pending in 1 transfer" in response.text
     assert '<h2 id="clear-history-heading">Clear Transaction History</h2>' in response.text
@@ -3292,6 +3303,12 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert "Accept Clear Transfer" in response.text
     assert 'action="/clear/receipts/accept"' in response.text
     assert 'action="/clear/receipts/delete"' in response.text
+    assert response.text.index("Clear Balances") < response.text.index(
+        "Pending Clear Transfers"
+    ) < response.text.index("Clear Transaction History")
+    history_section = response.text.split("Clear Transaction History", 1)[1]
+    assert "Pending Clear Transfer" not in history_section
+    assert "No completed Clear transactions found." in history_section
     assert response.text.count('class="page-navigation') == 2
 
 
@@ -3442,6 +3459,37 @@ def test_user_can_accept_relay_previewed_clear_transfer(tmp_path) -> None:
     assert "Accept Clear Transfer" not in result.text
 
 
+def test_clear_preview_survives_history_lookup_failure(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    acorn.clear_preview = {
+        "previewed_count": 1,
+        "previewed_amount": 30,
+        "previewed": [{
+            "event_id": "9" * 64,
+            "sender_pubkey": "sender-pubkey",
+            "amount": 30,
+            "unit": "cmu-preview",
+            "mints": ["http://127.0.0.1:3339"],
+            "timestamp": 1_786_430_400,
+        }],
+    }
+
+    async def broken_history():
+        raise RuntimeError("history unavailable")
+
+    acorn.get_clear_transaction_history = broken_history
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/clear")
+
+    assert response.status_code == 200
+    assert "30 pending in 1 transfer" in response.text
+    assert "Pending Clear Transfer" in response.text
+    assert "No completed Clear transactions found." in response.text
+
+
 def test_clear_page_ignores_invalid_receive_notice_count(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
@@ -3492,7 +3540,8 @@ def test_user_can_delete_pending_clear_receipt(tmp_path) -> None:
     assert response.headers["location"] == "/clear?receipt_deleted=1"
     assert acorn.deleted_clear_receipts == [event_id]
     assert "Pending Clear transfer deleted." in result.text
-    assert "No Clear transactions found." in result.text
+    assert "No pending Clear transfers." in result.text
+    assert "No completed Clear transactions found." in result.text
 
 
 def test_clear_receipt_deletion_requires_confirmation(tmp_path) -> None:
@@ -5658,6 +5707,7 @@ def test_blob_upload_passes_plaintext_to_acorn_encryption_boundary() -> None:
             "record_value": {
                 "description": "Encrypted attachment",
                 "filename": "notes.txt",
+                "content_type": "text/plain",
                 "size": 21,
             },
             "record_type": "blob",
@@ -5666,6 +5716,35 @@ def test_blob_upload_passes_plaintext_to_acorn_encryption_boundary() -> None:
             "return_result": True,
         }
     ]
+
+
+def test_pkpass_blob_upload_records_wallet_pass_media_type() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    pkpass_data = (
+        PKPASS_FIXTURE.read_bytes()
+        if PKPASS_FIXTURE.exists()
+        else b"fake pkpass bytes"
+    )
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Example Pass",
+            "description": "Wallet pass",
+            "confirmed": "yes",
+        },
+        files={"blob": ("Example.pkpass", pkpass_data, "application/zip")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert acorn.record_put_calls[0]["record_value"]["filename"] == "Example.pkpass"
+    assert acorn.record_put_calls[0]["record_value"]["content_type"] == PKPASS_MIME_TYPE
+    assert acorn.record_put_calls[0]["blob_data"] == pkpass_data
 
 
 def test_blob_upload_rejects_existing_label_without_orphaning_blob() -> None:
@@ -5758,6 +5837,44 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
     assert response.headers["content-type"].startswith("text/plain")
     assert "attachment" in response.headers["content-disposition"]
     assert acorn.blob_reads == ["Private Notes"]
+
+
+def test_pkpass_blob_download_uses_wallet_pass_headers_from_metadata() -> None:
+    pkpass_data = (
+        PKPASS_FIXTURE.read_bytes()
+        if PKPASS_FIXTURE.exists()
+        else b"fake pkpass bytes"
+    )
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        existing_labels={"Example Pass"},
+        downloaded_type="application/zip",
+        downloaded_data=pkpass_data,
+        blob_type="application/zip",
+        payload={
+            "filename": "Example.pkpass",
+            "description": "Wallet pass",
+            "content_type": PKPASS_MIME_TYPE,
+            "size": len(pkpass_data),
+        },
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    detail = client.get("/record", params={"label": "Example Pass"})
+    response = client.get("/record/blob", params={"label": "Example Pass"})
+    attempted_inline = client.get(
+        "/record/blob", params={"label": "Example Pass", "inline": "1"}
+    )
+
+    assert detail.status_code == 200
+    assert "Open/Add Wallet Pass" in detail.text
+    assert response.status_code == 200
+    assert response.content == pkpass_data
+    assert response.headers["content-type"].startswith(PKPASS_MIME_TYPE)
+    assert 'filename="Example_Pass.pkpass"' in response.headers["content-disposition"]
+    assert "attachment" in attempted_inline.headers["content-disposition"]
+    assert acorn.blob_reads == ["Example Pass", "Example Pass"]
 
 
 def test_record_offers_control_history_button_without_querying(monkeypatch) -> None:
