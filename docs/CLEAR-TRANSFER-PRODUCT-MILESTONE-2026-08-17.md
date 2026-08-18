@@ -74,23 +74,20 @@ support, and publishes an encrypted kind `1059` gift wrap containing inner kind
 
 ### Recipient
 
-The recipient opens **Clear Transactions** and selects:
-
-```text
-Check for Clear Transfers
-```
-
-Safebox Web invokes Acorn's `sweep_clear_transfers()` method. Acorn decrypts,
-validates, and stores the transfer in its pending Clear journal. Safebox then
-reloads:
+Opening the wallet or **Clear Transactions** invokes Acorn's read-only Clear
+preview, so a new transfer appears immediately without changing wallet state.
+The page presents:
 
 - Clear Balances grouped by exact mint and CMU;
+- Pending Clear Transfers with accept and deletion controls;
 - friendly program and unit aliases from the mint's `/v1/info`;
 - canonical CMU and mint URL;
 - pending amount and transfer count; and
-- independent Clear Transfer History.
+- completed Clear Transaction History.
 
-The check is an explicit mutation. Ordinary page reads remain non-mutating.
+**Check for Clear Transfers** remains an explicit mutation that stores all
+discovered receipts and advances the receive cursor. Ordinary page reads remain
+non-mutating.
 
 ## NIP-05 capability discovery
 

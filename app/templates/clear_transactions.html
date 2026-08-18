@@ -1,18 +1,54 @@
 {% extends "base.html" %}
+{% macro clear_transaction_card(entry, csrf_token, pending=false) -%}
+<article class="transaction-card {% if pending %}advisory{% elif entry.direction == 'out' %}debit{% else %}credit{% endif %}">
+  <header class="transaction-header">
+    <span class="transaction-kind">{% if pending %}Pending Clear Transfer{% else %}{{ entry.status_label }} Clear Transaction{% endif %}</span>
+    <time class="transaction-date">{{ entry.created }}</time>
+  </header>
+  <div class="transaction-amount">{% if entry.direction == "out" %}-{% else %}+{% endif %}{{ "{:,}".format(entry.amount) }} {{ entry.display_unit }}</div>
+  <p class="clear-transaction-name"><strong>{{ entry.display_name }}</strong></p>
+  <dl class="transaction-details clear-transaction-details">
+    <div><dt>Status</dt><dd>{{ entry.status_label }}</dd></div>
+    <div><dt>CMU</dt><dd>{{ entry.unit }}</dd></div>
+    <div><dt>Mint</dt><dd>{{ entry.mint }}</dd></div>
+  </dl>
+  {% if entry.comment %}<p class="transaction-note"><strong>Memo:</strong> {{ entry.comment }}</p>{% endif %}
+  {% if entry.sender_short or entry.event_short %}
+  <p class="pending-transaction-reference">
+    {% if entry.sender_short %}From {{ entry.sender_short }}{% endif %}
+    {% if entry.sender_short and entry.event_short %} · {% endif %}
+    {% if entry.event_short %}Event {{ entry.event_short }}{% endif %}
+  </p>
+  {% endif %}
+  {% if entry.keyset_ids %}<p class="clear-keysets"><strong>Keyset:</strong> {{ entry.keyset_ids | join(", ") }}</p>{% endif %}
+  {% if pending and entry.event_id %}
+  <form method="post" action="/clear/receipts/accept"
+        data-progress-message="Accepting Clear transfer. Please wait."
+        data-progress-button="Accepting…">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="event_id" value="{{ entry.event_id }}">
+    <button type="submit">Accept Clear Transfer</button>
+  </form>
+  {% if not entry.relay_preview %}<details class="pending-receipt-actions">
+    <summary>Delete pending transfer</summary>
+    <form method="post" action="/clear/receipts/delete"
+          data-progress-message="Deleting pending Clear transfer. Please wait."
+          data-progress-button="Deleting…">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="event_id" value="{{ entry.event_id }}">
+      <label><input type="checkbox" name="confirmed" value="yes" required> I understand this removes the pending transfer and its token.</label>
+      <button type="submit" class="danger-button">Delete Pending Transfer</button>
+    </form>
+  </details>{% endif %}
+  {% endif %}
+</article>
+{%- endmacro %}
 {% block content %}
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
-<section class="incoming-funds" aria-label="Clear transfer receive">
-  <form method="post" action="/clear/receive"
-        data-progress-message="Checking for Clear transfers. Please wait."
-        data-progress-button="Checking…">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit">Check for Clear Transfers</button>
-  </form>
-</section>
+
 <section class="clear-balance-list" aria-labelledby="clear-balances-heading">
   <h2 id="clear-balances-heading">Clear Balances</h2>
   {% if clear_summary.balance_count %}
-  {% if clear_summary.pending %}<p class="clear-balance-summary">{{ "{:,}".format(clear_summary.count) }} pending Clear transfer{% if clear_summary.count != 1 %}s{% endif %} across {{ "{:,}".format(clear_summary.pending_balance_count) }} Clear balance{% if clear_summary.pending_balance_count != 1 %}s{% endif %}.</p>{% endif %}
   {% for balance in clear_summary.balances %}
   <article class="clear-balance-item">
     <h3>{{ balance.display_name }}</h3>
@@ -29,53 +65,30 @@
   {% endif %}
 </section>
 
+<section class="transaction-list clear-pending-list" aria-labelledby="clear-pending-heading">
+  <div class="clear-section-heading">
+    <h2 id="clear-pending-heading">Pending Clear Transfers</h2>
+    <form method="post" action="/clear/receive"
+          data-progress-message="Checking for Clear transfers. Please wait."
+          data-progress-button="Checking…">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="secondary-button">Check for Clear Transfers</button>
+    </form>
+  </div>
+  {% if clear_summary.pending %}<p class="clear-balance-summary">{{ "{:,}".format(clear_summary.count) }} pending transfer{% if clear_summary.count != 1 %}s{% endif %} across {{ "{:,}".format(clear_summary.pending_balance_count) }} Clear balance{% if clear_summary.pending_balance_count != 1 %}s{% endif %}.</p>{% endif %}
+  {% for entry in pending_entries %}
+  {{ clear_transaction_card(entry, csrf_token, pending=true) }}
+  {% else %}
+  <p>No pending Clear transfers.</p>
+  {% endfor %}
+</section>
+
 <section class="transaction-list clear-transaction-list" aria-labelledby="clear-history-heading">
   <h2 id="clear-history-heading">Clear Transaction History</h2>
-  {% for entry in entries %}
-  <article class="transaction-card {% if entry.status == 'pending' %}advisory{% else %}credit{% endif %}">
-    <header class="transaction-header">
-      <span class="transaction-kind">{% if entry.status == "pending" %}Pending Clear Transfer{% else %}{{ entry.status_label }} Clear Transaction{% endif %}</span>
-      <time class="transaction-date">{{ entry.created }}</time>
-    </header>
-    <div class="transaction-amount">{% if entry.direction == "out" %}-{% else %}+{% endif %}{{ "{:,}".format(entry.amount) }} {{ entry.display_unit }}</div>
-    <p class="clear-transaction-name"><strong>{{ entry.display_name }}</strong></p>
-    <dl class="transaction-details clear-transaction-details">
-      <div><dt>Status</dt><dd>{{ entry.status_label }}</dd></div>
-      <div><dt>CMU</dt><dd>{{ entry.unit }}</dd></div>
-      <div><dt>Mint</dt><dd>{{ entry.mint }}</dd></div>
-    </dl>
-    {% if entry.comment %}<p class="transaction-note"><strong>Memo:</strong> {{ entry.comment }}</p>{% endif %}
-    {% if entry.sender_short or entry.event_short %}
-    <p class="pending-transaction-reference">
-      {% if entry.sender_short %}From {{ entry.sender_short }}{% endif %}
-      {% if entry.sender_short and entry.event_short %} · {% endif %}
-      {% if entry.event_short %}Event {{ entry.event_short }}{% endif %}
-    </p>
-    {% endif %}
-    {% if entry.keyset_ids %}<p class="clear-keysets"><strong>Keyset:</strong> {{ entry.keyset_ids | join(", ") }}</p>{% endif %}
-    {% if entry.status == "pending" and entry.event_id %}
-    <form method="post" action="/clear/receipts/accept"
-          data-progress-message="Accepting Clear transfer. Please wait."
-          data-progress-button="Accepting…">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="event_id" value="{{ entry.event_id }}">
-      <button type="submit">Accept Clear Transfer</button>
-    </form>
-    {% if not entry.relay_preview %}<details class="pending-receipt-actions">
-      <summary>Delete pending transfer</summary>
-      <form method="post" action="/clear/receipts/delete"
-            data-progress-message="Deleting pending Clear transfer. Please wait."
-            data-progress-button="Deleting…">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="event_id" value="{{ entry.event_id }}">
-        <label><input type="checkbox" name="confirmed" value="yes" required> I understand this removes the pending transfer and its token.</label>
-        <button type="submit" class="danger-button">Delete Pending Transfer</button>
-      </form>
-    </details>{% endif %}
-    {% endif %}
-  </article>
+  {% for entry in history_entries %}
+  {{ clear_transaction_card(entry, csrf_token) }}
   {% else %}
-  <p>No Clear transactions found.</p>
+  <p>No completed Clear transactions found.</p>
   {% endfor %}
 </section>
 {% endblock %}

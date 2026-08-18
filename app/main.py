@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from html import escape
+import inspect
 import json
 import logging
 import mimetypes
@@ -1264,6 +1265,65 @@ INLINE_BLOB_IMAGE_TYPES = frozenset(
         "image/webp",
     }
 )
+PKPASS_MIME_TYPE = "application/vnd.apple.pkpass"
+
+
+def _uploaded_blob_media_type(upload: UploadFile | None) -> str | None:
+    """Return a normalized media type for uploaded Original Records."""
+
+    if upload is None:
+        return None
+    filename = str(upload.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+    if filename.lower().endswith(".pkpass"):
+        return PKPASS_MIME_TYPE
+    return str(upload.content_type or "").split(";", 1)[0].strip().lower() or None
+
+
+def _record_original_filename(record_value) -> str:
+    payload = getattr(record_value, "payload", None)
+    if isinstance(payload, dict):
+        return str(payload.get("filename") or "")
+    return ""
+
+
+def _effective_blob_media_type(media_type: str | None, record_value=None) -> str:
+    """Prefer explicit Original Record metadata when byte sniffing is ambiguous."""
+
+    normalized = str(media_type or "application/octet-stream").split(";", 1)[0].strip().lower()
+    if record_value is not None:
+        payload = getattr(record_value, "payload", None)
+        if isinstance(payload, dict):
+            payload_type = str(payload.get("content_type") or "").split(";", 1)[0].strip().lower()
+            if payload_type == PKPASS_MIME_TYPE:
+                return PKPASS_MIME_TYPE
+        if _record_original_filename(record_value).lower().endswith(".pkpass"):
+            return PKPASS_MIME_TYPE
+    return normalized or "application/octet-stream"
+
+
+def _callable_accepts_keyword(func, keyword: str) -> bool:
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return True
+    return keyword in signature.parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+
+
+async def _put_acorn_record(acorn: Acorn, **kwargs):
+    if (
+        "blob_type" in kwargs
+        and not _callable_accepts_keyword(acorn.put_record, "blob_type")
+    ):
+        if kwargs.get("blob_type") is not None:
+            logger.warning(
+                "Acorn put_record does not support blob_type; effective MIME metadata was not stored."
+            )
+        kwargs = dict(kwargs)
+        kwargs.pop("blob_type", None)
+    return await acorn.put_record(**kwargs)
 
 
 def _blob_preview_kind(media_type: str | None) -> str | None:
@@ -1294,7 +1354,10 @@ def _blob_download_headers(
 ) -> dict[str, str]:
     """Return an injection-safe filename with UTF-8 label support."""
 
-    extension = mimetypes.guess_extension(media_type or "") or ".bin"
+    if media_type == PKPASS_MIME_TYPE:
+        extension = ".pkpass"
+    else:
+        extension = mimetypes.guess_extension(media_type or "") or ".bin"
     filename = label if label.lower().endswith(extension.lower()) else label + extension
     fallback_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", label).strip("._") or "acorn-blob"
     fallback = (
@@ -3505,7 +3568,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 else json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True, default=str)
             )
             blob_data = presentation.get("blob_data")
-            blob_type = presentation.get("blob_type")
+            blob_type = _effective_blob_media_type(presentation.get("blob_type"))
             blob_sha256 = presentation.get("blob_sha256")
             blob_data_url = None
             if isinstance(blob_data, bytes):
@@ -3544,6 +3607,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     title=presentation["label"],
                     presentation=presentation,
                     payload=rendered_payload,
+                    blob_type=blob_type,
                     blob_preview=_blob_preview_kind(blob_type),
                     blob_data_url=blob_data_url,
                     blob_fingerprint=(
@@ -4266,18 +4330,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=502,
             )
 
-        try:
-            spendable_balances, history, clear_preview = await asyncio.gather(
-                _read_clear_balances(acorn, settings.wallet_load_timeout_seconds),
-                _read_clear_history(acorn, settings.wallet_load_timeout_seconds),
-                _preview_incoming_clear(acorn, settings.wallet_load_timeout_seconds),
-            )
-        except Exception as exc:
+        balance_result, history_result = await asyncio.gather(
+            _read_clear_balances(acorn, settings.wallet_load_timeout_seconds),
+            _read_clear_history(acorn, settings.wallet_load_timeout_seconds),
+            return_exceptions=True,
+        )
+        if isinstance(balance_result, BaseException):
             logger.warning(
-                "clear balance or history lookup failed error_type=%s",
-                type(exc).__name__,
+                "clear balance lookup failed error_type=%s",
+                type(balance_result).__name__,
             )
-            spendable_balances, history, clear_preview = [], [], {}
+            spendable_balances = []
+        else:
+            spendable_balances = balance_result
+        if isinstance(history_result, BaseException):
+            logger.warning(
+                "clear history lookup failed error_type=%s",
+                type(history_result).__name__,
+            )
+            history = []
+        else:
+            history = history_result
+        clear_preview = await _preview_incoming_clear(
+            acorn,
+            settings.wallet_load_timeout_seconds,
+        )
 
         pending_receipts = _merge_clear_pending(receipts, clear_preview)
 
@@ -4298,17 +4375,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 spendable_balances,
             )
 
+        entries = _clear_transaction_view(
+            pending_receipts,
+            clear_summary,
+            history,
+        )
+        pending_entries = [
+            entry for entry in entries if entry.get("status") == "pending"
+        ]
+        history_entries = [
+            entry for entry in entries if entry.get("status") != "pending"
+        ]
+
         return HTMLResponse(
             render_template(
                 "clear_transactions.html",
                 title="Clear Transactions",
                 headline_class="transaction-headline",
                 clear_summary=clear_summary,
-                entries=_clear_transaction_view(
-                    pending_receipts,
-                    clear_summary,
-                    history,
-                ),
+                pending_entries=pending_entries,
+                history_entries=history_entries,
                 csrf_token=CsrfProtector(settings).issue(),
                 notice=_clear_page_notice(request.query_params),
             )
@@ -5577,17 +5663,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         metadata = {
             "description": record_description,
             "filename": original_filename,
+            "content_type": _uploaded_blob_media_type(blob),
             "size": len(blob_data),
         }
+        blob_type = metadata["content_type"]
         try:
             await asyncio.wait_for(
-                acorn.put_record(
+                _put_acorn_record(
+                    acorn,
                     record_name=record_label,
                     record_value=metadata,
                     record_type="blob",
                     record_kind=37375,
-                    blob_data=blob_data,
                     return_result=True,
+                    blob_data=blob_data,
+                    blob_type=blob_type,
                 ),
                 timeout=settings.payment_timeout_seconds,
             )
@@ -5600,8 +5690,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return upload_error(str(exc))
         except Exception as exc:
             logger.warning(
-                "encrypted blob save failed error_type=%s",
+                "encrypted blob save failed error_type=%s error=%s",
                 type(exc).__name__,
+                exc,
+                exc_info=True,
             )
             return upload_error(
                 "Safebox could not store and verify the Original Record.",
@@ -5633,6 +5725,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=400,
             )
         try:
+            record_value = await asyncio.wait_for(
+                acorn.get_record_safebox(record_name=record_label),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
             media_type, blob_data = await asyncio.wait_for(
                 acorn.get_record_blobdata(record_label),
                 timeout=settings.payment_timeout_seconds,
@@ -5669,12 +5765,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=404,
             )
 
-        resolved_type = (
-            str(media_type or "application/octet-stream")
-            .split(";", 1)[0]
-            .strip()
-            .lower()
-        )
+        resolved_type = _effective_blob_media_type(media_type, record_value)
         allow_inline = inline and _blob_preview_kind(resolved_type) is not None
         return Response(
             content=blob_data,
@@ -5839,12 +5930,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         try:
             await asyncio.wait_for(
-                acorn.put_record(
+                _put_acorn_record(
+                    acorn,
                     record_name=record_label,
                     record_value=stored_payload,
                     record_type="generic",
                     record_kind=37375,
                     blob_data=attachment_data,
+                    blob_type=(
+                        _uploaded_blob_media_type(attachment)
+                        if attachment_data is not None
+                        else None
+                    ),
                     preserve_existing_blob=True,
                     return_result=True,
                 ),
@@ -5864,8 +5961,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return save_error(str(exc))
         except Exception as exc:
             logger.warning(
-                "private record save failed error_type=%s",
+                "private record save failed error_type=%s error=%s",
                 type(exc).__name__,
+                exc,
+                exc_info=True,
             )
             return save_error(
                 "Safebox could not publish and verify the record. Reload "
@@ -6033,7 +6132,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 sort_keys=True,
                 default=str,
             )
-        blob_type = getattr(record_value, "blobtype", None)
+        blob_type = _effective_blob_media_type(getattr(record_value, "blobtype", None), record_value)
         blob_preview = _blob_preview_kind(blob_type)
         blob_fingerprint = _blob_recognition_fingerprint(
             getattr(record_value, "origsha256", None)

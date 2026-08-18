@@ -21,6 +21,9 @@ not been imported into your Acorn.</p>
     <canvas class="pdf-canvas" aria-label="Rendered PDF page" hidden></canvas>
   </div>
   <script type="module" src="/static/pdf-viewer.js"></script>
+  {% elif blob_type == "application/vnd.apple.pkpass" and blob_data_url %}
+  <p>No inline preview is available for Apple Wallet passes.</p>
+  <p><a class="nav-button" href="{{ blob_data_url }}" download="presented-record.pkpass">Open/Add Wallet Pass</a></p>
   {% else %}
   <p>No inline preview is available for this Original Record.</p>
   {% endif %}

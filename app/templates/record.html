@@ -39,6 +39,9 @@
   <noscript><p>JavaScript is required for the inline PDF preview. Use the open
   or download link instead.</p></noscript>
   <script type="module" src="/static/pdf-viewer.js"></script>
+  {% elif blob_type == "application/vnd.apple.pkpass" %}
+  <p>No inline preview is available for Apple Wallet passes.</p>
+  <p><a class="nav-button" href="{{ blob_url }}">Open/Add Wallet Pass</a></p>
   {% else %}
   <p>No inline preview is available{% if blob_type %} for <code>{{ blob_type }}</code>{% endif %}.</p>
   {% endif %}

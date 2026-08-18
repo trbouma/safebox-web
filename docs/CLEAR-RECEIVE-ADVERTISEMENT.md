@@ -62,8 +62,9 @@ The wallet presents Cash Balance and Clear Balances as separate links. Cash
 Balance opens `/transactions`, which presents incoming value as cash payments
 with cash transaction history and finalization controls. Clear Balances opens
 `/clear`, which presents CMU movement as Clear transfers grouped by exact mint
-and CMU, followed by independent Clear transfer history. Cash payment
-finalization does not process Clear transfers.
+and CMU. The page orders spendable **Clear Balances**, actionable **Pending
+Clear Transfers**, and completed **Clear Transaction History** as separate
+sections. Cash payment finalization does not process Clear transfers.
 
 Each pending transfer offers an explicit **Accept Clear Transfer** action.
 Acorn refreshes the bearer proofs with the exact issuing mint and CMU, verifies

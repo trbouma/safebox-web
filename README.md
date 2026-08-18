@@ -160,12 +160,17 @@ Safebox Web also exposes a separate **Clear Transactions** page. It calls
 Acorn's kind `7379` receiver in read-only preview mode when the wallet and Clear
 pages load, so new transfers appear immediately without changing wallet state.
 **Check for Clear Transfers** stores all discovered receipts and advances the
-receive cursor. The page groups
-pending and spendable amounts by exact mint and CMU, resolves safe mint aliases,
+receive cursor. The page groups pending and spendable amounts by exact mint and
+CMU, resolves safe mint aliases,
 and permits acceptance or confirmed deletion of a pending transfer. Acceptance
 refreshes the token at its Clear mint, stores spendable kind `7380` proofs, and
 adds kind `7381` Clear history. Clear transfers never enter the kind `7378`
 cash receive path or the sat-denominated Cash Balance.
+
+The Clear page presents spendable **Clear Balances** first, actionable
+**Pending Clear Transfers** second, and completed **Clear Transaction History**
+last. A balance or history lookup failure does not suppress a successful
+read-only preview of newly delivered transfers.
 
 The complete cross-product result is documented in the
 [Clear Transfer Product Milestone](docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md).

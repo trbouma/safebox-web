@@ -5713,6 +5713,7 @@ def test_blob_upload_passes_plaintext_to_acorn_encryption_boundary() -> None:
             "record_type": "blob",
             "record_kind": 37375,
             "blob_data": b"private blob contents",
+            "blob_type": "text/plain",
             "return_result": True,
         }
     ]
@@ -5745,6 +5746,7 @@ def test_pkpass_blob_upload_records_wallet_pass_media_type() -> None:
     assert acorn.record_put_calls[0]["record_value"]["filename"] == "Example.pkpass"
     assert acorn.record_put_calls[0]["record_value"]["content_type"] == PKPASS_MIME_TYPE
     assert acorn.record_put_calls[0]["blob_data"] == pkpass_data
+    assert acorn.record_put_calls[0]["blob_type"] == PKPASS_MIME_TYPE
 
 
 def test_blob_upload_rejects_existing_label_without_orphaning_blob() -> None:
@@ -6193,6 +6195,7 @@ def test_record_save_encrypts_publishes_and_verifies() -> None:
             "record_type": "generic",
             "record_kind": 37375,
             "blob_data": None,
+            "blob_type": None,
             "preserve_existing_blob": True,
             "return_result": True,
         }
@@ -6225,6 +6228,7 @@ def test_record_save_can_include_an_encrypted_file_attachment() -> None:
             "record_type": "generic",
             "record_kind": 37375,
             "blob_data": b"private pdf",
+            "blob_type": "application/pdf",
             "preserve_existing_blob": True,
             "return_result": True,
         }
