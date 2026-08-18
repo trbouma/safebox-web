@@ -159,6 +159,18 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .theme-toggle:hover, .theme-toggle:focus-visible { border-color: var(--link); color: var(--link); }
 .inline-icon { width: 1.25rem; height: 1.25rem; flex: 0 0 auto; }
 .record-fingerprint { display: flex; align-items: center; gap: .4rem; }
+.pkpass-preview { display: grid; gap: .85rem; margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); }
+.pkpass-header { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .75rem; align-items: center; }
+.pkpass-logo { width: 3rem; height: 3rem; object-fit: contain; border-radius: .35rem; background: var(--surface-soft); }
+.pkpass-strip { width: 100%; max-height: 11rem; object-fit: cover; border-radius: .35rem; background: var(--surface-soft); }
+.pkpass-org { margin: 0; font-weight: 800; overflow-wrap: anywhere; }
+.pkpass-description { margin: .2rem 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.pkpass-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem .9rem; margin: 0; }
+.pkpass-fields div { min-width: 0; }
+.pkpass-fields dt { color: var(--muted); font-size: .78rem; font-weight: 750; text-transform: uppercase; }
+.pkpass-fields dd { margin: .1rem 0 0; font-weight: 750; overflow-wrap: anywhere; }
+.pkpass-barcode, .pkpass-serial { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.pkpass-barcode span { display: block; font-size: .78rem; font-weight: 750; text-transform: uppercase; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .openetr-history { margin: 1.25rem 0; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); }
 .openetr-history > summary { cursor: pointer; padding: 1rem; font-weight: 700; }
@@ -319,6 +331,7 @@ figure.blob-preview { padding: .75rem; }
   .blob-preview-pdf { min-height: 24rem; }
   .record-pagination { grid-template-columns: 1fr; }
   .record-pagination .nav-button { width: 100%; }
+  .pkpass-fields { grid-template-columns: 1fr; }
   .transaction-header { align-items: flex-start; flex-direction: column; gap: .2rem; }
   .transaction-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

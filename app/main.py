@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -16,6 +17,7 @@ from pathlib import Path
 import re
 from time import monotonic
 from urllib.parse import quote, urlencode, urlsplit
+import zipfile
 
 import bolt11
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -1266,6 +1268,19 @@ INLINE_BLOB_IMAGE_TYPES = frozenset(
     }
 )
 PKPASS_MIME_TYPE = "application/vnd.apple.pkpass"
+PKPASS_PREVIEW_MAX_ARCHIVE_BYTES = 8 * 1024 * 1024
+PKPASS_PREVIEW_MAX_MEMBER_BYTES = 2 * 1024 * 1024
+PKPASS_PREVIEW_MAX_TOTAL_BYTES = 12 * 1024 * 1024
+PKPASS_PREVIEW_IMAGE_NAMES = (
+    "strip.png",
+    "strip@2x.png",
+    "thumbnail.png",
+    "thumbnail@2x.png",
+    "logo.png",
+    "logo@2x.png",
+    "icon.png",
+    "icon@2x.png",
+)
 
 
 def _uploaded_blob_media_type(upload: UploadFile | None) -> str | None:
@@ -1299,6 +1314,122 @@ def _effective_blob_media_type(media_type: str | None, record_value=None) -> str
         if _record_original_filename(record_value).lower().endswith(".pkpass"):
             return PKPASS_MIME_TYPE
     return normalized or "application/octet-stream"
+
+
+def _pkpass_asset_data_url(archive: zipfile.ZipFile, name: str) -> str | None:
+    try:
+        info = archive.getinfo(name)
+    except KeyError:
+        return None
+    if info.file_size > PKPASS_PREVIEW_MAX_MEMBER_BYTES:
+        return None
+    data = archive.read(info)
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        media_type = "image/png"
+    elif data.startswith(b"\xff\xd8\xff"):
+        media_type = "image/jpeg"
+    else:
+        return None
+    return f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}"
+
+
+def _pkpass_field_rows(pass_json: dict) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    pass_sections = (
+        "boardingPass",
+        "coupon",
+        "eventTicket",
+        "generic",
+        "storeCard",
+    )
+    field_sections = (
+        "headerFields",
+        "primaryFields",
+        "secondaryFields",
+        "auxiliaryFields",
+        "backFields",
+    )
+    for pass_section in pass_sections:
+        section = pass_json.get(pass_section)
+        if not isinstance(section, dict):
+            continue
+        for field_section in field_sections:
+            fields = section.get(field_section)
+            if not isinstance(fields, list):
+                continue
+            for field in fields:
+                if not isinstance(field, dict):
+                    continue
+                value = field.get("value")
+                if value is None:
+                    continue
+                label = str(field.get("label") or field.get("key") or "").strip()
+                rows.append(
+                    {
+                        "label": label[:80],
+                        "value": str(value).strip()[:240],
+                    }
+                )
+                if len(rows) >= 10:
+                    return rows
+    return rows
+
+
+def _pkpass_barcode(pass_json: dict) -> dict[str, str] | None:
+    candidates = pass_json.get("barcodes")
+    if isinstance(candidates, list) and candidates:
+        barcode = candidates[0]
+    else:
+        barcode = pass_json.get("barcode")
+    if not isinstance(barcode, dict):
+        return None
+    message = str(barcode.get("message") or "").strip()
+    if not message:
+        return None
+    return {
+        "format": str(barcode.get("format") or "barcode").replace("PKBarcodeFormat", ""),
+        "message": message[:240],
+    }
+
+
+def _pkpass_preview(blob_data: bytes | None) -> dict | None:
+    if not blob_data or len(blob_data) > PKPASS_PREVIEW_MAX_ARCHIVE_BYTES:
+        return None
+    try:
+        with zipfile.ZipFile(io.BytesIO(blob_data)) as archive:
+            total_size = 0
+            for info in archive.infolist():
+                name = info.filename
+                if name.startswith("/") or ".." in Path(name).parts:
+                    return None
+                total_size += max(0, int(info.file_size))
+                if (
+                    info.file_size > PKPASS_PREVIEW_MAX_MEMBER_BYTES
+                    or total_size > PKPASS_PREVIEW_MAX_TOTAL_BYTES
+                ):
+                    return None
+            pass_info = archive.getinfo("pass.json")
+            if pass_info.file_size > PKPASS_PREVIEW_MAX_MEMBER_BYTES:
+                return None
+            pass_json = json.loads(archive.read(pass_info).decode("utf-8"))
+            if not isinstance(pass_json, dict):
+                return None
+            images = {
+                name.split(".", 1)[0].replace("@2x", ""): data_url
+                for name in PKPASS_PREVIEW_IMAGE_NAMES
+                if (data_url := _pkpass_asset_data_url(archive, name))
+            }
+            return {
+                "organization": str(pass_json.get("organizationName") or "").strip(),
+                "description": str(pass_json.get("description") or "").strip(),
+                "logo_text": str(pass_json.get("logoText") or "").strip(),
+                "serial": str(pass_json.get("serialNumber") or "").strip(),
+                "fields": _pkpass_field_rows(pass_json),
+                "barcode": _pkpass_barcode(pass_json),
+                "images": images,
+            }
+    except (KeyError, UnicodeDecodeError, json.JSONDecodeError, zipfile.BadZipFile):
+        return None
 
 
 def _callable_accepts_keyword(func, keyword: str) -> bool:
@@ -6134,6 +6265,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         blob_type = _effective_blob_media_type(getattr(record_value, "blobtype", None), record_value)
         blob_preview = _blob_preview_kind(blob_type)
+        pkpass_preview = None
+        if blob_type == PKPASS_MIME_TYPE and getattr(record_value, "blobref", None):
+            try:
+                _pkpass_blob_type, pkpass_blob_data = await asyncio.wait_for(
+                    acorn.get_record_blobdata(label),
+                    timeout=settings.payment_timeout_seconds,
+                )
+                pkpass_preview = _pkpass_preview(pkpass_blob_data)
+            except Exception as exc:
+                logger.info(
+                    "pkpass preview unavailable label=%s error_type=%s",
+                    label,
+                    type(exc).__name__,
+                )
         blob_fingerprint = _blob_recognition_fingerprint(
             getattr(record_value, "origsha256", None)
         )
@@ -6190,6 +6335,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             has_blob=bool(getattr(record_value, "blobref", None)),
             blob_type=blob_type,
             blob_preview=blob_preview,
+            pkpass_preview=pkpass_preview,
             blob_fingerprint=blob_fingerprint,
             blob_url=f"/record/blob?{blob_query}",
             blob_inline_url=f"/record/blob?{blob_query}&inline=1",

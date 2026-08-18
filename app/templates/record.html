@@ -40,7 +40,47 @@
   or download link instead.</p></noscript>
   <script type="module" src="/static/pdf-viewer.js"></script>
   {% elif blob_type == "application/vnd.apple.pkpass" %}
-  <p>No inline preview is available for Apple Wallet passes.</p>
+  {% if pkpass_preview %}
+  <article class="pkpass-preview" aria-label="Wallet pass preview">
+    {% if pkpass_preview.images.strip %}
+    <img class="pkpass-strip" src="{{ pkpass_preview.images.strip }}" alt="">
+    {% endif %}
+    <div class="pkpass-header">
+      {% if pkpass_preview.images.logo %}
+      <img class="pkpass-logo" src="{{ pkpass_preview.images.logo }}" alt="">
+      {% elif pkpass_preview.images.icon %}
+      <img class="pkpass-logo" src="{{ pkpass_preview.images.icon }}" alt="">
+      {% endif %}
+      <div>
+        <p class="pkpass-org">{{ pkpass_preview.logo_text or pkpass_preview.organization or "Wallet Pass" }}</p>
+        {% if pkpass_preview.description %}
+        <p class="pkpass-description">{{ pkpass_preview.description }}</p>
+        {% endif %}
+      </div>
+    </div>
+    {% if pkpass_preview.fields %}
+    <dl class="pkpass-fields">
+      {% for field in pkpass_preview.fields %}
+      <div>
+        {% if field.label %}<dt>{{ field.label }}</dt>{% endif %}
+        <dd>{{ field.value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    {% endif %}
+    {% if pkpass_preview.barcode %}
+    <p class="pkpass-barcode">
+      <span>{{ pkpass_preview.barcode.format }}</span>
+      <code>{{ pkpass_preview.barcode.message }}</code>
+    </p>
+    {% endif %}
+    {% if pkpass_preview.serial %}
+    <p class="pkpass-serial">Serial: <code>{{ pkpass_preview.serial }}</code></p>
+    {% endif %}
+  </article>
+  {% else %}
+  <p>No inline preview is available for this Wallet pass.</p>
+  {% endif %}
   <p><a class="nav-button" href="{{ blob_url }}">Open/Add Wallet Pass</a></p>
   {% else %}
   <p>No inline preview is available{% if blob_type %} for <code>{{ blob_type }}</code>{% endif %}.</p>

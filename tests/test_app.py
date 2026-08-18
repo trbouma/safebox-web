@@ -5871,12 +5871,16 @@ def test_pkpass_blob_download_uses_wallet_pass_headers_from_metadata() -> None:
 
     assert detail.status_code == 200
     assert "Open/Add Wallet Pass" in detail.text
+    assert "Wallet pass preview" in detail.text
+    assert "Tim Oliver" in detail.text
+    assert "Hanzo Main" in detail.text
+    assert "downloads.timoliver.com.au" in detail.text
     assert response.status_code == 200
     assert response.content == pkpass_data
     assert response.headers["content-type"].startswith(PKPASS_MIME_TYPE)
     assert 'filename="Example_Pass.pkpass"' in response.headers["content-disposition"]
     assert "attachment" in attempted_inline.headers["content-disposition"]
-    assert acorn.blob_reads == ["Example Pass", "Example Pass"]
+    assert acorn.blob_reads == ["Example Pass", "Example Pass", "Example Pass"]
 
 
 def test_record_offers_control_history_button_without_querying(monkeypatch) -> None:
