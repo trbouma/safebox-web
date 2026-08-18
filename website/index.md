@@ -41,6 +41,7 @@ organization-issued credits. The balances coexist in one wallet without being
 summed or presented as interchangeable.
 
 [Understand Cash and Clear](cash-and-clear.md){ .md-button .md-button--primary }
+[Explore records and Wallet passes](records-and-wallet-passes.md){ .md-button }
 
 <section class="safebox-brand" markdown>
 

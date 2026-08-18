@@ -89,6 +89,15 @@ The application does not have to become the registry. The blob store does not
 have to understand the file. The preview does not have to prove the whole
 truth. Each layer contributes one part of the answer.
 
+The same separation applies to W3C Verifiable Credentials. Credential proof,
+status, holder presentation, issuer recognition, and verifier policy answer
+important credential questions. OpenETR can go deeper when the credential
+refers to an artifact or controlled object whose origin and event history also
+need to be examined. Safebox can preserve the exact credential and Original
+Record while keeping those verification layers distinct.
+
+[See the credential and Wallet-pass path](records-and-wallet-passes.md){ .md-button }
+
 ## Effective MIME and representation
 
 Acorn's effective MIME metadata helps Safebox Web choose a representation.
