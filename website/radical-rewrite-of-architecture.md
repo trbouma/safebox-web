@@ -1,6 +1,6 @@
 ---
 title: Radical Rewrite of Architecture
-description: A records-first approach that generalizes and extends verifiable credentials.
+description: A records-first approach that separates native claims, artifact notarization, control evidence, recognition, and verifier policy.
 ---
 
 # Radical Rewrite of Architecture
@@ -75,14 +75,20 @@ wallet app     -> the thing a person uses
 keys           -> what gives the person control
 funds          -> value the person can hold or transfer
 records        -> information and evidence the person needs to preserve
-credentials    -> one important kind of record
-OpenETR        -> signed evidence about exact transferable records
+credentials    -> records carrying claims secured by native schemes
+notarization   -> independent attestations about exact records or events
+OpenETR        -> digest-bound origin, notarization, and control evidence
 ```
 
 [OpenETR](https://trbouma.github.io/openetr/) is an experimental records-first
 framework for electronic transferable records. It anchors evidence to exact
 artifact digests and signed control events so a verifier can inspect what
 happened to a record without depending on the original application database.
+Because the anchor identifies bytes rather than a file format, the same
+evidence model can operate across PKPASS, W3C Verifiable Credentials, EUDI PID,
+ISO mobile driving licences, PDFs, and record schemes not yet anticipated.
+OpenETR does not replace their native signatures or trust models. It adds a
+separate evidence layer around the exact artifact.
 
 The rewrite is not that credentials disappear. It is that credentials can be
 understood as a specialized kind of record, while leaving space for other
@@ -104,9 +110,11 @@ In Safebox, a record can have several layers:
 - a private record controlled by the user's Acorn key;
 - an encrypted Original Record stored through Grove or another Blossom server;
 - relay-backed metadata and recovery state;
+- native signatures, bindings, status, and presentations defined by the
+  artifact's own scheme;
 - transferable ecash proofs associated with the Acorn; and
-- OpenETR evidence describing the origin and control history of an exact
-  artifact.
+- OpenETR evidence describing notarization, origin, and control history for an
+  exact artifact.
 
 The app becomes replaceable. The record remains portable.
 
@@ -138,6 +146,74 @@ credential. A verifier can ask:
 This is one way to extend the credential idea into transferable records and
 evidence graphs.
 
+## One evidence layer across record schemes
+
+Safebox can preserve and render very different verifiable records without
+forcing them into one universal credential format. Each scheme keeps the
+verification rules that give its claims meaning. The exact Original Record
+also receives a **Uniform Digest Anchor (UDA)** that other protocols can use
+without needing to understand every field inside it.
+
+| Record scheme | Native verification remains responsible for | OpenETR can add around the exact artifact |
+| --- | --- | --- |
+| Apple Wallet PKPASS | Manifest integrity, pass signature, certificate chain, and Wallet behavior | Independent origin, presentation, custody, or control attestations |
+| W3C Verifiable Credential | Issuer proof, credential status, holder presentation, and scheme-specific policy | Digest-bound notarization, provenance, presentation events, or control history |
+| EUDI PID and ISO mDL | COSE signatures, MSO digest bindings, device authentication, status, and trust lists | Independent inspection, custody, presentation, and lifecycle evidence |
+| Signed PDF or other artifact | Embedded signatures, timestamps, revocation evidence, or format-specific rules | Cross-organization notarization and control events bound to the same bytes |
+
+This creates interoperability without flattening. A verifier can first confirm
+that the presented bytes match the UDA, then apply the artifact's native
+verification, then evaluate any OpenETR evidence relevant to its own purpose.
+
+```text
+exact Original Record
+    -> Uniform Digest Anchor
+       +-> native claim verification
+       +-> OpenETR notarization and provenance
+       +-> OpenETR control and lifecycle events
+       +-> community recognition and verifier policy
+```
+
+## Signing claims and notarizing records
+
+A native issuer signature and a notarization may use the same cryptographic
+primitive, but they do not make the same statement.
+
+**Signing claims** means that an issuer, holder, or device key makes an
+assertion inside a defined record scheme. A university may sign a degree claim.
+A licensing authority may sign mDL identity and driving-privilege data. A
+PKPASS signer may sign the package manifest. The signature authenticates the
+signer's assertion and protects the scheme-defined content and bindings.
+
+**Notarizing a record** means that an independently recognized actor makes a
+second-order statement about an exact artifact or an event involving it. A
+notarization might attest that:
+
+- these exact bytes existed at a stated time;
+- the artifact matched a record inspected through another process;
+- a recognized party presented, received, or held the artifact;
+- a custody or transfer event occurred under a stated procedure; or
+- an organization recognized the artifact for a specific purpose.
+
+Notarization does not silently become a new issuer signature, and it does not
+prove every claim embedded in the artifact. It adds another path by which a
+verifier may establish trust: confidence in a recognized attestor's statement
+about the digest-bound object or event.
+
+The distinction is semantic, not merely cryptographic:
+
+```text
+native signature -> "this key makes these scheme-defined claims"
+notarization      -> "this attestor makes this statement about this exact record"
+control event     -> "this key performed this lifecycle action on this record"
+verifier policy   -> "for this decision, these signers and statements are recognized"
+```
+
+OpenETR can carry the latter two forms across otherwise incompatible record
+schemes. The UDA supplies the common object reference; the signed event states
+what is being attested; recognition and verifier policy determine whether that
+attestation should be trusted for the decision at hand.
+
 ## What a wallet needs to preserve
 
 A wallet is the app or environment a person uses. It is not the whole thing
@@ -162,8 +238,9 @@ private record public.
 
 Acorn protects the user's key and private record. Grove can store encrypted
 original bytes. Spurline or other Nostr relays can preserve events. OpenETR
-adds signed public evidence about an exact artifact: its digest, origin, and
-control history.
+adds signed public evidence about an exact artifact: its digest, notarizations,
+origin, and control history. The native verifier remains responsible for the
+artifact's own signatures, bindings, and status.
 
 The boundary matters:
 
@@ -171,7 +248,8 @@ The boundary matters:
 Acorn preserves private control.
 Grove preserves encrypted bytes.
 Spurline preserves local relay events.
-OpenETR preserves signed object evidence.
+Native schemes preserve signed claims and format-specific proofs.
+OpenETR preserves digest-bound notarization and control evidence.
 Safebox Web helps the user operate the workflow.
 ```
 
@@ -183,11 +261,19 @@ event.
 
 Safebox keeps those questions separate:
 
-- OpenETR preserves signed evidence.
+- Native schemes preserve signed claims and their internal bindings.
+- OpenETR preserves signed notarization, origin, and control evidence about an
+  exact artifact.
 - Acorn controls private records and value.
 - Nostr and other social or institutional inputs can help identify recognized
   actors.
 - A verifier policy decides what effect to give the evidence.
+
+A notary signature therefore adds evidence, not automatic truth. Its trust
+comes from what was attested, whether the verifier recognizes the attestor,
+whether the procedure was fit for purpose, and whether the statement is current
+and relevant. That is different from trusting a native issuer's claims, though
+a verifier may require both.
 
 That distinction is the heart of the rewrite. The system does not need one
 central database to decide what every record means. Different verifiers can
@@ -216,3 +302,6 @@ hardware-first appliance intended to run Mainstay and its supporting services
 locally:
 
 > Lockbox preserves local authority, continuity, and evidence.
+
+[Understand Deep Verification](deep-verification.md){ .md-button .md-button--primary }
+[Explore Verifiable Records](records-and-wallet-passes.md){ .md-button }
