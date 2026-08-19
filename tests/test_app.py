@@ -46,6 +46,7 @@ from app.config import (
 )
 
 PKPASS_FIXTURE = Path("/Users/trbouma/projects/safebox-acorn/tests/fixtures/Example.pkpass")
+W3C_DEGREE_FIXTURE = Path("/Users/trbouma/projects/safebox-web/tests/fixtures/w3c_degree.json")
 PKPASS_MIME_TYPE = "application/vnd.apple.pkpass"
 from app.dependencies import (
     get_acorn,
@@ -5820,16 +5821,11 @@ def test_pkpass_blob_upload_follow_redirect_renders_preview() -> None:
 
 def test_effective_mime_resolver_identifies_verifiable_credential_json() -> None:
     upload = SimpleNamespace(filename="credential.json", content_type="application/json")
-    credential = {
-        "@context": ["https://www.w3.org/ns/credentials/v2"],
-        "type": ["VerifiableCredential", "ExampleCredential"],
-        "issuer": "did:example:issuer",
-        "credentialSubject": {"id": "did:example:holder"},
-    }
+    credential_data = W3C_DEGREE_FIXTURE.read_bytes()
 
     resolution = main_module._resolve_upload_effective_mime(
         upload,
-        json.dumps(credential).encode("utf-8"),
+        credential_data,
     )
 
     assert resolution.effective_mime == "application/vc"
@@ -5915,13 +5911,7 @@ def test_blob_upload_records_verifiable_credential_effective_mime() -> None:
     acorn = FakeBlobAcorn()
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
-    credential = {
-        "@context": ["https://www.w3.org/ns/credentials/v2"],
-        "type": ["VerifiableCredential", "ExampleCredential"],
-        "issuer": "did:example:issuer",
-        "credentialSubject": {"id": "did:example:holder"},
-    }
-    credential_data = json.dumps(credential).encode("utf-8")
+    credential_data = W3C_DEGREE_FIXTURE.read_bytes()
 
     response = client.post(
         "/blob/upload",
@@ -5938,6 +5928,33 @@ def test_blob_upload_records_verifiable_credential_effective_mime() -> None:
     assert response.status_code == 303
     assert acorn.record_put_calls[0]["record_value"]["content_type"] == "application/vc"
     assert acorn.record_put_calls[0]["blob_type"] == "application/vc"
+
+
+def test_verifiable_credential_upload_follow_redirect_renders_record() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    credential_data = W3C_DEGREE_FIXTURE.read_bytes()
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "W3C Degree",
+            "description": "W3C example credential",
+            "confirmed": "yes",
+        },
+        files={"blob": ("w3c_degree.json", credential_data, "application/json")},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert str(response.url).endswith("/record?label=W3C+Degree&saved=1")
+    assert "Record saved and verified." in response.text
+    assert "Safebox stored Original Record type for w3c_degree.json: application/vc." in response.text
+    assert "No inline preview is available" in response.text
+    assert "<code>application/vc</code>" in response.text
 
 
 def test_record_detail_shows_determined_original_record_type() -> None:
