@@ -4,8 +4,9 @@ Date: 2026-08-17
 
 ## Summary
 
-Safebox Web now presents organization-issued Clear Mint Units (CMUs) alongside
-cash without combining or confusing the two.
+Safebox Web now presents organization-issued **transferable units**, represented
+in Clear as Clear Mint Units (CMUs), alongside cash without combining or
+confusing the two.
 
 The wallet uses one singular **Cash Balance** for sat-denominated funds and
 plural **Clear Balances** for credits issued by different organizations,
@@ -29,7 +30,9 @@ general-purpose currency. Examples include:
 - reimbursements and program allocations; and
 - credits recognized by a bounded provider network.
 
-Clear makes those units portable bearer Mint Notes. Safebox Web gives them an
+Clear makes those transferable units portable bearer Mint Notes. The term
+describes their ability to move between holders; it does not make them cash,
+legal tender, or universally accepted. Safebox Web gives them an
 understandable place in a wallet while preserving who issued them and what
 their acceptance depends on.
 

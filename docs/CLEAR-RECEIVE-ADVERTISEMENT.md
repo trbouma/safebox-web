@@ -74,9 +74,10 @@ spendable in that exact Clear Balance. Pending and spendable amounts are never
 combined in the display.
 
 This terminology is deliberate: cash is used for payments, while CMUs are
-transferred as credits for the products, services, or purposes defined by their
-issuing program. A Clear transfer may support an exchange, allocation, gift, or
-disbursement without being represented as cash payment.
+transferable units moved as credits for the products, services, or purposes
+defined by their issuing program. Transferability does not make those units
+cash. A Clear transfer may support an exchange, allocation, gift, or
+disbursement without being represented as a cash payment.
 
 Alias lookup follows a narrow network policy: public HTTPS mint URLs may be
 queried without redirects, while an HTTP mint is queried only when its exact

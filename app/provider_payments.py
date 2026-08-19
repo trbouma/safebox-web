@@ -30,6 +30,16 @@ from app.security import normalize_home_mint
 
 
 logger = logging.getLogger("safebox_web.provider_payments")
+MAX_PROVIDER_SETTLEMENT_ATTEMPTS = 60
+
+
+def _is_quote_not_found_error(exc: Exception) -> bool:
+    text = " ".join(
+        part
+        for part in (type(exc).__name__, str(exc), repr(exc.__cause__))
+        if part
+    ).lower()
+    return "quote not found" in text
 
 
 def enqueue_provider_payment(
@@ -370,6 +380,7 @@ async def process_provider_payments_once(
 
     invoice = next_provider_payment(engine, "INVOICE_PENDING")
     if invoice is not None and invoice.mint_quote:
+        terminal_error: str | None = None
         try:
             paid, _ = await acorn.check_quote(
                 quote=invoice.mint_quote,
@@ -379,24 +390,46 @@ async def process_provider_payments_once(
                 ),
             )
         except Exception as exc:
+            if _is_quote_not_found_error(exc):
+                terminal_error = "Mint quote not found"
             logger.warning(
                 "provider settlement check failed payment_id=%s error=%s",
                 invoice.payment_id,
                 type(exc).__name__,
             )
             paid = False
+        attempts = invoice.attempts + 1
+        if not paid and terminal_error is None and attempts >= MAX_PROVIDER_SETTLEMENT_ATTEMPTS:
+            terminal_error = "Invoice settlement timed out"
         update_provider_payment(
             engine,
             invoice.payment_id,
-            status="SETTLED" if paid else "INVOICE_PENDING",
-            attempts=invoice.attempts + 1,
-            next_check_at=None if paid else utc_now() + timedelta(seconds=2),
+            status=(
+                "SETTLED"
+                if paid
+                else "FAILED"
+                if terminal_error
+                else "INVOICE_PENDING"
+            ),
+            attempts=attempts,
+            error=terminal_error,
+            next_check_at=(
+                None
+                if paid or terminal_error
+                else utc_now() + timedelta(seconds=2)
+            ),
         )
         if paid:
             logger.info(
                 "provider invoice settled payment_id=%s amount_sat=%s",
                 invoice.payment_id,
                 invoice.amount_sat,
+            )
+        elif terminal_error:
+            logger.warning(
+                "provider invoice failed payment_id=%s reason=%s",
+                invoice.payment_id,
+                terminal_error,
             )
         changed = True
 

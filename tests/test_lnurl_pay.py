@@ -323,8 +323,16 @@ def test_zap_validation_ignores_unsafe_relay_hints_when_wss_remains() -> None:
 
 
 class FakeProviderAcorn:
-    def __init__(self, *, fail_delivery: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        fail_delivery: bool = False,
+        quote_paid: bool = True,
+        quote_error: Exception | None = None,
+    ) -> None:
         self.fail_delivery = fail_delivery
+        self.quote_paid = quote_paid
+        self.quote_error = quote_error
         self.deposit_calls: list[dict] = []
         self.check_calls: list[dict] = []
         self.delivery_calls: list[dict] = []
@@ -335,7 +343,9 @@ class FakeProviderAcorn:
 
     async def check_quote(self, **kwargs):
         self.check_calls.append(kwargs)
-        return True, "lnbc21-test"
+        if self.quote_error is not None:
+            raise self.quote_error
+        return self.quote_paid, "lnbc21-test"
 
     async def send_ecash_transfer(self, **kwargs):
         self.delivery_calls.append(kwargs)
@@ -405,6 +415,49 @@ def test_ambiguous_delivery_is_not_automatically_retried(tmp_path) -> None:
     assert get_provider_payment(engine, payment_id).status == "DELIVERY_FAILED"
     asyncio.run(process_provider_payments_once(engine, acorn))
     assert len(acorn.delivery_calls) == 1
+    engine.dispose()
+
+
+def test_worker_fails_provider_invoice_when_mint_quote_is_missing(tmp_path) -> None:
+    engine, payment_id = queued_payment(tmp_path)
+    update_provider_payment(
+        engine,
+        payment_id,
+        status="INVOICE_PENDING",
+        mint_quote="missing-quote",
+        invoice="lnbc21-test",
+    )
+    acorn = FakeProviderAcorn(quote_error=RuntimeError("quote not found"))
+
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
+
+    payment = get_provider_payment(engine, payment_id)
+    assert payment.status == "FAILED"
+    assert payment.error == "Mint quote not found"
+    assert payment.next_check_at is None
+    assert len(acorn.check_calls) == 1
+    engine.dispose()
+
+
+def test_worker_fails_provider_invoice_after_repeated_unpaid_checks(tmp_path) -> None:
+    engine, payment_id = queued_payment(tmp_path)
+    update_provider_payment(
+        engine,
+        payment_id,
+        status="INVOICE_PENDING",
+        mint_quote="quote-1",
+        invoice="lnbc21-test",
+        attempts=59,
+    )
+    acorn = FakeProviderAcorn(quote_paid=False)
+
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
+
+    payment = get_provider_payment(engine, payment_id)
+    assert payment.status == "FAILED"
+    assert payment.error == "Invoice settlement timed out"
+    assert payment.attempts == 60
+    assert payment.next_check_at is None
     engine.dispose()
 
 

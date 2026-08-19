@@ -159,6 +159,9 @@ mutation initiated by the user.
 Safebox Web also exposes a separate **Clear Transactions** page. It calls
 Acorn's kind `7379` receiver in read-only preview mode when the wallet and Clear
 pages load, so new transfers appear immediately without changing wallet state.
+Clear Balances contain organization-issued **transferable units**; Clear
+represents each exact unit as a keyset-bound CMU.
+
 **Check for Clear Transfers** stores all discovered receipts and advances the
 receive cursor. The page groups pending and spendable amounts by exact mint and
 CMU, resolves safe mint aliases,
