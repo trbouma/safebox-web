@@ -5953,8 +5953,11 @@ def test_verifiable_credential_upload_follow_redirect_renders_record() -> None:
     assert str(response.url).endswith("/record?label=W3C+Degree&saved=1")
     assert "Record saved and verified." in response.text
     assert "Safebox stored Original Record type for w3c_degree.json: application/vc." in response.text
-    assert "No inline preview is available" in response.text
-    assert "<code>application/vc</code>" in response.text
+    assert 'aria-label="Credential preview"' in response.text
+    assert "<dt>type[0]</dt>" in response.text
+    assert "<dd>VerifiableCredential</dd>" in response.text
+    assert "<dt>credentialSubject.degree.name</dt>" in response.text
+    assert "<dd>Bachelor of Science and Arts</dd>" in response.text
 
 
 def test_record_detail_shows_determined_original_record_type() -> None:
@@ -5982,6 +5985,34 @@ def test_record_detail_shows_determined_original_record_type() -> None:
         "Safebox stored Original Record type for credential.json: application/vc."
         in response.text
     )
+
+
+def test_verifiable_credential_blob_download_uses_json_extension() -> None:
+    credential_data = W3C_DEGREE_FIXTURE.read_bytes()
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        existing_labels={"W3C Degree"},
+        downloaded_type="application/vc",
+        downloaded_data=credential_data,
+        blob_type="application/vc",
+        payload={
+            "filename": "w3c_degree.json",
+            "content_type": "application/vc",
+            "size": len(credential_data),
+        },
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/record/blob", params={"label": "W3C Degree"})
+
+    assert response.status_code == 200
+    assert response.content == credential_data
+    assert response.headers["content-type"].startswith("application/vc")
+    assert 'filename="W3C_Degree.json"' in response.headers["content-disposition"]
+    assert "filename*=UTF-8''W3C%20Degree.json" in response.headers[
+        "content-disposition"
+    ]
 
 
 def test_blob_upload_rejects_existing_label_without_orphaning_blob() -> None:

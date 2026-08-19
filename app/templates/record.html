@@ -92,6 +92,24 @@
   <p>No inline preview is available for this Wallet pass.</p>
   {% endif %}
   <p><a class="nav-button" href="{{ blob_url }}">Open/Add Wallet Pass</a></p>
+  {% elif blob_type in ["application/vc", "application/vp"] %}
+  {% if json_credential_preview %}
+  <article class="json-credential-preview" aria-label="Credential preview">
+    <dl>
+      {% for row in json_credential_preview.rows %}
+      <div class="json-credential-depth-{{ row.depth }}">
+        <dt>{{ row.key }}</dt>
+        {% if row.value is not none %}<dd>{{ row.value }}</dd>{% endif %}
+      </div>
+      {% endfor %}
+    </dl>
+    {% if json_credential_preview.truncated %}
+    <p class="json-credential-truncated">Preview truncated.</p>
+    {% endif %}
+  </article>
+  {% else %}
+  <p>No inline preview is available for this credential.</p>
+  {% endif %}
   {% else %}
   <p>No inline preview is available{% if blob_type %} for <code>{{ blob_type }}</code>{% endif %}.</p>
   {% endif %}

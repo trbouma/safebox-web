@@ -1275,6 +1275,21 @@ VC_JWT_MIME_TYPE = "application/vc+jwt"
 VC_SD_JWT_MIME_TYPE = "application/vc+sd-jwt"
 VC_COSE_MIME_TYPE = "application/vc+cose"
 MDOC_CBOR_MIME_TYPE = "application/mdoc+cbor"
+JSON_CREDENTIAL_PREVIEW_TYPES = frozenset({VC_MIME_TYPE, VP_MIME_TYPE})
+JSON_CREDENTIAL_PREVIEW_MAX_BYTES = 1024 * 1024
+JSON_CREDENTIAL_PREVIEW_MAX_ROWS = 80
+EFFECTIVE_MIME_DOWNLOAD_EXTENSIONS = {
+    VC_MIME_TYPE: ".json",
+    VP_MIME_TYPE: ".json",
+    VC_JWT_MIME_TYPE: ".jwt",
+    "application/vp+jwt": ".jwt",
+    VC_SD_JWT_MIME_TYPE: ".sd-jwt",
+    "application/vp+sd-jwt": ".sd-jwt",
+    VC_COSE_MIME_TYPE: ".cose",
+    "application/vp+cose": ".cose",
+    MDOC_CBOR_MIME_TYPE: ".mdoc",
+    PKPASS_MIME_TYPE: ".pkpass",
+}
 PKPASS_PREVIEW_MAX_ARCHIVE_BYTES = 8 * 1024 * 1024
 PKPASS_PREVIEW_MAX_MEMBER_BYTES = 2 * 1024 * 1024
 PKPASS_PREVIEW_MAX_TOTAL_BYTES = 12 * 1024 * 1024
@@ -1661,6 +1676,97 @@ def _pkpass_preview(blob_data: bytes | None) -> dict | None:
         return None
 
 
+def _json_credential_preview_rows(
+    value,
+    *,
+    prefix: str = "",
+    depth: int = 0,
+    rows: list[dict[str, str | int | None]] | None = None,
+) -> list[dict[str, str | int | None]]:
+    if rows is None:
+        rows = []
+    if len(rows) >= JSON_CREDENTIAL_PREVIEW_MAX_ROWS:
+        return rows
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if len(rows) >= JSON_CREDENTIAL_PREVIEW_MAX_ROWS:
+                break
+            label = f"{prefix}.{key}" if prefix else str(key)
+            if isinstance(child, (dict, list)):
+                rows.append({"key": label, "value": None, "depth": min(depth, 6)})
+                _json_credential_preview_rows(
+                    child,
+                    prefix=label,
+                    depth=depth + 1,
+                    rows=rows,
+                )
+            else:
+                rows.append(
+                    {
+                        "key": label,
+                        "value": _json_preview_scalar(child),
+                        "depth": min(depth, 6),
+                    }
+                )
+        return rows
+    if isinstance(value, list):
+        for index, child in enumerate(value):
+            if len(rows) >= JSON_CREDENTIAL_PREVIEW_MAX_ROWS:
+                break
+            label = f"{prefix}[{index}]" if prefix else f"[{index}]"
+            if isinstance(child, (dict, list)):
+                rows.append({"key": label, "value": None, "depth": min(depth, 6)})
+                _json_credential_preview_rows(
+                    child,
+                    prefix=label,
+                    depth=depth + 1,
+                    rows=rows,
+                )
+            else:
+                rows.append(
+                    {
+                        "key": label,
+                        "value": _json_preview_scalar(child),
+                        "depth": min(depth, 6),
+                    }
+                )
+        return rows
+    rows.append(
+        {
+            "key": prefix or "value",
+            "value": _json_preview_scalar(value),
+            "depth": min(depth, 6),
+        }
+    )
+    return rows
+
+
+def _json_preview_scalar(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    return str(value)[:500]
+
+
+def _json_credential_preview(blob_data: bytes | None) -> dict | None:
+    if not blob_data or len(blob_data) > JSON_CREDENTIAL_PREVIEW_MAX_BYTES:
+        return None
+    try:
+        document = json.loads(blob_data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    rows = _json_credential_preview_rows(document)
+    return {
+        "rows": rows,
+        "truncated": len(rows) >= JSON_CREDENTIAL_PREVIEW_MAX_ROWS,
+    }
+
+
 def _callable_accepts_keyword(func, keyword: str) -> bool:
     try:
         signature = inspect.signature(func)
@@ -1714,10 +1820,12 @@ def _blob_download_headers(
 ) -> dict[str, str]:
     """Return an injection-safe filename with UTF-8 label support."""
 
-    if media_type == PKPASS_MIME_TYPE:
-        extension = ".pkpass"
-    else:
-        extension = mimetypes.guess_extension(media_type or "") or ".bin"
+    normalized_media_type = _normalize_media_type(media_type)
+    extension = (
+        EFFECTIVE_MIME_DOWNLOAD_EXTENSIONS.get(normalized_media_type or "")
+        or mimetypes.guess_extension(normalized_media_type or "")
+        or ".bin"
+    )
     filename = label if label.lower().endswith(extension.lower()) else label + extension
     fallback_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", label).strip("._") or "acorn-blob"
     fallback = (
@@ -6499,6 +6607,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         blob_type = _effective_blob_media_type(getattr(record_value, "blobtype", None), record_value)
         blob_preview = _blob_preview_kind(blob_type)
         pkpass_preview = None
+        json_credential_preview = None
         if blob_type == PKPASS_MIME_TYPE and getattr(record_value, "blobref", None):
             try:
                 _pkpass_blob_type, pkpass_blob_data = await asyncio.wait_for(
@@ -6509,6 +6618,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception as exc:
                 logger.info(
                     "pkpass preview unavailable label=%s error_type=%s",
+                    label,
+                    type(exc).__name__,
+                )
+        elif blob_type in JSON_CREDENTIAL_PREVIEW_TYPES and getattr(
+            record_value, "blobref", None
+        ):
+            try:
+                _credential_blob_type, credential_blob_data = await asyncio.wait_for(
+                    acorn.get_record_blobdata(label),
+                    timeout=settings.payment_timeout_seconds,
+                )
+                json_credential_preview = _json_credential_preview(
+                    credential_blob_data
+                )
+            except Exception as exc:
+                logger.info(
+                    "json credential preview unavailable label=%s error_type=%s",
                     label,
                     type(exc).__name__,
                 )
@@ -6570,6 +6696,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             blob_type_notice=_original_record_type_notice(record_value, blob_type),
             blob_preview=blob_preview,
             pkpass_preview=pkpass_preview,
+            json_credential_preview=json_credential_preview,
             blob_fingerprint=blob_fingerprint,
             blob_url=f"/record/blob?{blob_query}",
             blob_inline_url=f"/record/blob?{blob_query}&inline=1",

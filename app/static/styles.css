@@ -176,6 +176,15 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .pkpass-barcode span { display: block; font-size: .78rem; font-weight: 750; text-transform: uppercase; }
 .pkpass-barcode-image { display: flex; width: 100%; padding: .8rem; justify-content: center; border-radius: .35rem; background: #fff; }
 .pkpass-barcode-image svg { display: block; width: 100%; height: auto; color: #000; }
+.json-credential-preview { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); }
+.json-credential-preview dl { display: grid; gap: .45rem; margin: 0; }
+.json-credential-preview div { min-width: 0; }
+.json-credential-preview dt { display: inline; font-weight: 800; overflow-wrap: anywhere; }
+.json-credential-preview dd { display: inline; margin: 0 0 0 .35rem; overflow-wrap: anywhere; }
+.json-credential-depth-1 { padding-left: 1rem; }
+.json-credential-depth-2 { padding-left: 2rem; }
+.json-credential-depth-3, .json-credential-depth-4, .json-credential-depth-5, .json-credential-depth-6 { padding-left: 3rem; }
+.json-credential-truncated { margin: .75rem 0 0; color: var(--muted); font-size: .92rem; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .openetr-history { margin: 1.25rem 0; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); }
 .openetr-history > summary { cursor: pointer; padding: 1rem; font-weight: 700; }
