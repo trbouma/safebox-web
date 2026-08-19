@@ -115,6 +115,8 @@
   <article class="mdoc-preview" aria-label="{% if mdoc_preview.credential_kind == 'eudi_pid' %}EUDI PID preview{% elif mdoc_preview.credential_kind == 'mdl' %}mDL preview{% else %}mdoc preview{% endif %}">
     {% if mdoc_preview.credential_kind == "eudi_pid" %}
     <h3>EU Digital Identity PID</h3>
+    {% elif mdoc_preview.credential_kind == "mdl" %}
+    <h3>Mobile Driving Licence</h3>
     {% endif %}
     <p class="preview-status">Preview only. Safebox decoded this mdoc container but has not verified issuer signatures, device signatures, or digest bindings.</p>
     {% if mdoc_preview.doc_type or mdoc_preview.document_count is not none or mdoc_preview.status is not none %}
@@ -139,9 +141,9 @@
       {% endif %}
     </dl>
     {% endif %}
-    {% if mdoc_preview.credential_kind == "eudi_pid" and mdoc_preview.pid_fields %}
-    <dl class="pid-fields">
-      {% for field in mdoc_preview.pid_fields %}
+    {% if mdoc_preview.credential_kind in ["eudi_pid", "mdl"] and mdoc_preview.credential_fields %}
+    <dl class="credential-fields">
+      {% for field in mdoc_preview.credential_fields %}
       <div>
         <dt>{{ field.label }}</dt>
         <dd>{{ field.value }}</dd>
@@ -159,7 +161,7 @@
       </div>
       {% endfor %}
     </dl>
-    {% if mdoc_preview.credential_kind == "eudi_pid" and mdoc_preview.pid_fields %}
+    {% if mdoc_preview.credential_kind in ["eudi_pid", "mdl"] and mdoc_preview.credential_fields %}
     </details>
     {% endif %}
     {% if mdoc_preview.truncated %}

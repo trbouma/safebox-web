@@ -5937,6 +5937,7 @@ def test_mdoc_upload_follow_redirect_records_effective_mime() -> None:
         "application/mdoc+cbor."
     ) in response.text
     assert 'aria-label="mDL preview"' in response.text
+    assert "<h3>Mobile Driving Licence</h3>" in response.text
     assert (
         "Preview only. Safebox decoded this mdoc container but has not verified "
         "issuer signatures, device signatures, or digest bindings."
@@ -5950,6 +5951,13 @@ def test_mdoc_upload_follow_redirect_records_effective_mime() -> None:
         in response.text
     )
     assert "<dd>family_name</dd>" in response.text
+    assert "<dt>Family name</dt>" in response.text
+    assert "<dd>Johnson</dd>" in response.text
+    assert "<dt>Given name</dt>" in response.text
+    assert "<dd>Alex</dd>" in response.text
+    assert "<dt>Over 18</dt>" in response.text
+    assert "<dd>true</dd>" in response.text
+    assert "<summary>Technical mdoc fields</summary>" in response.text
     assert (
         acorn.record_put_calls[0]["record_value"]["content_type"]
         == "application/mdoc+cbor"
@@ -5962,8 +5970,19 @@ def test_mdoc_preview_decodes_cbor_fixture() -> None:
 
     assert preview is not None
     assert preview["doc_type"] == "org.iso.18013.5.1.mDL"
+    assert preview["credential_kind"] == "mdl"
     assert preview["document_count"] == 1
     assert preview["status"] == "0"
+    assert {
+        "identifier": "family_name",
+        "label": "Family name",
+        "value": "Johnson",
+    } in preview["credential_fields"]
+    assert {
+        "identifier": "age_over_18",
+        "label": "Over 18",
+        "value": "true",
+    } in preview["credential_fields"]
     assert {
         "key": "documents[0].issuerSigned.nameSpaces.org.iso.18013.5.1[2].elementValue",
         "value": "true",
@@ -5983,12 +6002,12 @@ def test_mdoc_preview_decodes_synthetic_eudi_pid_fixture() -> None:
         "identifier": "family_name",
         "label": "Family name",
         "value": "MUSTERMANN",
-    } in preview["pid_fields"]
+    } in preview["credential_fields"]
     assert {
         "identifier": "place_of_birth",
         "label": "Place of birth",
         "value": "country: DE, locality: BERLIN",
-    } in preview["pid_fields"]
+    } in preview["credential_fields"]
     assert {
         "key": (
             "documents[0].issuerSigned.nameSpaces.eu.europa.ec.eudi.pid.1[0]."

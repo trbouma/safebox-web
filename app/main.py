@@ -1278,6 +1278,7 @@ VC_COSE_MIME_TYPE = "application/vc+cose"
 MDOC_CBOR_MIME_TYPE = "application/mdoc+cbor"
 EUDI_PID_DOC_TYPE = "eu.europa.ec.eudi.pid.1"
 MDL_DOC_TYPE = "org.iso.18013.5.1.mDL"
+MDL_NAMESPACE = "org.iso.18013.5.1"
 JSON_CREDENTIAL_PREVIEW_TYPES = frozenset({VC_MIME_TYPE, VP_MIME_TYPE})
 JSON_CREDENTIAL_PREVIEW_MAX_BYTES = 1024 * 1024
 JSON_CREDENTIAL_PREVIEW_MAX_ROWS = 80
@@ -1307,6 +1308,38 @@ EUDI_PID_FIELD_LABELS = {
     "sex": "Sex",
     "email_address": "Email address",
     "mobile_phone_number": "Mobile phone number",
+}
+MDL_FIELD_LABELS = {
+    "family_name": "Family name",
+    "given_name": "Given name",
+    "birth_date": "Date of birth",
+    "issue_date": "Issue date",
+    "expiry_date": "Expiry date",
+    "issuing_country": "Issuing country",
+    "issuing_authority": "Issuing authority",
+    "document_number": "Licence number",
+    "portrait": "Portrait",
+    "driving_privileges": "Driving privileges",
+    "un_distinguishing_sign": "Distinguishing sign",
+    "age_over_18": "Over 18",
+    "age_over_21": "Over 21",
+    "age_in_years": "Age in years",
+    "age_birth_year": "Birth year",
+    "nationality": "Nationality",
+    "sex": "Sex",
+    "place_of_birth": "Place of birth",
+    "resident_address": "Address",
+    "resident_city": "City",
+    "resident_state": "State or region",
+    "resident_postal_code": "Postal code",
+    "resident_country": "Country of residence",
+    "height": "Height",
+    "weight": "Weight",
+    "eye_colour": "Eye colour",
+    "hair_colour": "Hair colour",
+    "family_name_national_character": "Family name (national characters)",
+    "given_name_national_character": "Given name (national characters)",
+    "signature_usual_mark": "Signature",
 }
 EFFECTIVE_MIME_DOWNLOAD_EXTENSIONS = {
     VC_MIME_TYPE: ".json",
@@ -1842,7 +1875,11 @@ def _mdoc_display_value(value) -> str:
     return _mdoc_preview_scalar(value)
 
 
-def _eudi_pid_preview_fields(first_document: dict | None) -> list[dict[str, str]]:
+def _mdoc_preview_fields(
+    first_document: dict | None,
+    namespace: str,
+    labels: dict[str, str],
+) -> list[dict[str, str]]:
     if not isinstance(first_document, dict):
         return []
     issuer_signed = first_document.get("issuerSigned")
@@ -1851,7 +1888,7 @@ def _eudi_pid_preview_fields(first_document: dict | None) -> list[dict[str, str]
     namespaces = issuer_signed.get("nameSpaces")
     if not isinstance(namespaces, dict):
         return []
-    elements = namespaces.get(EUDI_PID_DOC_TYPE)
+    elements = namespaces.get(namespace)
     if not isinstance(elements, (list, tuple)):
         return []
 
@@ -1866,7 +1903,7 @@ def _eudi_pid_preview_fields(first_document: dict | None) -> list[dict[str, str]
         fields.append(
             {
                 "identifier": identifier,
-                "label": EUDI_PID_FIELD_LABELS.get(
+                "label": labels.get(
                     identifier, identifier.replace("_", " ").capitalize()
                 ),
                 "value": _mdoc_display_value(element["elementValue"]),
@@ -1977,6 +2014,20 @@ def _mdoc_preview(blob_data: bytes | None) -> dict | None:
     )
     status = document.get("status") if isinstance(document, dict) else None
     rows = _mdoc_preview_rows(document)
+    field_labels = (
+        EUDI_PID_FIELD_LABELS
+        if doc_type == EUDI_PID_DOC_TYPE
+        else MDL_FIELD_LABELS
+        if doc_type == MDL_DOC_TYPE
+        else None
+    )
+    field_namespace = (
+        EUDI_PID_DOC_TYPE
+        if doc_type == EUDI_PID_DOC_TYPE
+        else MDL_NAMESPACE
+        if doc_type == MDL_DOC_TYPE
+        else None
+    )
     return {
         "doc_type": doc_type,
         "credential_kind": (
@@ -1988,7 +2039,11 @@ def _mdoc_preview(blob_data: bytes | None) -> dict | None:
         ),
         "document_count": document_count,
         "status": _mdoc_preview_scalar(status) if status is not None else None,
-        "pid_fields": _eudi_pid_preview_fields(first_document),
+        "credential_fields": (
+            _mdoc_preview_fields(first_document, field_namespace, field_labels)
+            if field_namespace is not None and field_labels is not None
+            else []
+        ),
         "rows": rows,
         "truncated": len(rows) >= MDOC_PREVIEW_MAX_ROWS,
     }

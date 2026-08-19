@@ -196,10 +196,10 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .mdoc-fields div { min-width: 0; }
 .mdoc-fields dt { display: inline; font-weight: 800; overflow-wrap: anywhere; }
 .mdoc-fields dd { display: inline; margin: 0 0 0 .35rem; overflow-wrap: anywhere; }
-.pid-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .75rem 1.25rem; margin: 0; }
-.pid-fields div { min-width: 0; padding-bottom: .5rem; border-bottom: 1px solid var(--border); }
-.pid-fields dt { margin: 0 0 .15rem; font-weight: 800; overflow-wrap: anywhere; }
-.pid-fields dd { margin: 0; overflow-wrap: anywhere; }
+.credential-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .75rem 1.25rem; margin: 0; }
+.credential-fields div { min-width: 0; padding-bottom: .5rem; border-bottom: 1px solid var(--border); }
+.credential-fields dt { margin: 0 0 .15rem; font-weight: 800; overflow-wrap: anywhere; }
+.credential-fields dd { margin: 0; overflow-wrap: anywhere; }
 .mdoc-technical-fields { margin-top: 1rem; }
 .mdoc-technical-fields summary { cursor: pointer; color: var(--muted); }
 .mdoc-technical-fields[open] summary { margin-bottom: .75rem; }
