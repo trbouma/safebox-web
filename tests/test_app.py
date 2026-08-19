@@ -48,6 +48,9 @@ from app.config import (
 PKPASS_FIXTURE = Path("/Users/trbouma/projects/safebox-acorn/tests/fixtures/Example.pkpass")
 W3C_DEGREE_FIXTURE = Path("/Users/trbouma/projects/safebox-web/tests/fixtures/w3c_degree.json")
 MDL_FIXTURE = Path("/Users/trbouma/projects/safebox-web/tests/fixtures/example_mdl.mdoc")
+EUDI_PID_FIXTURE = Path(
+    "/Users/trbouma/projects/safebox-web/tests/fixtures/eudi_pid_synthetic.mdoc"
+)
 PKPASS_MIME_TYPE = "application/vnd.apple.pkpass"
 from app.dependencies import (
     get_acorn,
@@ -5966,6 +5969,27 @@ def test_mdoc_preview_decodes_cbor_fixture() -> None:
         "value": "true",
         "depth": 6,
     } in preview["rows"]
+
+
+def test_mdoc_preview_decodes_synthetic_eudi_pid_fixture() -> None:
+    preview = main_module._mdoc_preview(EUDI_PID_FIXTURE.read_bytes())
+
+    assert preview is not None
+    assert preview["doc_type"] == "eu.europa.ec.eudi.pid.1"
+    assert preview["document_count"] == 1
+    assert preview["status"] == "0"
+    assert {
+        "key": (
+            "documents[0].issuerSigned.nameSpaces.eu.europa.ec.eudi.pid.1[0]."
+            "elementIdentifier"
+        ),
+        "value": "family_name",
+        "depth": 6,
+    } in preview["rows"]
+    assert any(
+        row["key"].endswith("elementValue") and row["value"] == "MUSTERMANN"
+        for row in preview["rows"]
+    )
 
 
 def test_blob_upload_records_verifiable_credential_effective_mime() -> None:
