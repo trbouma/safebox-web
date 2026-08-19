@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from html import unescape
@@ -617,6 +618,16 @@ class FakeBlobAcorn(FakeLoadedAcorn):
     async def get_record_blobdata(self, record_name: str):
         self.blob_reads.append(record_name)
         return self.downloaded_type, self.downloaded_data
+
+    async def put_record(self, **kwargs):
+        result = await super().put_record(**kwargs)
+        if kwargs.get("blob_data") is not None:
+            self.existing_labels.add(kwargs["record_name"])
+            self.payload = kwargs["record_value"]
+            self.blob_type = kwargs.get("blob_type")
+            self.downloaded_type = kwargs.get("blob_type")
+            self.downloaded_data = kwargs.get("blob_data")
+        return result
 
 
 def test_settings_load_cookie_key_from_working_directory_env_file(
@@ -5721,6 +5732,31 @@ def test_blob_upload_passes_plaintext_to_acorn_encryption_boundary() -> None:
     ]
 
 
+def test_blob_upload_follow_redirect_renders_saved_record() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Private Notes",
+            "description": "Encrypted attachment",
+            "confirmed": "yes",
+        },
+        files={"blob": ("notes.txt", b"private blob contents", "text/plain")},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert str(response.url).endswith("/record?label=Private+Notes&saved=1")
+    assert "Record saved and verified." in response.text
+    assert "Safebox stored Original Record type for notes.txt: text/plain." in response.text
+    assert '<a class="record-capability" href="/record/blob?label=Private+Notes">Original</a>' in response.text
+
+
 def test_pkpass_blob_upload_records_wallet_pass_media_type() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn()
@@ -5749,6 +5785,186 @@ def test_pkpass_blob_upload_records_wallet_pass_media_type() -> None:
     assert acorn.record_put_calls[0]["record_value"]["content_type"] == PKPASS_MIME_TYPE
     assert acorn.record_put_calls[0]["blob_data"] == pkpass_data
     assert acorn.record_put_calls[0]["blob_type"] == PKPASS_MIME_TYPE
+
+
+def test_pkpass_blob_upload_follow_redirect_renders_preview() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    pkpass_data = (
+        PKPASS_FIXTURE.read_bytes()
+        if PKPASS_FIXTURE.exists()
+        else b"fake pkpass bytes"
+    )
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Example Pass",
+            "description": "Wallet pass",
+            "confirmed": "yes",
+        },
+        files={"blob": ("Example.pkpass", pkpass_data, "application/zip")},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert str(response.url).endswith("/record?label=Example+Pass&saved=1")
+    assert "Record saved and verified." in response.text
+    assert "Open/Add Wallet Pass" in response.text
+    assert "Wallet pass preview" in response.text
+    assert "Safebox recognized Original Record type for Example.pkpass" in response.text
+
+
+def test_effective_mime_resolver_identifies_verifiable_credential_json() -> None:
+    upload = SimpleNamespace(filename="credential.json", content_type="application/json")
+    credential = {
+        "@context": ["https://www.w3.org/ns/credentials/v2"],
+        "type": ["VerifiableCredential", "ExampleCredential"],
+        "issuer": "did:example:issuer",
+        "credentialSubject": {"id": "did:example:holder"},
+    }
+
+    resolution = main_module._resolve_upload_effective_mime(
+        upload,
+        json.dumps(credential).encode("utf-8"),
+    )
+
+    assert resolution.effective_mime == "application/vc"
+    assert resolution.source == "inferred"
+    assert resolution.confidence == "high"
+    assert resolution.requires_confirmation is False
+    assert "json includes W3C credentials context" in resolution.evidence
+
+
+def test_effective_mime_resolver_identifies_verifiable_presentation_json() -> None:
+    upload = SimpleNamespace(filename="presentation.json", content_type="application/json")
+    presentation = {
+        "@context": ["https://www.w3.org/ns/credentials/v2"],
+        "type": ["VerifiablePresentation"],
+        "verifiableCredential": [],
+    }
+
+    resolution = main_module._resolve_upload_effective_mime(
+        upload,
+        json.dumps(presentation).encode("utf-8"),
+    )
+
+    assert resolution.effective_mime == "application/vp"
+    assert resolution.confidence == "high"
+
+
+def test_effective_mime_resolver_identifies_vc_jwt_and_sd_jwt_vc() -> None:
+    def segment(value: dict) -> str:
+        encoded = base64.urlsafe_b64encode(json.dumps(value).encode("utf-8")).decode(
+            "ascii"
+        )
+        return encoded.rstrip("=")
+
+    vc_jwt = ".".join(
+        [
+            segment({"alg": "ES256", "typ": "vc+jwt"}),
+            segment(
+                {
+                    "iss": "did:example:issuer",
+                    "vc": {"type": ["VerifiableCredential"]},
+                }
+            ),
+            "signature",
+        ]
+    )
+    sd_jwt = ".".join(
+        [
+            segment({"alg": "ES256", "typ": "vc+sd-jwt"}),
+            segment({"iss": "did:example:issuer", "vct": "ExampleCredential"}),
+            "signature",
+        ]
+    ) + "~disclosure"
+
+    jwt_resolution = main_module._resolve_upload_effective_mime(
+        SimpleNamespace(filename="credential.jwt", content_type="text/plain"),
+        vc_jwt.encode("ascii"),
+    )
+    sd_jwt_resolution = main_module._resolve_upload_effective_mime(
+        SimpleNamespace(filename="credential.txt", content_type="text/plain"),
+        sd_jwt.encode("ascii"),
+    )
+
+    assert jwt_resolution.effective_mime == "application/vc+jwt"
+    assert jwt_resolution.requires_confirmation is True
+    assert sd_jwt_resolution.effective_mime == "application/vc+sd-jwt"
+    assert sd_jwt_resolution.requires_confirmation is True
+
+
+def test_effective_mime_resolver_identifies_mdoc_filename() -> None:
+    resolution = main_module._resolve_upload_effective_mime(
+        SimpleNamespace(filename="license.mdoc", content_type="application/cbor"),
+        b"\xa1cfooCbar",
+    )
+
+    assert resolution.effective_mime == "application/mdoc+cbor"
+    assert resolution.confidence == "medium"
+    assert resolution.requires_confirmation is True
+    assert "application/cbor" in resolution.alternatives
+
+
+def test_blob_upload_records_verifiable_credential_effective_mime() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    credential = {
+        "@context": ["https://www.w3.org/ns/credentials/v2"],
+        "type": ["VerifiableCredential", "ExampleCredential"],
+        "issuer": "did:example:issuer",
+        "credentialSubject": {"id": "did:example:holder"},
+    }
+    credential_data = json.dumps(credential).encode("utf-8")
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Example Credential",
+            "description": "VC",
+            "confirmed": "yes",
+        },
+        files={"blob": ("credential.json", credential_data, "application/json")},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert acorn.record_put_calls[0]["record_value"]["content_type"] == "application/vc"
+    assert acorn.record_put_calls[0]["blob_type"] == "application/vc"
+
+
+def test_record_detail_shows_determined_original_record_type() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        existing_labels={"Example Credential"},
+        blob_type="application/vc",
+        payload={
+            "filename": "credential.json",
+            "content_type": "application/vc",
+            "size": 123,
+        },
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get(
+        "/record",
+        params={"label": "Example Credential", "saved": "1"},
+    )
+
+    assert response.status_code == 200
+    assert "Record saved and verified." in response.text
+    assert (
+        "Safebox stored Original Record type for credential.json: application/vc."
+        in response.text
+    )
 
 
 def test_blob_upload_rejects_existing_label_without_orphaning_blob() -> None:
@@ -5877,6 +6093,10 @@ def test_pkpass_blob_download_uses_wallet_pass_headers_from_metadata() -> None:
     assert "Tim Oliver" in detail.text
     assert "Hanzo Main" in detail.text
     assert "downloads.timoliver.com.au" in detail.text
+    assert (
+        "Safebox recognized Original Record type for Example.pkpass: application/vnd.apple.pkpass."
+        in detail.text
+    )
     assert 'src="data:image/png;base64,' in detail.text
     assert "&#34;data:image" not in detail.text
     assert "img-src 'self' data:" in detail.headers["content-security-policy"]

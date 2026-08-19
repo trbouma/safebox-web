@@ -6,6 +6,9 @@
 <section class="blob-record" aria-labelledby="blob-heading">
   <h2 id="blob-heading">Original Record</h2>
   <p>The Original Record is protected by Acorn and stored separately from its record metadata.</p>
+  {% if blob_type_notice %}
+  <p class="record-type-notice">{{ blob_type_notice }}</p>
+  {% endif %}
   {% if blob_fingerprint %}
   <p class="record-fingerprint">
     <svg class="inline-icon" viewBox="0 0 24 24" fill="none"

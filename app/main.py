@@ -6,7 +6,7 @@ import asyncio
 import base64
 import io
 from contextlib import asynccontextmanager
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from html import escape
 import inspect
@@ -1269,6 +1269,12 @@ INLINE_BLOB_IMAGE_TYPES = frozenset(
     }
 )
 PKPASS_MIME_TYPE = "application/vnd.apple.pkpass"
+VC_MIME_TYPE = "application/vc"
+VP_MIME_TYPE = "application/vp"
+VC_JWT_MIME_TYPE = "application/vc+jwt"
+VC_SD_JWT_MIME_TYPE = "application/vc+sd-jwt"
+VC_COSE_MIME_TYPE = "application/vc+cose"
+MDOC_CBOR_MIME_TYPE = "application/mdoc+cbor"
 PKPASS_PREVIEW_MAX_ARCHIVE_BYTES = 8 * 1024 * 1024
 PKPASS_PREVIEW_MAX_MEMBER_BYTES = 2 * 1024 * 1024
 PKPASS_PREVIEW_MAX_TOTAL_BYTES = 12 * 1024 * 1024
@@ -1284,15 +1290,197 @@ PKPASS_PREVIEW_IMAGE_NAMES = (
 )
 
 
-def _uploaded_blob_media_type(upload: UploadFile | None) -> str | None:
-    """Return a normalized media type for uploaded Original Records."""
+@dataclass(frozen=True)
+class EffectiveMimeResolution:
+    effective_mime: str | None
+    source: str
+    confidence: str
+    detected_mime: str | None = None
+    evidence: tuple[str, ...] = ()
+    requires_confirmation: bool = False
+    alternatives: tuple[str, ...] = ()
+
+
+def _normalize_media_type(media_type: str | None) -> str | None:
+    normalized = str(media_type or "").split(";", 1)[0].strip().lower()
+    return normalized or None
+
+
+def _upload_original_filename(upload: UploadFile | None) -> str:
+    if upload is None:
+        return ""
+    return str(upload.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def _json_has_type(value, expected_type: str) -> bool:
+    document_types = value.get("type")
+    if isinstance(document_types, str):
+        return document_types == expected_type
+    if isinstance(document_types, list):
+        return expected_type in document_types
+    return False
+
+
+def _vc_media_type_from_json(
+    blob_data: bytes | None,
+) -> tuple[str, tuple[str, ...]] | None:
+    if not blob_data or len(blob_data) > 1024 * 1024:
+        return None
+    try:
+        document = json.loads(blob_data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    context = document.get("@context")
+    if isinstance(context, str):
+        contexts = [context]
+    elif isinstance(context, list):
+        contexts = [item for item in context if isinstance(item, str)]
+    else:
+        contexts = []
+    has_vc_context = any(
+        item
+        in (
+            "https://www.w3.org/ns/credentials/v2",
+            "https://www.w3.org/2018/credentials/v1",
+        )
+        for item in contexts
+    )
+    if _json_has_type(document, "VerifiablePresentation"):
+        evidence = ["json type includes VerifiablePresentation"]
+        if has_vc_context:
+            evidence.append("json includes W3C credentials context")
+        return VP_MIME_TYPE, tuple(evidence)
+    if _json_has_type(document, "VerifiableCredential"):
+        evidence = ["json type includes VerifiableCredential"]
+        if has_vc_context:
+            evidence.append("json includes W3C credentials context")
+        return VC_MIME_TYPE, tuple(evidence)
+    return None
+
+
+def _base64url_json(segment: str) -> dict | None:
+    if not segment:
+        return None
+    padding = "=" * (-len(segment) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode((segment + padding).encode("ascii"))
+        value = json.loads(decoded.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _vc_media_type_from_token(
+    blob_data: bytes | None,
+) -> tuple[str, tuple[str, ...]] | None:
+    if not blob_data or len(blob_data) > 1024 * 1024:
+        return None
+    try:
+        token = blob_data.decode("ascii").strip()
+    except UnicodeDecodeError:
+        return None
+    if not token or any(character.isspace() for character in token):
+        return None
+    first_token = token.split("~", 1)[0]
+    parts = first_token.split(".")
+    if len(parts) < 2:
+        return None
+    header = _base64url_json(parts[0])
+    payload = _base64url_json(parts[1])
+    typ = str((header or {}).get("typ") or "").lower()
+    if "vc+sd-jwt" in typ or (
+        "~" in token and isinstance(payload, dict) and "vct" in payload
+    ):
+        return VC_SD_JWT_MIME_TYPE, ("token indicates SD-JWT VC",)
+    if "vc+jwt" in typ or "vc" in typ:
+        return VC_JWT_MIME_TYPE, ("jwt header typ indicates VC",)
+    if isinstance(payload, dict) and (
+        isinstance(payload.get("vc"), dict) or isinstance(payload.get("vp"), dict)
+    ):
+        return VC_JWT_MIME_TYPE, ("jwt payload contains vc/vp claim",)
+    return None
+
+
+def _resolve_upload_effective_mime(
+    upload: UploadFile | None,
+    blob_data: bytes | None = None,
+) -> EffectiveMimeResolution:
+    """Resolve the artifact MIME type for an uploaded Original Record."""
 
     if upload is None:
-        return None
-    filename = str(upload.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
-    if filename.lower().endswith(".pkpass"):
-        return PKPASS_MIME_TYPE
-    return str(upload.content_type or "").split(";", 1)[0].strip().lower() or None
+        return EffectiveMimeResolution(None, "missing", "none")
+    filename = _upload_original_filename(upload)
+    lower_filename = filename.lower()
+    declared_mime = _normalize_media_type(upload.content_type)
+    extension_map = {
+        ".pkpass": PKPASS_MIME_TYPE,
+        ".vc": VC_MIME_TYPE,
+        ".vp": VP_MIME_TYPE,
+        ".vc-jwt": VC_JWT_MIME_TYPE,
+        ".vc.jwt": VC_JWT_MIME_TYPE,
+        ".sd-jwt": VC_SD_JWT_MIME_TYPE,
+        ".vc+sd-jwt": VC_SD_JWT_MIME_TYPE,
+        ".vc+cose": VC_COSE_MIME_TYPE,
+        ".mdoc": MDOC_CBOR_MIME_TYPE,
+        ".mdl": MDOC_CBOR_MIME_TYPE,
+    }
+    for suffix, media_type in extension_map.items():
+        if lower_filename.endswith(suffix):
+            return EffectiveMimeResolution(
+                media_type,
+                "inferred",
+                "high" if suffix == ".pkpass" else "medium",
+                detected_mime=declared_mime,
+                evidence=(f"filename ends {suffix}",),
+                requires_confirmation=suffix != ".pkpass",
+                alternatives=tuple(
+                    value
+                    for value in (declared_mime, media_type, "application/octet-stream")
+                    if value
+                ),
+            )
+    if token_result := _vc_media_type_from_token(blob_data):
+        media_type, evidence = token_result
+        return EffectiveMimeResolution(
+            media_type,
+            "inferred",
+            "medium",
+            detected_mime=declared_mime,
+            evidence=evidence,
+            requires_confirmation=True,
+            alternatives=tuple(
+                value
+                for value in (declared_mime, media_type, "application/octet-stream")
+                if value
+            ),
+        )
+    if json_result := _vc_media_type_from_json(blob_data):
+        media_type, evidence = json_result
+        return EffectiveMimeResolution(
+            media_type,
+            "inferred",
+            "high" if "json includes W3C credentials context" in evidence else "medium",
+            detected_mime=declared_mime,
+            evidence=evidence,
+            requires_confirmation="json includes W3C credentials context" not in evidence,
+            alternatives=tuple(
+                value
+                for value in (declared_mime, media_type, "application/octet-stream")
+                if value
+            ),
+        )
+    return EffectiveMimeResolution(
+        declared_mime,
+        "declared" if declared_mime else "default",
+        "low" if declared_mime else "none",
+        detected_mime=declared_mime,
+        evidence=(f"upload declared {declared_mime}",) if declared_mime else (),
+        alternatives=(declared_mime, "application/octet-stream")
+        if declared_mime and declared_mime != "application/octet-stream"
+        else (),
+    )
 
 
 def _record_original_filename(record_value) -> str:
@@ -1302,14 +1490,34 @@ def _record_original_filename(record_value) -> str:
     return ""
 
 
+def _original_record_type_notice(record_value, blob_type: str | None) -> str | None:
+    if not getattr(record_value, "blobref", None):
+        return None
+    effective_mime = _normalize_media_type(blob_type) or "application/octet-stream"
+    filename = _record_original_filename(record_value)
+    payload = getattr(record_value, "payload", None)
+    stored_mime = (
+        _normalize_media_type(payload.get("content_type"))
+        if isinstance(payload, dict)
+        else None
+    )
+    source = "determined"
+    if stored_mime and stored_mime == effective_mime:
+        source = "stored"
+    if filename.lower().endswith(".pkpass") and effective_mime == PKPASS_MIME_TYPE:
+        source = "recognized"
+    filename_text = f" for {filename}" if filename else ""
+    return f"Safebox {source} Original Record type{filename_text}: {effective_mime}."
+
+
 def _effective_blob_media_type(media_type: str | None, record_value=None) -> str:
     """Prefer explicit Original Record metadata when byte sniffing is ambiguous."""
 
-    normalized = str(media_type or "application/octet-stream").split(";", 1)[0].strip().lower()
+    normalized = _normalize_media_type(media_type) or "application/octet-stream"
     if record_value is not None:
         payload = getattr(record_value, "payload", None)
         if isinstance(payload, dict):
-            payload_type = str(payload.get("content_type") or "").split(";", 1)[0].strip().lower()
+            payload_type = _normalize_media_type(payload.get("content_type"))
             if payload_type == PKPASS_MIME_TYPE:
                 return PKPASS_MIME_TYPE
         if _record_original_filename(record_value).lower().endswith(".pkpass"):
@@ -5817,9 +6025,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         metadata = {
             "description": record_description,
             "filename": original_filename,
-            "content_type": _uploaded_blob_media_type(blob),
             "size": len(blob_data),
         }
+        mime_resolution = _resolve_upload_effective_mime(blob, blob_data)
+        metadata["content_type"] = mime_resolution.effective_mime
         blob_type = metadata["content_type"]
         try:
             await asyncio.wait_for(
@@ -6082,6 +6291,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     413,
                 )
 
+        attachment_mime = (
+            _resolve_upload_effective_mime(attachment, attachment_data).effective_mime
+            if attachment_data is not None
+            else None
+        )
         try:
             await asyncio.wait_for(
                 _put_acorn_record(
@@ -6091,11 +6305,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     record_type="generic",
                     record_kind=37375,
                     blob_data=attachment_data,
-                    blob_type=(
-                        _uploaded_blob_media_type(attachment)
-                        if attachment_data is not None
-                        else None
-                    ),
+                    blob_type=attachment_mime,
                     preserve_existing_blob=True,
                     return_result=True,
                 ),
@@ -6357,6 +6567,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payload=rendered_payload,
             has_blob=bool(getattr(record_value, "blobref", None)),
             blob_type=blob_type,
+            blob_type_notice=_original_record_type_notice(record_value, blob_type),
             blob_preview=blob_preview,
             pkpass_preview=pkpass_preview,
             blob_fingerprint=blob_fingerprint,
