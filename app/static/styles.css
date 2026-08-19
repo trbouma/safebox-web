@@ -186,6 +186,7 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .json-credential-depth-3, .json-credential-depth-4, .json-credential-depth-5, .json-credential-depth-6 { padding-left: 3rem; }
 .json-credential-truncated { margin: .75rem 0 0; color: var(--muted); font-size: .92rem; }
 .mdoc-preview { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); }
+.mdoc-preview h3 { margin: 0 0 .65rem; font-size: 1.05rem; }
 .preview-status { margin: 0 0 .85rem; color: var(--muted); font-size: .92rem; overflow-wrap: anywhere; }
 .mdoc-summary { display: grid; gap: .45rem; margin: 0 0 1rem; padding-bottom: .85rem; border-bottom: 1px solid var(--border); }
 .mdoc-summary div { min-width: 0; }
@@ -195,6 +196,13 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .mdoc-fields div { min-width: 0; }
 .mdoc-fields dt { display: inline; font-weight: 800; overflow-wrap: anywhere; }
 .mdoc-fields dd { display: inline; margin: 0 0 0 .35rem; overflow-wrap: anywhere; }
+.pid-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .75rem 1.25rem; margin: 0; }
+.pid-fields div { min-width: 0; padding-bottom: .5rem; border-bottom: 1px solid var(--border); }
+.pid-fields dt { margin: 0 0 .15rem; font-weight: 800; overflow-wrap: anywhere; }
+.pid-fields dd { margin: 0; overflow-wrap: anywhere; }
+.mdoc-technical-fields { margin-top: 1rem; }
+.mdoc-technical-fields summary { cursor: pointer; color: var(--muted); }
+.mdoc-technical-fields[open] summary { margin-bottom: .75rem; }
 .mdoc-depth-1 { padding-left: 1rem; }
 .mdoc-depth-2 { padding-left: 2rem; }
 .mdoc-depth-3, .mdoc-depth-4, .mdoc-depth-5, .mdoc-depth-6 { padding-left: 3rem; }

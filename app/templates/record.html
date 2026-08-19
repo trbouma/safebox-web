@@ -112,7 +112,10 @@
   {% endif %}
   {% elif blob_type == "application/mdoc+cbor" %}
   {% if mdoc_preview %}
-  <article class="mdoc-preview" aria-label="mDL preview">
+  <article class="mdoc-preview" aria-label="{% if mdoc_preview.credential_kind == 'eudi_pid' %}EUDI PID preview{% elif mdoc_preview.credential_kind == 'mdl' %}mDL preview{% else %}mdoc preview{% endif %}">
+    {% if mdoc_preview.credential_kind == "eudi_pid" %}
+    <h3>EU Digital Identity PID</h3>
+    {% endif %}
     <p class="preview-status">Preview only. Safebox decoded this mdoc container but has not verified issuer signatures, device signatures, or digest bindings.</p>
     {% if mdoc_preview.doc_type or mdoc_preview.document_count is not none or mdoc_preview.status is not none %}
     <dl class="mdoc-summary">
@@ -136,6 +139,18 @@
       {% endif %}
     </dl>
     {% endif %}
+    {% if mdoc_preview.credential_kind == "eudi_pid" and mdoc_preview.pid_fields %}
+    <dl class="pid-fields">
+      {% for field in mdoc_preview.pid_fields %}
+      <div>
+        <dt>{{ field.label }}</dt>
+        <dd>{{ field.value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    <details class="mdoc-technical-fields">
+      <summary>Technical mdoc fields</summary>
+    {% endif %}
     <dl class="mdoc-fields">
       {% for row in mdoc_preview.rows %}
       <div class="mdoc-depth-{{ row.depth }}">
@@ -144,6 +159,9 @@
       </div>
       {% endfor %}
     </dl>
+    {% if mdoc_preview.credential_kind == "eudi_pid" and mdoc_preview.pid_fields %}
+    </details>
+    {% endif %}
     {% if mdoc_preview.truncated %}
     <p class="mdoc-truncated">Preview truncated.</p>
     {% endif %}

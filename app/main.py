@@ -1276,11 +1276,38 @@ VC_JWT_MIME_TYPE = "application/vc+jwt"
 VC_SD_JWT_MIME_TYPE = "application/vc+sd-jwt"
 VC_COSE_MIME_TYPE = "application/vc+cose"
 MDOC_CBOR_MIME_TYPE = "application/mdoc+cbor"
+EUDI_PID_DOC_TYPE = "eu.europa.ec.eudi.pid.1"
+MDL_DOC_TYPE = "org.iso.18013.5.1.mDL"
 JSON_CREDENTIAL_PREVIEW_TYPES = frozenset({VC_MIME_TYPE, VP_MIME_TYPE})
 JSON_CREDENTIAL_PREVIEW_MAX_BYTES = 1024 * 1024
 JSON_CREDENTIAL_PREVIEW_MAX_ROWS = 80
 MDOC_PREVIEW_MAX_BYTES = 1024 * 1024
 MDOC_PREVIEW_MAX_ROWS = 100
+EUDI_PID_FIELD_LABELS = {
+    "family_name": "Family name",
+    "given_name": "Given name",
+    "birth_date": "Date of birth",
+    "place_of_birth": "Place of birth",
+    "nationality": "Nationality",
+    "expiry_date": "Expiry date",
+    "issuing_authority": "Issuing authority",
+    "issuing_country": "Issuing country",
+    "issuance_date": "Issuance date",
+    "resident_address": "Address",
+    "resident_country": "Country of residence",
+    "resident_state": "State or region",
+    "resident_city": "City",
+    "resident_postal_code": "Postal code",
+    "resident_street": "Street",
+    "resident_house_number": "House number",
+    "document_number": "Document number",
+    "personal_administrative_number": "Administrative number",
+    "family_name_birth": "Family name at birth",
+    "given_name_birth": "Given name at birth",
+    "sex": "Sex",
+    "email_address": "Email address",
+    "mobile_phone_number": "Mobile phone number",
+}
 EFFECTIVE_MIME_DOWNLOAD_EXTENSIONS = {
     VC_MIME_TYPE: ".json",
     VP_MIME_TYPE: ".json",
@@ -1786,6 +1813,68 @@ def _mdoc_preview_scalar(value) -> str:
     return str(value)[:500]
 
 
+def _mdoc_embedded_map(value) -> dict | None:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, cbor2.CBORTag):
+        value = value.value
+    if not isinstance(value, bytes):
+        return None
+    try:
+        decoded = cbor2.loads(value)
+    except (cbor2.CBORDecodeError, ValueError, TypeError):
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def _mdoc_display_value(value) -> str:
+    if isinstance(value, cbor2.CBORTag):
+        return _mdoc_display_value(value.value)
+    if isinstance(value, bytes):
+        return f"Binary data ({len(value)} bytes)"
+    if isinstance(value, dict):
+        return ", ".join(
+            f"{_mdoc_preview_scalar(key)}: {_mdoc_display_value(child)}"
+            for key, child in value.items()
+        )[:500]
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_mdoc_display_value(child) for child in value)[:500]
+    return _mdoc_preview_scalar(value)
+
+
+def _eudi_pid_preview_fields(first_document: dict | None) -> list[dict[str, str]]:
+    if not isinstance(first_document, dict):
+        return []
+    issuer_signed = first_document.get("issuerSigned")
+    if not isinstance(issuer_signed, dict):
+        return []
+    namespaces = issuer_signed.get("nameSpaces")
+    if not isinstance(namespaces, dict):
+        return []
+    elements = namespaces.get(EUDI_PID_DOC_TYPE)
+    if not isinstance(elements, (list, tuple)):
+        return []
+
+    fields = []
+    for encoded_element in elements:
+        element = _mdoc_embedded_map(encoded_element)
+        if element is None:
+            continue
+        identifier = str(element.get("elementIdentifier") or "").strip()
+        if not identifier or "elementValue" not in element:
+            continue
+        fields.append(
+            {
+                "identifier": identifier,
+                "label": EUDI_PID_FIELD_LABELS.get(
+                    identifier, identifier.replace("_", " ").capitalize()
+                ),
+                "value": _mdoc_display_value(element["elementValue"]),
+            }
+        )
+    return fields
+
+
 def _mdoc_preview_rows(
     value,
     *,
@@ -1890,8 +1979,16 @@ def _mdoc_preview(blob_data: bytes | None) -> dict | None:
     rows = _mdoc_preview_rows(document)
     return {
         "doc_type": doc_type,
+        "credential_kind": (
+            "eudi_pid"
+            if doc_type == EUDI_PID_DOC_TYPE
+            else "mdl"
+            if doc_type == MDL_DOC_TYPE
+            else "mdoc"
+        ),
         "document_count": document_count,
         "status": _mdoc_preview_scalar(status) if status is not None else None,
+        "pid_fields": _eudi_pid_preview_fields(first_document),
         "rows": rows,
         "truncated": len(rows) >= MDOC_PREVIEW_MAX_ROWS,
     }

@@ -5976,8 +5976,19 @@ def test_mdoc_preview_decodes_synthetic_eudi_pid_fixture() -> None:
 
     assert preview is not None
     assert preview["doc_type"] == "eu.europa.ec.eudi.pid.1"
+    assert preview["credential_kind"] == "eudi_pid"
     assert preview["document_count"] == 1
     assert preview["status"] == "0"
+    assert {
+        "identifier": "family_name",
+        "label": "Family name",
+        "value": "MUSTERMANN",
+    } in preview["pid_fields"]
+    assert {
+        "identifier": "place_of_birth",
+        "label": "Place of birth",
+        "value": "country: DE, locality: BERLIN",
+    } in preview["pid_fields"]
     assert {
         "key": (
             "documents[0].issuerSigned.nameSpaces.eu.europa.ec.eudi.pid.1[0]."
@@ -5990,6 +6001,40 @@ def test_mdoc_preview_decodes_synthetic_eudi_pid_fixture() -> None:
         row["key"].endswith("elementValue") and row["value"] == "MUSTERMANN"
         for row in preview["rows"]
     )
+
+
+def test_eudi_pid_upload_renders_semantic_preview() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Example EUDI PID",
+            "description": "Synthetic EUDI PID fixture",
+            "confirmed": "yes",
+        },
+        files={
+            "blob": (
+                "eudi_pid_synthetic.mdoc",
+                EUDI_PID_FIXTURE.read_bytes(),
+                "application/cbor",
+            )
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert 'aria-label="EUDI PID preview"' in response.text
+    assert "<h3>EU Digital Identity PID</h3>" in response.text
+    assert "<dt>Family name</dt>" in response.text
+    assert "<dd>MUSTERMANN</dd>" in response.text
+    assert "<dt>Place of birth</dt>" in response.text
+    assert "<dd>country: DE, locality: BERLIN</dd>" in response.text
+    assert "<summary>Technical mdoc fields</summary>" in response.text
 
 
 def test_blob_upload_records_verifiable_credential_effective_mime() -> None:
