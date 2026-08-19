@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Safebox Web</title>
+  <desc id="desc">The Safebox logo with the words Safebox Web and its local-first product description.</desc>
+  <rect width="1200" height="630" fill="#e9f4f1"/>
+  <rect y="610" width="1200" height="20" fill="#c76545"/>
+  <!-- The published PNG composites safebox-logo.png into this reserved area. -->
+  <text x="585" y="276" fill="#102d31" font-family="Arial, Helvetica, sans-serif" font-size="78" font-weight="700">Safebox Web</text>
+  <text x="590" y="346" fill="#2f6669" font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="600">User-controlled value, records,</text>
+  <text x="590" y="390" fill="#2f6669" font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="600">and continuity.</text>
+</svg>
