@@ -1,5 +1,5 @@
 site_name: Safebox Web
-site_description: A local-first application for user-controlled funds, records, and continuity.
+site_description: A local-first application for user-controlled value, verifiable records, and continuity.
 site_url: https://trbouma.github.io/safebox-web/
 repo_url: https://github.com/trbouma/safebox-web
 repo_name: trbouma/safebox-web
@@ -46,7 +46,7 @@ nav:
       - Trust Boundary: trust-boundary.md
   - Use Safebox Web:
       - Getting Started: getting-started.md
-      - Records and Wallet Passes: records-and-wallet-passes.md
+      - Verifiable Records: records-and-wallet-passes.md
       - Receiving Funds: receiving-funds.md
       - Local-First Stack: local-first-stack.md
   - Project Status: project-status.md

@@ -22,8 +22,8 @@ permanent.
                 Acorn
           /    |     \
          v     v      v
-    Spurline  Grove  OpenETR
-   local relay blobs  evidence
+    Spurline  Grove  control protocols
+   local relay blobs  OpenETR and others
 
         proven workflows
               |
@@ -78,8 +78,9 @@ encrypt originals before Grove receives them.
 
 ### OpenETR
 
-A records-first evidence layer for exact artifact digests, signed origin
-events, control history, and verifier policy.
+A records-first control protocol that can bind signed origin and lifecycle
+events to an exact artifact's Uniform Digest Anchor. It is one interoperable
+control profile rather than a requirement for every record community.
 
 </article>
 
@@ -115,6 +116,10 @@ payment or record. Confidence is assembled from narrow responsibilities:
 | Relay | signed-event availability and transport |
 | Mint | Cashu proof spend state |
 | Acorn runtime | proof compatibility, wallet mutation, and verified persistence |
+| Effective MIME resolver | artifact classification for application handling |
+| Safebox renderer | bounded human-readable previews for known formats |
+| Native verifier | format-specific signatures, bindings, status, and trust policy |
+| Attestation or control protocol | independent statements and lifecycle evidence bound to a Uniform Digest Anchor |
 | Safebox Web | user intent, workflow coordination, and understandable status |
 
 That is why an incoming payment can be visibly present but not yet part of the
@@ -122,9 +127,10 @@ spendable balance. It is also why the application database can coordinate a
 background task without becoming the wallet.
 
 The same pattern applies to records. Safebox's
-[Deep Verification](deep-verification.md) model keeps exact bytes, digest
-anchors, signed control evidence, recognition, policy, and presentation in
-separate layers that can reinforce each other.
+[Deep Verification](deep-verification.md) model keeps exact bytes, Uniform
+Digest Anchors, effective MIME, semantic presentation, native verification,
+signed attestations, control evidence, recognition, and policy in separate
+layers that can reinforce each other.
 
 These boundaries contain failures and keep authority legible. Open protocols
 prevent them from becoming barriers: each component can remain independently

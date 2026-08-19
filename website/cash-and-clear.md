@@ -34,6 +34,11 @@ Clear activity is described as a transfer, not a cash payment. A transfer may
 be an allocation, gift, benefit, exchange, or treasury disbursement under the
 issuer's program.
 
+<figure class="safebox-screen-figure" markdown>
+![Safebox Web Clear Transactions screen showing 602 spendable Clear Lab Credits, the canonical CMU, issuing mint, and a separate pending-transfer check](assets/images/safebox-clear-transactions.png)
+<figcaption>The Clear Transactions screen keeps the readable alias, spendable amount, canonical CMU, and issuing mint together. Pending transfers remain visibly separate until they are accepted into the matching balance.</figcaption>
+</figure>
+
 ## Why the balances stay separate
 
 ```text
@@ -52,7 +57,20 @@ and obligations.
 Friendly aliases make balances readable. Canonical identifiers keep them
 honest.
 
-## Receiving a Clear transfer
+## Clear Transactions
+
+A **Clear Transaction** moves units associated with one specific Clear Balance.
+Its amount only has meaning together with the issuing mint and CMU. Safebox Web
+therefore keeps Clear transaction activity out of Cash history and does not
+combine activity from unrelated Clear balances.
+
+The Clear Transactions page presents three distinct states:
+
+- spendable units already held in each Clear Balance;
+- pending transfers discovered on the relay; and
+- completed Clear transaction history for that exact mint and CMU.
+
+### Receiving a Clear transfer
 
 A sender delivers a private kind `7379` Clear transfer to the NIP-05 address
 associated with the wallet. On the Clear Transactions page, the recipient
@@ -82,4 +100,3 @@ units with no promise of financial value.
 [Read the technical milestone](https://github.com/trbouma/safebox-web/blob/main/docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md){ .md-button .md-button--primary }
 [How Safebox treats funds](how-safebox-treats-funds.md){ .md-button }
 [Project status](project-status.md){ .md-button }
-

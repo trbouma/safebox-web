@@ -1,128 +1,162 @@
 ---
-title: Records and Wallet Passes
-description: How Safebox Web safeguards, previews, and preserves original records, including PKPASS Wallet passes.
+title: Verifiable Records
+description: How Safebox preserves exact artifacts, resolves their effective type, presents useful previews, and supports independent verification and control layers.
 ---
 
-# Records and Wallet Passes
+# Verifiable Records
 
 Safebox Web can safeguard a private record together with its **Original
-Record**: the exact PDF, image, Wallet pass, or other artifact attached to it.
-The record supplies context. The Original Record preserves the thing itself.
+Record**: the exact artifact attached to it. The private record supplies human
+context. Acorn preserves and retrieves the encrypted original. Safebox Web
+chooses a useful presentation. Native verifiers and control protocols can then
+add evidence without redefining the artifact.
 
-Supported representations currently include:
+This is a common pipeline for otherwise very different records:
 
-| Original Record | Safebox Web behavior |
-| --- | --- |
-| Image | Show an inline image preview. |
-| PDF | Show a browser-compatible PDF viewer and original download. |
-| Apple Wallet `.pkpass` | Show a Wallet-pass preview and an **Open/Add Wallet Pass** action. |
-| Other artifact | Preserve the original and provide a download when inline rendering is not appropriate. |
+| Original Record | Effective MIME | Safebox Web presentation |
+| --- | --- | --- |
+| Image | `image/*` | Responsive inline image |
+| PDF | `application/pdf` | Browser-compatible PDF viewer |
+| Apple Wallet pass | `application/vnd.apple.pkpass` | Pass fields, artwork, QR or Aztec barcode, and wallet action |
+| W3C Verifiable Credential | `application/vc` or `application/vp` | Nested credential fields with readable keys and values |
+| EUDI PID | `application/mdoc+cbor` | Semantic PID identity fields with technical mdoc data available separately |
+| ISO mobile driving licence | `application/mdoc+cbor` | Semantic mDL fields with technical mdoc data available separately |
+| Other artifact | Resolved or declared type | Exact original download when no specialized preview is available |
 
-## PKPASS is now a first-class Original Record
+## Format-aware at the edge, format-agnostic at the core
 
-A `.pkpass` file is technically a signed ZIP package, but to a person it is a
-boarding pass, ticket, membership card, coupon, or other Wallet pass. Safebox
-Web preserves that distinction instead of presenting every pass as an
-unhelpful ZIP download.
+The upload resolver considers the filename, declared media type, and narrowly
+defined format evidence to determine an **effective MIME**. That value tells
+Safebox Web which presentation handler to use.
 
-When Acorn identifies the effective media type as
-`application/vnd.apple.pkpass`, Safebox Web can display:
-
-- the issuing organization, description, and serial number;
-- primary, secondary, auxiliary, header, and back fields;
-- package artwork such as the logo, icon, strip, or thumbnail;
-- a QR or Aztec symbol when the pass declares a supported barcode; and
-- a link that opens or downloads the original pass for a compatible wallet.
-
-The preview is server-rendered. The browser does not need a PKPASS parser or a
-special client-side application merely to inspect the pass.
-
-## The original remains the original
-
-Safebox Web does not rewrite, normalize, or re-sign a Wallet pass. Acorn
-encrypts the Original Record before it is sent to blob storage and returns the
-exact decrypted bytes when the user requests it.
+The storage path remains unopinionated:
 
 ```text
-Original PKPASS bytes
-        -> encrypted by Acorn
-        -> stored as an opaque blob
-        -> retrieved and authenticated
-        -> decrypted for the connected session
-        -> previewed or opened as a Wallet pass
+Original Record bytes
+    -> hashed and encrypted by Acorn
+    -> stored by a Blossom-compatible server as opaque ciphertext
+    -> authenticated, retrieved, and decrypted for the connected user
+    -> interpreted by Safebox Web through effective MIME
 ```
 
-The preview helps a person understand the artifact. The digest of the exact
-Original Record remains the stable anchor for integrity and deeper
-verification.
+Grove does not need a PKPASS parser, credential schema, CBOR decoder, or trust
+registry. Regular blobs require no format-specific storage logic. New
+presentation handlers can be added without changing the blob protocol.
 
-## Preview is not issuer validation
+## Uniform Digest Anchor
 
-Showing a pass does not, by itself, establish that its issuer should be
-trusted. A compatible Wallet application remains responsible for its
-install-time signature and trust behavior. Safebox Web preserves the pass and
-makes it understandable; OpenETR or another control layer can associate the
-unchanged artifact digest with signed origin, transfer, presentation,
-revocation, or verifier-policy evidence.
-
-That separation is deliberate:
-
-| Question | Responsible layer |
-| --- | --- |
-| Where are the encrypted bytes held? | Grove or another Blossom server |
-| Who encrypts, retrieves, and authenticates them? | Acorn |
-| How are they presented to the user? | Safebox Web |
-| Is this the exact original artifact? | Original Record digest |
-| Who issued or controlled it? | Signed evidence and verifier policy |
-
-## A path to W3C Verifiable Credentials
-
-The same architecture provides a clear path for holding and verifying
-[W3C Verifiable Credentials](https://www.w3.org/TR/vc-data-model-2.0/).
-A credential can be safeguarded as an Original Record while Safebox preserves
-its exact secured representation and the surrounding private record supplies
-human context.
-
-Supporting a credential involves several distinct questions:
-
-| Question | Verification concern |
-| --- | --- |
-| Does it conform to the expected credential model? | Credential structure and schema |
-| Is its securing mechanism valid? | Issuer proof verification |
-| Is it suspended, revoked, or otherwise constrained? | Credential status and policy |
-| Is the presenter entitled to present it? | Holder binding and presentation challenge |
-| Does this verifier recognize the issuer and claims? | Local recognition and verifier policy |
-
-Safebox should not collapse these questions into a single “verified” badge.
-The W3C credential layer can establish that a secured claim was made by a
-particular issuer and presented under the applicable mechanism. The verifier
-still decides what that claim means in context.
-
-### Deeper verification through OpenETR
-
-OpenETR can add another dimension when the credential refers to an object,
-record, entitlement, or instrument whose history matters. The exact credential
-or underlying Original Record digest can be connected to signed control events
-that describe origin, transfer, presentation, encumbrance, redemption, or
-termination.
+Every exact Original Record can produce a **Uniform Digest Anchor (UDA)**:
 
 ```text
-W3C credential verification
-        -> who made this secured claim?
-        -> is the credential and presentation valid?
-
-OpenETR control verification
-        -> what object does the claim refer to?
-        -> where did it originate?
-        -> how has control changed over time?
-        -> is the presented state still current?
+uniform_digest_anchor = sha256(exact_original_bytes)
 ```
 
-These models are complementary. A Verifiable Credential can carry a portable,
-machine-verifiable assertion. OpenETR can subject the referenced artifact and
-its control history to deeper verification. Safebox provides the private
-safekeeping and presentation environment in which both forms of evidence can
-be used without turning the application itself into the system of record.
+Uniform means every format gets the same kind of exact-byte reference. It does
+not mean that different renditions share a digest. A PDF conversion of a
+credential and its original mdoc are different byte sequences with different
+anchors.
 
-[Understand deep verification](deep-verification.md){ .md-button .md-button--primary }
-[Read the implementation note](https://github.com/trbouma/safebox-web/blob/main/docs/PKPASS-PREVIEW-FEATURE.md){ .md-button }
+The UDA allows otherwise independent evidence systems to agree on precisely
+which artifact they concern:
+
+```text
+exact artifact
+    -> Uniform Digest Anchor
+       +-> native signature verification
+       +-> issuer and status evidence
+       +-> third-party attestations
+       +-> provenance and control history
+       +-> community verifier policy
+```
+
+The anchor proves byte equality. It does not prove truth, issuer authority,
+validity, ownership, control, or legal effect.
+
+## Current semantic previews
+
+### Apple Wallet passes
+
+PKPASS packages can be shown as the passes people recognize: issuing
+organization, pass fields, artwork, serial information, and declared QR or
+Aztec barcodes. Safebox preserves the original signed ZIP package and does not
+rewrite or re-sign it.
+
+<figure class="safebox-screen-figure" markdown>
+![Safebox Web rendering an Apple Wallet boarding pass with boarding time, seat, date, website, and a large scannable Aztec barcode](assets/images/safebox-pkpass-boarding-pass.png)
+<figcaption>A live boarding-pass preview rendered from a PKPASS Original Record. Safebox presents the pass fields and generates the declared Aztec barcode from its encoded message while preserving the exact signed package for download and verification.</figcaption>
+</figure>
+
+### W3C Verifiable Credentials
+
+JSON W3C credentials and presentations can be recognized from their credential
+context and type. Safebox renders nested key-value data so a person can inspect
+the claims without downloading a `.bin` file or reading raw JSON.
+
+### EUDI PID
+
+An ISO mdoc with document type `eu.europa.ec.eudi.pid.1` receives a dedicated
+PID view. Family name, given name, birth information, nationality, address,
+document dates, and issuing details use human-readable labels. The underlying
+technical CBOR structure remains available in a collapsed view.
+
+### Mobile driving licences
+
+An ISO mdoc with document type `org.iso.18013.5.1.mDL` receives the same
+semantic treatment. Identity, licence, age, issuing, and driving-privilege
+fields can be presented cleanly while preserving the exact original mdoc.
+
+<figure class="safebox-screen-figure" markdown>
+![Safebox Web Original Record preview for a synthetic ISO mobile driving licence, showing its application/mdoc+cbor effective MIME, fingerprint, document type, identity fields, and preview-only verification notice](assets/images/safebox-mdl-preview.png)
+<figcaption>A live Safebox Web mDL preview. The application identifies the mdoc, anchors the exact original with a fingerprint, and presents useful identity fields without claiming that decoding has verified its signatures or digest bindings.</figcaption>
+</figure>
+
+Both PID and mDL views are explicitly marked **Preview only**. Decoding a
+container is not verification of issuer signatures, device signatures, digest
+bindings, status, or trust policy.
+
+## Native verification stays native
+
+Safebox does not flatten every standard into one pretend verification badge.
+
+| Artifact | Native verification may include |
+| --- | --- |
+| PKPASS | Apple pass manifest, signature, certificate chain, and wallet trust behavior |
+| W3C VC | Securing mechanism, issuer identity, credential status, holder proof, and verifier policy |
+| EUDI PID or mDL | COSE signatures, MSO digest bindings, device authentication, trust lists, status, and presentation context |
+| PDF | Embedded document signatures, certificate policy, timestamps, and revocation evidence |
+
+Those mechanisms can be integrated through format-specific verifier adapters.
+The Uniform Digest Anchor remains useful before, during, and after native
+verification because it identifies the exact input evaluated.
+
+## Independent attestation and control
+
+A separate protocol can bind signed statements to the same anchor without
+altering the Original Record or claiming authority over its native scheme.
+
+OpenETR is one example. It can describe origin, control, transfer,
+presentation, encumbrance, redemption, or termination for an exact artifact.
+Another community may care about inspection, archival custody, membership,
+local issuance, professional endorsement, or a different control lifecycle.
+
+```text
+shared substrate: exact artifact + Uniform Digest Anchor
+
+community A -> issuer trust and credential status
+community B -> notarization and custody attestations
+community C -> transferable control history
+community D -> local recognition and acceptance policy
+```
+
+The substrate is common; authority and policy are not. Anyone may be able to
+make an attestation. A verifier still decides whether the signer is recognized,
+whether the statement is relevant and current, and what effect it should have.
+Transferring protocol control of a digest-bound record also does not
+automatically transfer legal ownership or modify the artifact's native holder
+relationship.
+
+This separation lets Safebox support many record communities without becoming
+their universal schema owner, trust registry, or legal authority.
+
+[Understand Deep Verification](deep-verification.md){ .md-button .md-button--primary }
+[Read the PKPASS implementation note](https://github.com/trbouma/safebox-web/blob/main/docs/PKPASS-PREVIEW-FEATURE.md){ .md-button }

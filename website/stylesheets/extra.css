@@ -205,6 +205,27 @@
   text-align: center;
 }
 
+.safebox-screen-figure {
+  width: min(100%, 24rem);
+  margin: 1.5rem auto 1.75rem;
+}
+
+.safebox-screen-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid color-mix(in srgb, var(--md-default-fg-color) 16%, transparent);
+  border-radius: 0.5rem;
+}
+
+.safebox-screen-figure figcaption {
+  margin: 0.75rem auto 0;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  text-align: center;
+}
+
 .md-typeset blockquote {
   border-left-color: var(--safebox-copper);
 }

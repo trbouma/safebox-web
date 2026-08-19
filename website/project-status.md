@@ -60,12 +60,27 @@ Recipient finalization and onward Clear spending remain future work.
 
 [Read the Clear transfer product milestone](https://github.com/trbouma/safebox-web/blob/main/docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md){ .md-button .md-button--primary }
 
+## August 2026 verifiable records milestone
+
+Safebox Web now resolves and preserves effective MIME metadata for Original
+Records and provides specialized inline previews for PKPASS Wallet passes,
+JSON W3C Verifiable Credentials, EUDI PID mdocs, and ISO mobile driving
+licences.
+
+PID and mDL previews expose semantic identity fields while keeping technical
+CBOR available separately. The views are explicitly marked as previews rather
+than signature verification. Exact original bytes and their Uniform Digest
+Anchors remain available for native verifiers, OpenETR, or other independent
+attestation and control protocols.
+
 ## Current focus
 
 - clearer local development and deployment paths;
 - better documentation for Safebox Web as a standalone product;
 - local relay and blob-store integration through Spurline and Grove;
 - hardening payment and proof maintenance workflows;
+- expanding native verifier adapters and digest-bound attestation workflows
+  without coupling them to generic blob storage;
 - preserving the hypermedia boundary as PWA features are explored; and
 - carrying the proven Safebox workflows into the future Mainstay application
   and Lockbox appliance profile.

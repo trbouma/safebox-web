@@ -1,22 +1,22 @@
 ---
 title: Safebox Web
-description: A local-first application for user-controlled funds, records, and continuity.
+description: A local-first application for user-controlled value, verifiable records, and continuity.
 ---
 
 <section class="safebox-hero" markdown>
 
 # Safebox Web
 
-<p class="safebox-tagline">A local-first application for user-controlled funds, records, and continuity.</p>
+<p class="safebox-tagline">A local-first application for user-controlled value, verifiable records, and continuity.</p>
 
-<p class="safebox-intro">Safebox Web helps people hold funds, manage private records, receive value, and present portable evidence while keeping control portable across apps and infrastructure.</p>
+<p class="safebox-intro">Safebox Web brings Cash and Clear balances together with private, previewable Original Records while keeping value, evidence, and control portable across apps and infrastructure.</p>
 
 <figure class="safebox-phone" markdown>
   <div class="safebox-phone-frame">
     <span class="safebox-phone-speaker" aria-hidden="true"></span>
-    <img src="assets/images/safebox-phone-app.png" alt="Safebox Web mobile app in Connected Mode showing a mint-confirmed balance and pending transactions">
+    <img src="assets/images/safebox-phone-app.png" alt="Safebox Web mobile app in Connected Mode showing a Cash Balance and a separate Clear Balance">
   </div>
-  <figcaption>The large balance is mint-confirmed and spendable. Incoming value stays visible as pending until it can be finalized.</figcaption>
+  <figcaption>Cash and organization-issued Clear balances coexist in one wallet while remaining visibly distinct and independently accounted for.</figcaption>
 </figure>
 
 [Why Safebox Web?](why-safebox-web.md){ .md-button .md-button--primary }
@@ -25,7 +25,7 @@ description: A local-first application for user-controlled funds, records, and c
 
 </section>
 
-## A wallet app for funds, records, and evidence
+## One wallet, three kinds of capability
 
 Safebox Web gives people a practical place to create or connect a wallet,
 hold private records, receive value, share evidence, and recover continuity
@@ -40,8 +40,19 @@ sat-denominated payments and plural **Clear Balances** for transfers of
 organization-issued credits. The balances coexist in one wallet without being
 summed or presented as interchangeable.
 
+The same application can safeguard exact Original Records and present them
+according to what they are. Apple Wallet passes, W3C Verifiable Credentials,
+EUDI PIDs, and mobile driving licences can now receive semantic inline previews
+without asking the underlying blob store to understand any of those formats.
+
+| Capability | What Safebox shows | Where authority remains |
+| --- | --- | --- |
+| **Cash** | Mint-confirmed balance, pending arrivals, payments, and history | Cashu proofs, mint state, and the user's Acorn |
+| **Clear** | Separate balances for organization-issued units and transfer history | The issuing organization, Clear mint, and CMU policy |
+| **Verifiable Records** | Exact originals, effective type, semantic previews, and digest fingerprints | Native signature schemes, recognized issuers, attesters, and verifier policy |
+
 [Understand Cash and Clear](cash-and-clear.md){ .md-button .md-button--primary }
-[Explore records and Wallet passes](records-and-wallet-passes.md){ .md-button }
+[Explore verifiable records](records-and-wallet-passes.md){ .md-button .md-button--primary }
 
 <section class="safebox-brand" markdown>
 
@@ -66,9 +77,8 @@ a compatible private key.
 
 ### Use
 
-Work with relay-backed records, protected originals, handles, transaction
-history, receiving funds, direct Safebox payments, Lightning payments, and record
-sharing flows.
+Work with Cash and Clear balances, relay-backed records, protected originals,
+handles, payments, transaction history, and record sharing flows.
 
 </article>
 
@@ -76,8 +86,9 @@ sharing flows.
 
 ### Verify
 
-Connect private records to OpenETR evidence so exact artifacts can be checked
-against signed origin and control history.
+Preview PKPASS, W3C VC, EUDI PID, and mDL artifacts, then connect their Uniform
+Digest Anchors to native verification or independent attestation and control
+protocols.
 
 </article>
 
@@ -91,6 +102,35 @@ the controlled key, relay-backed records, or recovery path.
 </article>
 
 </div>
+
+## Any artifact, one consistent record path
+
+Safebox does not need one storage model per credential or document standard.
+Every Original Record follows the same path:
+
+```text
+exact original bytes
+    -> encrypted blob storage
+    -> Uniform Digest Anchor
+    -> effective MIME resolution
+    -> format-aware preview
+    -> optional native verification
+    -> optional attestation and control protocols
+```
+
+The current application has specialized previews for images, PDFs, Apple
+Wallet passes, W3C Verifiable Credentials, EUDI PIDs, and ISO mobile driving
+licences. Unknown formats still travel through the same encrypted preservation
+and download path.
+
+This lets a community add a control protocol that matches its own governance
+without changing the artifact or taking over its native signature scheme.
+OpenETR can bind provenance and control events to an exact digest. Another
+community can define different attesters, lifecycle events, recognition rules,
+or verifier policy over the same kind of anchor.
+
+[See the complete record model](records-and-wallet-passes.md){ .md-button .md-button--primary }
+[Understand Deep Verification](deep-verification.md){ .md-button }
 
 ## Web-enabled but local-first under the hood
 
