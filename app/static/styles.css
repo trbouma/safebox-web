@@ -177,10 +177,18 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .pkpass-barcode-image { display: flex; width: 100%; padding: .8rem; justify-content: center; border-radius: .35rem; background: #fff; }
 .pkpass-barcode-image svg { display: block; width: 100%; height: auto; color: #000; }
 .json-credential-preview { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--surface); }
-.json-credential-preview dl { display: grid; gap: .45rem; margin: 0; }
-.json-credential-preview div { min-width: 0; }
-.json-credential-preview dt { display: inline; font-weight: 800; overflow-wrap: anywhere; }
-.json-credential-preview dd { display: inline; margin: 0 0 0 .35rem; overflow-wrap: anywhere; }
+.json-credential-preview h3 { margin: 0 0 .65rem; font-size: 1.05rem; }
+.credential-summary { display: grid; gap: .45rem; margin: 0 0 1rem; padding-bottom: .85rem; border-bottom: 1px solid var(--border); }
+.credential-summary div { min-width: 0; }
+.credential-summary dt { display: inline; font-weight: 800; overflow-wrap: anywhere; }
+.credential-summary dd { display: inline; margin: 0 0 0 .35rem; overflow-wrap: anywhere; }
+.json-credential-technical-fields { margin-top: 1rem; }
+.json-credential-technical-fields summary { cursor: pointer; color: var(--muted); }
+.json-credential-technical-fields[open] summary { margin-bottom: .75rem; }
+.json-credential-raw { display: grid; gap: .45rem; margin: 0; }
+.json-credential-raw div { min-width: 0; }
+.json-credential-raw dt { display: inline; font-weight: 800; overflow-wrap: anywhere; }
+.json-credential-raw dd { display: inline; margin: 0 0 0 .35rem; overflow-wrap: anywhere; }
 .json-credential-depth-1 { padding-left: 1rem; }
 .json-credential-depth-2 { padding-left: 2rem; }
 .json-credential-depth-3, .json-credential-depth-4, .json-credential-depth-5, .json-credential-depth-6 { padding-left: 3rem; }

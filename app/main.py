@@ -1282,6 +1282,7 @@ MDL_NAMESPACE = "org.iso.18013.5.1"
 JSON_CREDENTIAL_PREVIEW_TYPES = frozenset({VC_MIME_TYPE, VP_MIME_TYPE})
 JSON_CREDENTIAL_PREVIEW_MAX_BYTES = 1024 * 1024
 JSON_CREDENTIAL_PREVIEW_MAX_ROWS = 80
+JSON_CREDENTIAL_PREVIEW_MAX_CLAIMS = 40
 MDOC_PREVIEW_MAX_BYTES = 1024 * 1024
 MDOC_PREVIEW_MAX_ROWS = 100
 EUDI_PID_FIELD_LABELS = {
@@ -1814,6 +1815,98 @@ def _json_preview_scalar(value) -> str:
     return str(value)[:500]
 
 
+def _json_credential_label(value: object) -> str:
+    text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(value))
+    text = re.sub(r"[_-]+", " ", text).strip()
+    return (text[:1].upper() + text[1:])[:120] if text else "Claim"
+
+
+def _json_credential_display_value(value) -> str:
+    if isinstance(value, dict):
+        identifier = value.get("id")
+        name = value.get("name")
+        if name and identifier:
+            return f"{_json_preview_scalar(name)} ({_json_preview_scalar(identifier)})"
+        if name or identifier:
+            return _json_preview_scalar(name or identifier)
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))[:500]
+    if isinstance(value, list):
+        return ", ".join(_json_preview_scalar(item) for item in value)[:500]
+    return _json_preview_scalar(value)
+
+
+def _json_credential_claim_label(prefix: tuple[str, ...]) -> str:
+    if not prefix:
+        return "Claim"
+    return " ".join(
+        [
+            prefix[0],
+            *(value[:1].lower() + value[1:] for value in prefix[1:]),
+        ]
+    )
+
+
+def _json_credential_claim_rows(
+    value,
+    *,
+    prefix: tuple[str, ...] = (),
+    rows: list[dict[str, str]] | None = None,
+) -> list[dict[str, str]]:
+    if rows is None:
+        rows = []
+    if len(rows) >= JSON_CREDENTIAL_PREVIEW_MAX_CLAIMS:
+        return rows
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if len(rows) >= JSON_CREDENTIAL_PREVIEW_MAX_CLAIMS:
+                break
+            if str(key) == "id":
+                continue
+            _json_credential_claim_rows(
+                child,
+                prefix=(*prefix, _json_credential_label(key)),
+                rows=rows,
+            )
+        return rows
+    if isinstance(value, list):
+        if all(not isinstance(child, (dict, list)) for child in value):
+            rows.append({
+                "label": _json_credential_claim_label(prefix),
+                "value": _json_credential_display_value(value),
+            })
+            return rows
+        for index, child in enumerate(value, start=1):
+            if len(rows) >= JSON_CREDENTIAL_PREVIEW_MAX_CLAIMS:
+                break
+            item_prefix = prefix if len(value) == 1 else (*prefix, str(index))
+            _json_credential_claim_rows(child, prefix=item_prefix, rows=rows)
+        return rows
+    rows.append({
+        "label": _json_credential_claim_label(prefix),
+        "value": _json_credential_display_value(value),
+    })
+    return rows
+
+
+def _json_credential_types(document: dict) -> list[str]:
+    raw_types = document.get("type")
+    if isinstance(raw_types, list):
+        return [str(value) for value in raw_types if str(value).strip()]
+    if raw_types is not None and str(raw_types).strip():
+        return [str(raw_types)]
+    return []
+
+
+def _json_credential_title(document: dict, *, kind: str) -> str:
+    generic_type = "VerifiablePresentation" if kind == "vp" else "VerifiableCredential"
+    specific_types = [
+        value for value in _json_credential_types(document) if value != generic_type
+    ]
+    if specific_types:
+        return _json_credential_label(specific_types[-1])
+    return "W3C Verifiable Presentation" if kind == "vp" else "W3C Verifiable Credential"
+
+
 def _json_credential_preview(blob_data: bytes | None) -> dict | None:
     if not blob_data or len(blob_data) > JSON_CREDENTIAL_PREVIEW_MAX_BYTES:
         return None
@@ -1824,9 +1917,57 @@ def _json_credential_preview(blob_data: bytes | None) -> dict | None:
     if not isinstance(document, dict):
         return None
     rows = _json_credential_preview_rows(document)
+    credential_types = _json_credential_types(document)
+    kind = (
+        "vp"
+        if "VerifiablePresentation" in credential_types
+        or "verifiableCredential" in document
+        else "vc"
+    )
+    summary = []
+
+    def add_summary(label: str, value) -> None:
+        if value is None or value == "" or value == []:
+            return
+        summary.append({
+            "label": label,
+            "value": _json_credential_display_value(value),
+        })
+
+    if kind == "vp":
+        add_summary("Holder", document.get("holder"))
+        credentials = document.get("verifiableCredential")
+        if isinstance(credentials, list):
+            add_summary("Credentials", len(credentials))
+        elif credentials is not None:
+            add_summary("Credentials", 1)
+    else:
+        add_summary("Issuer", document.get("issuer"))
+        add_summary("Credential ID", document.get("id"))
+        add_summary("Valid from", document.get("validFrom") or document.get("issuanceDate"))
+        add_summary("Valid until", document.get("validUntil") or document.get("expirationDate"))
+        subjects = document.get("credentialSubject")
+        subject_values = subjects if isinstance(subjects, list) else [subjects]
+        subject_ids = [
+            subject.get("id")
+            for subject in subject_values
+            if isinstance(subject, dict) and subject.get("id")
+        ]
+        add_summary("Subject", subject_ids)
+    claims_source = document.get("credentialSubject") if kind == "vc" else None
+    claims = (
+        _json_credential_claim_rows(claims_source)
+        if claims_source is not None
+        else []
+    )
     return {
+        "kind": kind,
+        "title": _json_credential_title(document, kind=kind),
+        "summary": summary,
+        "claims": claims,
         "rows": rows,
         "truncated": len(rows) >= JSON_CREDENTIAL_PREVIEW_MAX_ROWS,
+        "claims_truncated": len(claims) >= JSON_CREDENTIAL_PREVIEW_MAX_CLAIMS,
     }
 
 

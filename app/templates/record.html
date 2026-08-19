@@ -95,7 +95,34 @@
   {% elif blob_type in ["application/vc", "application/vp"] %}
   {% if json_credential_preview %}
   <article class="json-credential-preview" aria-label="Credential preview">
-    <dl>
+    <h3>{{ json_credential_preview.title }}</h3>
+    <p class="preview-status">Preview only. Safebox decoded this credential but has not verified its issuer proof, credential status, holder binding, or presentation.</p>
+    {% if json_credential_preview.summary %}
+    <dl class="credential-summary">
+      {% for field in json_credential_preview.summary %}
+      <div>
+        <dt>{{ field.label }}</dt>
+        <dd>{{ field.value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    {% endif %}
+    {% if json_credential_preview.claims %}
+    <dl class="credential-fields">
+      {% for field in json_credential_preview.claims %}
+      <div>
+        <dt>{{ field.label }}</dt>
+        <dd>{{ field.value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+    {% if json_credential_preview.claims_truncated %}
+    <p class="json-credential-truncated">Claims preview truncated.</p>
+    {% endif %}
+    {% endif %}
+    <details class="json-credential-technical-fields">
+      <summary>Technical credential fields</summary>
+    <dl class="json-credential-raw">
       {% for row in json_credential_preview.rows %}
       <div class="json-credential-depth-{{ row.depth }}">
         <dt>{{ row.key }}</dt>
@@ -103,8 +130,9 @@
       </div>
       {% endfor %}
     </dl>
+    </details>
     {% if json_credential_preview.truncated %}
-    <p class="json-credential-truncated">Preview truncated.</p>
+    <p class="json-credential-truncated">Technical preview truncated.</p>
     {% endif %}
   </article>
   {% else %}

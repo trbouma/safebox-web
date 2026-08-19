@@ -6104,6 +6104,21 @@ def test_verifiable_credential_upload_follow_redirect_renders_record() -> None:
     assert "Record saved and verified." in response.text
     assert "Safebox stored Original Record type for w3c_degree.json: application/vc." in response.text
     assert 'aria-label="Credential preview"' in response.text
+    assert "<h3>Example Degree Credential</h3>" in response.text
+    assert (
+        "Preview only. Safebox decoded this credential but has not verified its "
+        "issuer proof, credential status, holder binding, or presentation."
+        in response.text
+    )
+    assert "<dt>Issuer</dt>" in response.text
+    assert "<dd>https://university.example/issuers/565049</dd>" in response.text
+    assert "<dt>Subject</dt>" in response.text
+    assert "<dd>did:example:ebfeb1f712ebc6f1c276e12ec21</dd>" in response.text
+    assert "<dt>Degree type</dt>" in response.text
+    assert "<dd>ExampleBachelorDegree</dd>" in response.text
+    assert "<dt>Degree name</dt>" in response.text
+    assert "<dd>Bachelor of Science and Arts</dd>" in response.text
+    assert "<summary>Technical credential fields</summary>" in response.text
     assert "<dt>type[0]</dt>" in response.text
     assert "<dd>VerifiableCredential</dd>" in response.text
     assert "<dt>credentialSubject.degree.name</dt>" in response.text
