@@ -92,12 +92,22 @@ JSON W3C credentials and presentations can be recognized from their credential
 context and type. Safebox renders nested key-value data so a person can inspect
 the claims without downloading a `.bin` file or reading raw JSON.
 
+<figure class="safebox-screen-figure safebox-screen-figure--wide" markdown>
+![Safebox Web Original Record preview for a W3C Verifiable Credential, showing its application/vc effective MIME, fingerprint, credential contexts and types, issuer, validity date, subject identifier, and degree claims](assets/images/safebox-w3c-vc-preview.png)
+<figcaption>A live preview of the W3C example degree credential. Safebox identifies the credential, anchors its exact bytes with a fingerprint, and renders nested claims for inspection without claiming that the issuer proof, credential status, or holder presentation has been verified.</figcaption>
+</figure>
+
 ### EUDI PID
 
 An ISO mdoc with document type `eu.europa.ec.eudi.pid.1` receives a dedicated
 PID view. Family name, given name, birth information, nationality, address,
 document dates, and issuing details use human-readable labels. The underlying
 technical CBOR structure remains available in a collapsed view.
+
+<figure class="safebox-screen-figure safebox-screen-figure--wide" markdown>
+![Safebox Web Original Record preview for a synthetic EU Digital Identity PID, showing its application/mdoc+cbor effective MIME, fingerprint, document type, identity attributes, issuing information, address, and preview-only verification notice](assets/images/safebox-eudi-pid-preview.png)
+<figcaption>A live preview of the synthetic EUDI PID fixture. Safebox identifies the mdoc, anchors the exact Original Record with a fingerprint, and presents its identity attributes without claiming that the issuer signature, device signature, or digest bindings have been verified.</figcaption>
+</figure>
 
 ### Mobile driving licences
 

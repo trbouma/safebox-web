@@ -210,6 +210,10 @@
   margin: 1.5rem auto 1.75rem;
 }
 
+.safebox-screen-figure--wide {
+  width: min(100%, 48rem);
+}
+
 .safebox-screen-figure img {
   display: block;
   width: 100%;
