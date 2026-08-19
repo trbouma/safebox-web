@@ -110,6 +110,47 @@
   {% else %}
   <p>No inline preview is available for this credential.</p>
   {% endif %}
+  {% elif blob_type == "application/mdoc+cbor" %}
+  {% if mdoc_preview %}
+  <article class="mdoc-preview" aria-label="mDL preview">
+    <p class="preview-status">Preview only. Safebox decoded this mdoc container but has not verified issuer signatures, device signatures, or digest bindings.</p>
+    {% if mdoc_preview.doc_type or mdoc_preview.document_count is not none or mdoc_preview.status is not none %}
+    <dl class="mdoc-summary">
+      {% if mdoc_preview.doc_type %}
+      <div>
+        <dt>Document type</dt>
+        <dd><code>{{ mdoc_preview.doc_type }}</code></dd>
+      </div>
+      {% endif %}
+      {% if mdoc_preview.document_count is not none %}
+      <div>
+        <dt>Documents</dt>
+        <dd>{{ mdoc_preview.document_count }}</dd>
+      </div>
+      {% endif %}
+      {% if mdoc_preview.status is not none %}
+      <div>
+        <dt>Status</dt>
+        <dd>{{ mdoc_preview.status }}</dd>
+      </div>
+      {% endif %}
+    </dl>
+    {% endif %}
+    <dl class="mdoc-fields">
+      {% for row in mdoc_preview.rows %}
+      <div class="mdoc-depth-{{ row.depth }}">
+        <dt>{{ row.key }}</dt>
+        {% if row.value is not none %}<dd>{{ row.value }}</dd>{% endif %}
+      </div>
+      {% endfor %}
+    </dl>
+    {% if mdoc_preview.truncated %}
+    <p class="mdoc-truncated">Preview truncated.</p>
+    {% endif %}
+  </article>
+  {% else %}
+  <p>No inline preview is available for this mDL/mdoc.</p>
+  {% endif %}
   {% else %}
   <p>No inline preview is available{% if blob_type %} for <code>{{ blob_type }}</code>{% endif %}.</p>
   {% endif %}

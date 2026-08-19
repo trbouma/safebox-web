@@ -47,6 +47,7 @@ from app.config import (
 
 PKPASS_FIXTURE = Path("/Users/trbouma/projects/safebox-acorn/tests/fixtures/Example.pkpass")
 W3C_DEGREE_FIXTURE = Path("/Users/trbouma/projects/safebox-web/tests/fixtures/w3c_degree.json")
+MDL_FIXTURE = Path("/Users/trbouma/projects/safebox-web/tests/fixtures/example_mdl.mdoc")
 PKPASS_MIME_TYPE = "application/vnd.apple.pkpass"
 from app.dependencies import (
     get_acorn,
@@ -5896,14 +5897,75 @@ def test_effective_mime_resolver_identifies_vc_jwt_and_sd_jwt_vc() -> None:
 
 def test_effective_mime_resolver_identifies_mdoc_filename() -> None:
     resolution = main_module._resolve_upload_effective_mime(
-        SimpleNamespace(filename="license.mdoc", content_type="application/cbor"),
-        b"\xa1cfooCbar",
+        SimpleNamespace(filename="example_mdl.mdoc", content_type="application/cbor"),
+        MDL_FIXTURE.read_bytes(),
     )
 
     assert resolution.effective_mime == "application/mdoc+cbor"
     assert resolution.confidence == "medium"
     assert resolution.requires_confirmation is True
     assert "application/cbor" in resolution.alternatives
+
+
+def test_mdoc_upload_follow_redirect_records_effective_mime() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn()
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    mdl_data = MDL_FIXTURE.read_bytes()
+
+    response = client.post(
+        "/blob/upload",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Example mDL",
+            "description": "Synthetic ISO mdoc fixture",
+            "confirmed": "yes",
+        },
+        files={"blob": ("example_mdl.mdoc", mdl_data, "application/cbor")},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert str(response.url).endswith("/record?label=Example+mDL&saved=1")
+    assert "Record saved and verified." in response.text
+    assert (
+        "Safebox stored Original Record type for example_mdl.mdoc: "
+        "application/mdoc+cbor."
+    ) in response.text
+    assert 'aria-label="mDL preview"' in response.text
+    assert (
+        "Preview only. Safebox decoded this mdoc container but has not verified "
+        "issuer signatures, device signatures, or digest bindings."
+        in response.text
+    )
+    assert "<dt>Document type</dt>" in response.text
+    assert "<code>org.iso.18013.5.1.mDL</code>" in response.text
+    assert (
+        "<dt>documents[0].issuerSigned.nameSpaces."
+        "org.iso.18013.5.1[0].elementIdentifier</dt>"
+        in response.text
+    )
+    assert "<dd>family_name</dd>" in response.text
+    assert (
+        acorn.record_put_calls[0]["record_value"]["content_type"]
+        == "application/mdoc+cbor"
+    )
+    assert acorn.record_put_calls[0]["blob_type"] == "application/mdoc+cbor"
+
+
+def test_mdoc_preview_decodes_cbor_fixture() -> None:
+    preview = main_module._mdoc_preview(MDL_FIXTURE.read_bytes())
+
+    assert preview is not None
+    assert preview["doc_type"] == "org.iso.18013.5.1.mDL"
+    assert preview["document_count"] == 1
+    assert preview["status"] == "0"
+    assert {
+        "key": "documents[0].issuerSigned.nameSpaces.org.iso.18013.5.1[2].elementValue",
+        "value": "true",
+        "depth": 6,
+    } in preview["rows"]
 
 
 def test_blob_upload_records_verifiable_credential_effective_mime() -> None:
@@ -6011,6 +6073,34 @@ def test_verifiable_credential_blob_download_uses_json_extension() -> None:
     assert response.headers["content-type"].startswith("application/vc")
     assert 'filename="W3C_Degree.json"' in response.headers["content-disposition"]
     assert "filename*=UTF-8''W3C%20Degree.json" in response.headers[
+        "content-disposition"
+    ]
+
+
+def test_mdoc_blob_download_uses_mdoc_extension() -> None:
+    mdl_data = MDL_FIXTURE.read_bytes()
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        existing_labels={"Example mDL"},
+        downloaded_type="application/mdoc+cbor",
+        downloaded_data=mdl_data,
+        blob_type="application/mdoc+cbor",
+        payload={
+            "filename": "example_mdl.mdoc",
+            "content_type": "application/mdoc+cbor",
+            "size": len(mdl_data),
+        },
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/record/blob", params={"label": "Example mDL"})
+
+    assert response.status_code == 200
+    assert response.content == mdl_data
+    assert response.headers["content-type"].startswith("application/mdoc+cbor")
+    assert 'filename="Example_mDL.mdoc"' in response.headers["content-disposition"]
+    assert "filename*=UTF-8''Example%20mDL.mdoc" in response.headers[
         "content-disposition"
     ]
 

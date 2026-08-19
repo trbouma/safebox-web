@@ -21,6 +21,7 @@ import zipfile
 
 from aztec_code_generator import AztecCode
 import bolt11
+import cbor2
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
@@ -1278,6 +1279,8 @@ MDOC_CBOR_MIME_TYPE = "application/mdoc+cbor"
 JSON_CREDENTIAL_PREVIEW_TYPES = frozenset({VC_MIME_TYPE, VP_MIME_TYPE})
 JSON_CREDENTIAL_PREVIEW_MAX_BYTES = 1024 * 1024
 JSON_CREDENTIAL_PREVIEW_MAX_ROWS = 80
+MDOC_PREVIEW_MAX_BYTES = 1024 * 1024
+MDOC_PREVIEW_MAX_ROWS = 100
 EFFECTIVE_MIME_DOWNLOAD_EXTENSIONS = {
     VC_MIME_TYPE: ".json",
     VP_MIME_TYPE: ".json",
@@ -1764,6 +1767,133 @@ def _json_credential_preview(blob_data: bytes | None) -> dict | None:
     return {
         "rows": rows,
         "truncated": len(rows) >= JSON_CREDENTIAL_PREVIEW_MAX_ROWS,
+    }
+
+
+def _mdoc_preview_scalar(value) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, bytes):
+        prefix = value[:16].hex()
+        suffix = "..." if len(value) > 16 else ""
+        return f"bytes({len(value)}) 0x{prefix}{suffix}"
+    if isinstance(value, cbor2.CBORTag):
+        return f"CBOR tag {value.tag}: {_mdoc_preview_scalar(value.value)}"
+    return str(value)[:500]
+
+
+def _mdoc_preview_rows(
+    value,
+    *,
+    prefix: str = "",
+    depth: int = 0,
+    rows: list[dict[str, str | int | None]] | None = None,
+) -> list[dict[str, str | int | None]]:
+    if rows is None:
+        rows = []
+    if len(rows) >= MDOC_PREVIEW_MAX_ROWS:
+        return rows
+    if isinstance(value, cbor2.CBORTag):
+        label = prefix or f"tag({value.tag})"
+        rows.append(
+            {
+                "key": f"{label} tag",
+                "value": str(value.tag),
+                "depth": min(depth, 6),
+            }
+        )
+        return _mdoc_preview_rows(
+            value.value,
+            prefix=f"{label}.value",
+            depth=depth + 1,
+            rows=rows,
+        )
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if len(rows) >= MDOC_PREVIEW_MAX_ROWS:
+                break
+            key_label = _mdoc_preview_scalar(key)
+            label = f"{prefix}.{key_label}" if prefix else key_label
+            if isinstance(child, (dict, list, tuple, cbor2.CBORTag)):
+                rows.append({"key": label, "value": None, "depth": min(depth, 6)})
+                _mdoc_preview_rows(
+                    child,
+                    prefix=label,
+                    depth=depth + 1,
+                    rows=rows,
+                )
+            else:
+                rows.append(
+                    {
+                        "key": label,
+                        "value": _mdoc_preview_scalar(child),
+                        "depth": min(depth, 6),
+                    }
+                )
+        return rows
+    if isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            if len(rows) >= MDOC_PREVIEW_MAX_ROWS:
+                break
+            label = f"{prefix}[{index}]" if prefix else f"[{index}]"
+            if isinstance(child, (dict, list, tuple, cbor2.CBORTag)):
+                rows.append({"key": label, "value": None, "depth": min(depth, 6)})
+                _mdoc_preview_rows(
+                    child,
+                    prefix=label,
+                    depth=depth + 1,
+                    rows=rows,
+                )
+            else:
+                rows.append(
+                    {
+                        "key": label,
+                        "value": _mdoc_preview_scalar(child),
+                        "depth": min(depth, 6),
+                    }
+                )
+        return rows
+    rows.append(
+        {
+            "key": prefix or "value",
+            "value": _mdoc_preview_scalar(value),
+            "depth": min(depth, 6),
+        }
+    )
+    return rows
+
+
+def _mdoc_preview(blob_data: bytes | None) -> dict | None:
+    if not blob_data or len(blob_data) > MDOC_PREVIEW_MAX_BYTES:
+        return None
+    try:
+        document = cbor2.loads(blob_data)
+    except (cbor2.CBORDecodeError, ValueError, TypeError):
+        return None
+    documents = document.get("documents") if isinstance(document, dict) else None
+    document_count = len(documents) if isinstance(documents, list) else None
+    first_document = (
+        documents[0]
+        if isinstance(documents, list) and documents and isinstance(documents[0], dict)
+        else None
+    )
+    doc_type = (
+        str(first_document.get("docType") or "")
+        if isinstance(first_document, dict)
+        else ""
+    )
+    status = document.get("status") if isinstance(document, dict) else None
+    rows = _mdoc_preview_rows(document)
+    return {
+        "doc_type": doc_type,
+        "document_count": document_count,
+        "status": _mdoc_preview_scalar(status) if status is not None else None,
+        "rows": rows,
+        "truncated": len(rows) >= MDOC_PREVIEW_MAX_ROWS,
     }
 
 
@@ -6608,6 +6738,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         blob_preview = _blob_preview_kind(blob_type)
         pkpass_preview = None
         json_credential_preview = None
+        mdoc_preview = None
         if blob_type == PKPASS_MIME_TYPE and getattr(record_value, "blobref", None):
             try:
                 _pkpass_blob_type, pkpass_blob_data = await asyncio.wait_for(
@@ -6635,6 +6766,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception as exc:
                 logger.info(
                     "json credential preview unavailable label=%s error_type=%s",
+                    label,
+                    type(exc).__name__,
+                )
+        elif blob_type == MDOC_CBOR_MIME_TYPE and getattr(record_value, "blobref", None):
+            try:
+                _mdoc_blob_type, mdoc_blob_data = await asyncio.wait_for(
+                    acorn.get_record_blobdata(label),
+                    timeout=settings.payment_timeout_seconds,
+                )
+                mdoc_preview = _mdoc_preview(mdoc_blob_data)
+            except Exception as exc:
+                logger.info(
+                    "mdoc preview unavailable label=%s error_type=%s",
                     label,
                     type(exc).__name__,
                 )
@@ -6697,6 +6841,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             blob_preview=blob_preview,
             pkpass_preview=pkpass_preview,
             json_credential_preview=json_credential_preview,
+            mdoc_preview=mdoc_preview,
             blob_fingerprint=blob_fingerprint,
             blob_url=f"/record/blob?{blob_query}",
             blob_inline_url=f"/record/blob?{blob_query}&inline=1",
