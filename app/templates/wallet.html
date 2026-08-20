@@ -61,7 +61,7 @@
   {% else %}
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
   {% endif %}
-  <p class="wallet-balance-state">{% if wallet_balance_verified %}Spendable cash balance.{% else %}Balance requires verification—review the advisory below.{% endif %}</p>
+  <p class="wallet-balance-state">{% if wallet_balance_verified %}Confirmed cash balance.{% else %}Balance requires verification—review the advisory below.{% endif %}</p>
   {% if pending_payment_amount %}<p class="wallet-balance-state">Pending cash payments: {{ "{:,}".format(pending_payment_amount) }} sats in {{ "{:,}".format(pending_payment_count) }} payment{% if pending_payment_count != 1 %}s{% endif %}.</p>{% endif %}
 </a>
 <a class="wallet-balance clear-balance" href="/clear" aria-labelledby="clear-balance-heading">
@@ -69,7 +69,7 @@
   {% if pending_clear.balance_count %}
   {% if pending_clear.pending %}<p class="wallet-balance-state">{{ "{:,}".format(pending_clear.count) }} pending Clear transfer{% if pending_clear.count != 1 %}s{% endif %} across {{ "{:,}".format(pending_clear.pending_balance_count) }} Clear balance{% if pending_clear.pending_balance_count != 1 %}s{% endif %}.</p>{% endif %}
   {% for balance in pending_clear.balances %}
-  <p class="wallet-clear-balance"><strong>{{ balance.display_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance.display_unit }} spendable{% if balance.pending_amount %}; {{ "{:,}".format(balance.pending_amount) }} pending{% endif %}. <span>{{ balance.unit }} · {{ balance.mint }}</span></p>
+  <p class="wallet-clear-balance"><strong>{{ balance.display_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance.display_unit }} confirmed{% if balance.pending_amount %}; {{ "{:,}".format(balance.pending_amount) }} pending{% endif %}. <span>{{ balance.unit }} · {{ balance.mint }}</span></p>
   {% endfor %}
   {% else %}
   <p class="wallet-balance-state">No Clear balances yet.</p>

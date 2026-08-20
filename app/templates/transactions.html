@@ -11,14 +11,14 @@
   {% else %}
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
   {% endif %}
-  <p class="wallet-balance-state">{% if wallet_balance_verified %}Spendable cash balance.{% else %}Balance requires verification—review the advisory below.{% endif %}</p>
+  <p class="wallet-balance-state">{% if wallet_balance_verified %}Confirmed cash balance.{% else %}Balance requires verification—review the advisory below.{% endif %}</p>
   {% if pending_amount %}<p class="wallet-balance-state">Pending cash payments: {{ "{:,}".format(pending_amount) }} sats in {{ "{:,}".format(pending_count) }} payment{% if pending_count != 1 %}s{% endif %}.</p>{% endif %}
 </a>
 {% endif %}
 {% if pending_transactions %}
 <section class="pending-transaction-list" aria-label="Pending cash transaction arrivals">
   <h2>Pending Cash Payments</h2>
-  <p class="pending-transaction-intro">These cash payments have arrived for this Acorn but are not spendable until mint confirmation completes.</p>
+  <p class="pending-transaction-intro">These cash payments have arrived for this Acorn but remain pending until mint confirmation completes.</p>
   {% for pending in pending_transactions %}
   <article class="transaction-card pending">
     <header class="transaction-header">

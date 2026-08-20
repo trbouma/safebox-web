@@ -455,7 +455,7 @@ def _balance_status_html(
     if verification is None:
         return (
             relay_html
-            + '<p class="error"><strong>Spendable balance not verified.</strong> '
+            + '<p class="error"><strong>Confirmed balance not verified.</strong> '
             + escape(verification_error or "Mint verification was unavailable.")
             + " Do not rely on the relay-visible total for a payment.</p>"
         )
@@ -465,7 +465,7 @@ def _balance_status_html(
     confirmed_count = int(confirmed.get("proof_count", 0))
     status = str(verification.get("status", "inconclusive"))
     confirmed_html = (
-        "<p>Mint-confirmed spendable balance: "
+        "<p>Confirmed cash balance: "
         f"<strong>{confirmed_amount:,} sats</strong> in {confirmed_count:,} proofs</p>"
     )
     if status != "clean" or confirmed_amount != int(relay_balance):
@@ -475,7 +475,7 @@ def _balance_status_html(
             f"Verification status: {escape(status)}. "
         )
         if difference:
-            warning += f"The relay total includes {difference:,} sats not confirmed as spendable. "
+            warning += f"The relay total includes {difference:,} sats that are not confirmed. "
         warning += "Do not make a payment until the proof state has been reviewed.</p>"
         return relay_html + confirmed_html + warning
     return relay_html + confirmed_html
@@ -4690,7 +4690,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return HTMLResponse(
                 _page(
                     "Invoice payment blocked",
-                    '<p class="error">The invoice exceeds the mint-confirmed spendable balance.</p>'
+                    '<p class="error">The invoice exceeds the confirmed cash balance.</p>'
                     '<p><a href="/wallet">Return to wallet</a></p>',
                 ),
                 status_code=400,
@@ -4907,7 +4907,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if amount_sats > available_balance:
             return payment_error(
-                "Payment amount exceeds the available spendable balance."
+                "Payment amount exceeds the available balance for this payment mode."
             )
 
         payment_comment = str(comment).strip() or "Paid from Safebox Web"

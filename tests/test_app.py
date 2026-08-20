@@ -2514,7 +2514,8 @@ def test_wallet_page_displays_loaded_balance(tmp_path) -> None:
     assert response.status_code == 200
     assert "12,345 sats" in response.text
     assert "Relay-visible proof total" in response.text
-    assert "Spendable cash balance" in response.text
+    assert "Confirmed cash balance" in response.text
+    assert "spendable" not in response.text.lower()
     assert "wss://relay.example.com" in response.text
     assert "not stored" in response.text
     assert "NIP-05 address" not in response.text
@@ -2568,8 +2569,8 @@ def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) 
 
     assert response.status_code == 200
     assert "Relay-visible proof total: <strong>33,926 sats" in response.text
-    assert "Mint-confirmed spendable balance: <strong>52 sats" in response.text
-    assert "33,874 sats not confirmed as spendable" in response.text
+    assert "Confirmed cash balance: <strong>52 sats" in response.text
+    assert "33,874 sats that are not confirmed" in response.text
     assert "Do not make a payment" in response.text
 
 
@@ -2602,7 +2603,7 @@ def test_wallet_shows_pending_clear_transfers_separately(tmp_path) -> None:
     assert "Cash Balance" not in clear_pane
     assert "Clear Balances" in clear_pane
     assert "1 pending Clear transfer across 1 Clear balance." in clear_pane
-    assert "0 cmu-00ce29eeaf094301 spendable; 25 pending." in clear_pane
+    assert "0 cmu-00ce29eeaf094301 confirmed; 25 pending." in clear_pane
     assert cash_pane.index("Cash Balance") < cash_pane.index(
         'class="wallet-balance-amount"'
     )
@@ -2636,7 +2637,7 @@ def test_wallet_previews_new_clear_transfers_without_storing_them(tmp_path) -> N
 
     assert response.status_code == 200
     assert "1 pending Clear transfer across 1 Clear balance." in response.text
-    assert "0 cmu-preview spendable; 40 pending." in response.text
+    assert "0 cmu-preview confirmed; 40 pending." in response.text
     assert acorn.clear_preview_calls == 1
     assert acorn.clear_sweep_calls == 0
     assert acorn.clear_receipts == []
@@ -3145,7 +3146,7 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert response.status_code == 200
     assert '<h1 class="transaction-headline">Cash Transactions</h1>' in response.text
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
-    assert "Spendable cash balance" in response.text
+    assert "Confirmed cash balance" in response.text
     assert "Incoming ecash" not in response.text
     assert response.text.index(
         '<h1 class="transaction-headline">Cash Transactions</h1>'
@@ -3328,6 +3329,8 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert "Pending Clear Transfer" not in history_section
     assert "No completed Clear transactions found." in history_section
     assert response.text.count('class="page-navigation') == 2
+    assert "Confirmed balance" in response.text
+    assert "spendable" not in response.text.lower()
 
 
 def test_user_can_check_for_new_clear_transfers(tmp_path) -> None:
@@ -3676,10 +3679,10 @@ def test_wallet_resolves_clear_aliases_without_summing_distinct_balances(
         '<a class="wallet-balance clear-balance"', 1
     )[1].split("</a>", 1)[0]
     assert "2 pending Clear transfers across 2 Clear balances." in balance_pane
-    assert "Clear Lab Credits</strong>: 0 credits spendable; 25 pending." in (
+    assert "Clear Lab Credits</strong>: 0 credits confirmed; 25 pending." in (
         balance_pane
     )
-    assert "Harbour Lab Credits</strong>: 0 smiles spendable; 25 pending." in (
+    assert "Harbour Lab Credits</strong>: 0 smiles confirmed; 25 pending." in (
         balance_pane
     )
     assert "cmu-new · https://clear.safebox.dev" in balance_pane
@@ -4238,6 +4241,7 @@ def test_payment_form_displays_balance_and_confirmation() -> None:
     assert "<summary>Advisories</summary>" in response.text
     assert "fee reserve" in response.text
     assert "Scan a Lightning address or invoice QR code" not in response.text
+    assert "spendable" not in response.text.lower()
 
 
 def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None:
