@@ -14,9 +14,9 @@ description: A local-first application for user-controlled value, verifiable rec
 <figure class="safebox-phone" markdown>
   <div class="safebox-phone-frame">
     <span class="safebox-phone-speaker" aria-hidden="true"></span>
-    <img src="assets/images/safebox-phone-app.png" alt="Safebox Web mobile app in Connected Mode showing a Cash Balance and a separate Clear Balance">
+    <img src="assets/images/safebox-phone-app.png" alt="Safebox Web mobile app in Connected Mode showing a confirmed Cash Balance and a separately confirmed Clear Balance">
   </div>
-  <figcaption>Cash and organization-issued Clear balances coexist in one wallet while remaining visibly distinct and independently accounted for.</figcaption>
+  <figcaption>Confirmed Cash and organization-issued Clear balances coexist in one wallet while remaining visibly distinct and independently accounted for.</figcaption>
 </figure>
 
 [Why Safebox Web?](why-safebox-web.md){ .md-button .md-button--primary }
