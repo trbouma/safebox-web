@@ -2795,6 +2795,12 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
                 "PRAGMA table_info(clear_acceptance_job)"
             )
         }
+        worker_heartbeat_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(web_worker_heartbeat)"
+            )
+        }
     assert {
         "alembic_version",
         "claimed_handle",
@@ -2804,8 +2810,9 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "currency_rate",
         "funds_finalization_job",
         "clear_acceptance_job",
+        "web_worker_heartbeat",
     }.issubset(tables)
-    assert revision == ("20260822_0006",)
+    assert revision == ("20260822_0007",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -2852,6 +2859,7 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "npub",
         "status",
         "owner_token",
+        "owner_worker_id",
         "phase",
         "discovered_count",
         "discovered_amount",
@@ -2869,6 +2877,7 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "event_id",
         "status",
         "owner_token",
+        "owner_worker_id",
         "phase",
         "amount",
         "mint",
@@ -2878,6 +2887,11 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "updated_at",
         "lease_expires_at",
     } == clear_acceptance_job_columns
+    assert {
+        "worker_id",
+        "started_at",
+        "heartbeat_at",
+    } == worker_heartbeat_columns
 
 
 def test_web_lifespan_does_not_own_the_service_acorn(tmp_path) -> None:

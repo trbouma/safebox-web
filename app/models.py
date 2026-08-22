@@ -103,6 +103,20 @@ class CurrencyRate(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
 
 
+class WebWorkerHeartbeat(SQLModel, table=True):
+    """Non-secret liveness marker for one Safebox Web process."""
+
+    __tablename__ = "web_worker_heartbeat"
+
+    worker_id: str = Field(primary_key=True)
+    started_at: datetime = Field(default_factory=utc_now, nullable=False)
+    heartbeat_at: datetime = Field(
+        default_factory=utc_now,
+        nullable=False,
+        index=True,
+    )
+
+
 class FundsFinalizationJob(SQLModel, table=True):
     """Non-secret coordination state for one recipient finalization task."""
 
@@ -111,6 +125,11 @@ class FundsFinalizationJob(SQLModel, table=True):
     npub: str = Field(primary_key=True)
     status: str = Field(default="RUNNING", nullable=False, index=True)
     owner_token: str = Field(nullable=False)
+    owner_worker_id: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+    )
     phase: str = Field(default="STARTING", nullable=False)
     discovered_count: int = Field(default=0, nullable=False)
     discovered_amount: int = Field(default=0, nullable=False)
@@ -133,6 +152,11 @@ class ClearAcceptanceJob(SQLModel, table=True):
     event_id: str = Field(nullable=False)
     status: str = Field(default="RUNNING", nullable=False, index=True)
     owner_token: str = Field(nullable=False)
+    owner_worker_id: Optional[str] = Field(
+        default=None,
+        nullable=True,
+        index=True,
+    )
     phase: str = Field(default="STARTING", nullable=False)
     amount: int = Field(default=0, nullable=False)
     mint: Optional[str] = Field(default=None, nullable=True)

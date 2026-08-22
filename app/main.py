@@ -87,6 +87,11 @@ from app.clear_acceptance import (
     get_clear_acceptance_job,
     run_clear_acceptance_job,
 )
+from app.worker_liveness import (
+    new_worker_id,
+    start_worker_heartbeat,
+    stop_worker_heartbeat,
+)
 from app.handles import default_handle_from_pubkey
 from app.openetr import query_openetr_history
 from app.lnurl_pay import (
@@ -2736,6 +2741,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.database_engine = create_database_engine(
             runtime_settings.database_url
         )
+        app.state.worker_id = new_worker_id()
+        (
+            app.state.worker_heartbeat_stop,
+            app.state.worker_heartbeat_thread,
+        ) = start_worker_heartbeat(
+            app.state.database_engine,
+            app.state.worker_id,
+        )
         app.state.finalization_tasks = {}
         app.state.clear_acceptance_tasks = {}
         try:
@@ -2749,6 +2762,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 task.cancel()
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
+            stop_worker_heartbeat(
+                app.state.database_engine,
+                app.state.worker_id,
+                app.state.worker_heartbeat_stop,
+                app.state.worker_heartbeat_thread,
+            )
             app.state.database_engine.dispose()
 
     app = FastAPI(title="Safebox Web", version="0.1.0", lifespan=lifespan)
@@ -5750,6 +5769,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             request.app.state.database_engine,
             npub,
             event_id,
+            worker_id=request.app.state.worker_id,
         )
         if claimed:
             task = asyncio.create_task(
@@ -5880,6 +5900,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         claimed, owner_token, _job = claim_finalization_job(
             request.app.state.database_engine,
             npub,
+            worker_id=request.app.state.worker_id,
         )
         if claimed:
             task = asyncio.create_task(

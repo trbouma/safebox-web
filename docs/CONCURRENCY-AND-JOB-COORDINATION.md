@@ -101,13 +101,26 @@ request-scoped Acorn object—and therefore its private key—remains in memory
 only until the task completes or the web process stops.
 
 The lease prevents two Uvicorn workers or browser tabs from starting competing
-proof mutations for the same Acorn. A heartbeat renews ownership while work is
-active. Finalization remains sequential within the job because concurrent
-proof swaps against one wallet are unsafe. If the process stops, the task is
-marked interrupted when possible; otherwise its lease expires. The user can
-reconnect and start finalization again. Relay-backed transfer and continuity
-events remain the authoritative recovery queue, so the database status row is
-coordination and presentation state rather than wallet state.
+proof mutations for the same Acorn. A job heartbeat renews ownership while work
+is active. Each Uvicorn process also maintains a separate, non-secret liveness
+heartbeat from a dedicated thread. The separate thread matters: a slow
+synchronous dependency can delay the asyncio loop without making a live worker
+look dead to its peers. Finalization remains sequential within the job because
+concurrent proof swaps against one wallet are unsafe.
+
+On graceful shutdown, Safebox cancels its tasks and marks them interrupted
+before removing the worker heartbeat. If a process is killed before cleanup,
+its heartbeat becomes stale after about one minute. A connected replacement
+worker may then atomically reclaim the orphaned job without waiting for the
+15-minute fallback lease. It reconstructs the request-scoped Acorn from the
+user's still-valid encrypted session and resumes from relay-backed state.
+Safebox cannot resume in the user's absence because it deliberately does not
+persist the nsec.
+
+The heartbeat table contains only an opaque process identifier and timestamps.
+Relay-backed transfer and continuity events remain the authoritative recovery
+queue, so worker and job rows are coordination and presentation state rather
+than wallet state.
 
 This removes the browser request timeout from long relay and mint verification
 without weakening canonical publish checks. It does not promise completion in

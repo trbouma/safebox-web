@@ -61,14 +61,20 @@ user asks to finalize pending cash payments. This is not service-Acorn work:
 the recipient nsec remains only in that web process's memory. SQLite or
 PostgreSQL stores only a public-key-scoped lease and non-secret progress. A
 deployment restart interrupts that task, after which the user can reconnect
-and resume from relay-backed payment receipts. Do not delete the database
-volume merely to clear a job; an expired lease is safely reclaimable.
+and resume from relay-backed payment receipts. Each web process also maintains
+a non-secret database heartbeat. Graceful shutdown marks its in-memory jobs
+interrupted immediately; after forced termination, another process treats the
+old owner as stopped after about one minute and can reclaim the job without
+waiting for the longer safety lease. A busy asyncio loop does not create a
+false failure signal because the process heartbeat runs in a dedicated thread.
+Do not delete the database volume merely to clear a job.
 
 Clear transfer acceptance uses the same boundary. The database stores only the
 recipient npub, transfer event id, phase, result metadata, and lease—not the
 nsec, Clear bearer token, or proofs. A restart may interrupt the in-memory task;
-the connected user can start acceptance again and Acorn resumes from its
-relay-backed receipt and proof state.
+the connected user can start acceptance again after the former process is
+confirmed stopped, and Acorn resumes from its relay-backed receipt and proof
+state.
 
 ## 1. Prepare the Acorn dependency
 

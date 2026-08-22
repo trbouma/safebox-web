@@ -79,13 +79,18 @@ The database stores only:
 - job status and phase;
 - pending and confirmed counts and amounts;
 - timestamps and bounded error text; and
-- an opaque ownership token and lease expiry.
+- an opaque ownership token and lease expiry; and
+- an opaque worker-lifetime identifier with process heartbeat timestamps.
 
 The cross-worker lease prevents another browser tab or Uvicorn worker from
-starting a second incoming-funds finalizer for the same public key. A heartbeat
-keeps the lease current. If the process stops, relay-backed transfer events and
-provisional receipts remain the authoritative recovery queue; the user can
-reconnect and resume after the old lease expires.
+starting a second incoming-funds finalizer for the same public key. A job
+heartbeat keeps the lease current, while a separate process heartbeat
+distinguishes a dead worker from a merely busy event loop. Graceful shutdown
+interrupts the job immediately. After forced termination, the old process is
+considered stopped after about one minute and a connected replacement worker
+can atomically reclaim its job without waiting for the 15-minute fallback
+lease. Relay-backed transfer events and provisional receipts remain the
+authoritative recovery queue.
 
 The application database is therefore coordination state, not wallet state.
 It contains neither the nsec, Cashu proofs, transfer tokens, recovery phrases,

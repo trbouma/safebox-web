@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 from unittest.mock import AsyncMock
+
+from sqlmodel import Session
 
 from app.clear_acceptance import (
     claim_clear_acceptance_job,
@@ -9,6 +12,8 @@ from app.clear_acceptance import (
     run_clear_acceptance_job,
 )
 from app.database import create_database_engine, run_migrations
+from app.models import ClearAcceptanceJob, WebWorkerHeartbeat, utc_now
+from app.worker_liveness import heartbeat_worker
 
 
 def job_engine(tmp_path):
@@ -40,6 +45,83 @@ def test_clear_acceptance_lease_prevents_concurrent_wallet_jobs(tmp_path) -> Non
     assert duplicate_token == ""
     assert duplicate_job["event_id"] == "a" * 64
     assert "nsec" not in job
+
+
+def test_clear_acceptance_can_reclaim_stale_worker_without_waiting_for_lease(
+    tmp_path,
+) -> None:
+    engine = job_engine(tmp_path)
+    try:
+        heartbeat_worker(engine, "worker-one")
+        heartbeat_worker(engine, "worker-two")
+        claimed, _owner_token, _job = claim_clear_acceptance_job(
+            engine,
+            "npub1wallet",
+            "a" * 64,
+            worker_id="worker-one",
+        )
+        duplicate, _duplicate_token, _duplicate_job = claim_clear_acceptance_job(
+            engine,
+            "npub1wallet",
+            "b" * 64,
+            worker_id="worker-two",
+        )
+        with Session(engine) as session:
+            stale_worker = session.get(WebWorkerHeartbeat, "worker-one")
+            assert stale_worker is not None
+            stale_worker.heartbeat_at = utc_now() - timedelta(minutes=2)
+            session.add(stale_worker)
+            session.commit()
+        reclaimed, replacement_token, replacement_job = claim_clear_acceptance_job(
+            engine,
+            "npub1wallet",
+            "b" * 64,
+            worker_id="worker-two",
+        )
+    finally:
+        engine.dispose()
+
+    assert claimed is True
+    assert duplicate is False
+    assert reclaimed is True
+    assert replacement_token
+    assert replacement_job["owner_worker_id"] == "worker-two"
+    assert replacement_job["event_id"] == "b" * 64
+
+
+def test_clear_acceptance_does_not_reclaim_live_worker_with_expired_job_lease(
+    tmp_path,
+) -> None:
+    engine = job_engine(tmp_path)
+    try:
+        heartbeat_worker(engine, "worker-one")
+        heartbeat_worker(engine, "worker-two")
+        claimed, _owner_token, _job = claim_clear_acceptance_job(
+            engine,
+            "npub1wallet",
+            "a" * 64,
+            worker_id="worker-one",
+        )
+        with Session(engine) as session:
+            job = session.get(ClearAcceptanceJob, "npub1wallet")
+            assert job is not None
+            job.lease_expires_at = utc_now() - timedelta(minutes=1)
+            session.add(job)
+            session.commit()
+        duplicate, duplicate_token, duplicate_job = claim_clear_acceptance_job(
+            engine,
+            "npub1wallet",
+            "b" * 64,
+            worker_id="worker-two",
+        )
+    finally:
+        engine.dispose()
+
+    assert claimed is True
+    assert duplicate is False
+    assert duplicate_token == ""
+    assert duplicate_job["owner_worker_id"] == "worker-one"
+    assert duplicate_job["event_id"] == "a" * 64
 
 
 def test_background_clear_acceptance_records_confirmed_result(tmp_path) -> None:

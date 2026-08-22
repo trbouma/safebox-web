@@ -8,12 +8,13 @@ import logging
 import secrets
 from typing import Any
 
-from sqlalchemy import or_, update
+from sqlalchemy import and_, exists, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
-from app.models import FundsFinalizationJob, utc_now
+from app.models import FundsFinalizationJob, WebWorkerHeartbeat, utc_now
+from app.worker_liveness import WORKER_STALE_SECONDS, worker_is_live
 
 
 logger = logging.getLogger("safebox_web.funds_finalization")
@@ -38,16 +39,25 @@ def _job_values(job: FundsFinalizationJob | None) -> dict[str, Any] | None:
         "started_at": job.started_at,
         "updated_at": job.updated_at,
         "lease_expires_at": job.lease_expires_at,
+        "owner_worker_id": job.owner_worker_id,
     }
 
 
 def get_finalization_job(engine: Engine, npub: str) -> dict[str, Any] | None:
     with Session(engine) as session:
         values = _job_values(session.get(FundsFinalizationJob, npub))
-    if (
+    owner_stopped = bool(
         values is not None
-        and values["status"] == "RUNNING"
+        and values["owner_worker_id"]
+        and not worker_is_live(engine, values["owner_worker_id"])
+    )
+    legacy_lease_expired = bool(
+        values is not None
+        and not values["owner_worker_id"]
         and values["lease_expires_at"] <= utc_now()
+    )
+    if values is not None and values["status"] == "RUNNING" and (
+        legacy_lease_expired or owner_stopped
     ):
         values["status"] = "INTERRUPTED"
         values["phase"] = "INTERRUPTED"
@@ -58,10 +68,16 @@ def get_finalization_job(engine: Engine, npub: str) -> dict[str, Any] | None:
     return values
 
 
-def claim_finalization_job(engine: Engine, npub: str) -> tuple[bool, str, dict[str, Any]]:
+def claim_finalization_job(
+    engine: Engine,
+    npub: str,
+    *,
+    worker_id: str | None = None,
+) -> tuple[bool, str, dict[str, Any]]:
     """Claim a cross-worker lease without storing any Acorn credential."""
 
     now = utc_now()
+    worker_cutoff = now - timedelta(seconds=WORKER_STALE_SECONDS)
     lease_expires_at = now + timedelta(seconds=JOB_LEASE_SECONDS)
     owner_token = secrets.token_urlsafe(24)
     with Session(engine) as session:
@@ -70,6 +86,7 @@ def claim_finalization_job(engine: Engine, npub: str) -> tuple[bool, str, dict[s
             job = FundsFinalizationJob(
                 npub=npub,
                 owner_token=owner_token,
+                owner_worker_id=worker_id,
                 status="RUNNING",
                 phase="STARTING",
                 started_at=now,
@@ -85,17 +102,33 @@ def claim_finalization_job(engine: Engine, npub: str) -> tuple[bool, str, dict[s
                 session.refresh(job)
                 return True, owner_token, _job_values(job) or {}
 
+        live_owner = exists(
+            select(WebWorkerHeartbeat.worker_id)
+            .where(
+                WebWorkerHeartbeat.worker_id
+                == FundsFinalizationJob.owner_worker_id
+            )
+            .where(WebWorkerHeartbeat.heartbeat_at > worker_cutoff)
+        )
         statement = (
             update(FundsFinalizationJob)
             .where(FundsFinalizationJob.npub == npub)
             .where(
                 or_(
                     FundsFinalizationJob.status != "RUNNING",
-                    FundsFinalizationJob.lease_expires_at <= now,
+                    and_(
+                        FundsFinalizationJob.owner_worker_id.is_(None),
+                        FundsFinalizationJob.lease_expires_at <= now,
+                    ),
+                    and_(
+                        FundsFinalizationJob.owner_worker_id.is_not(None),
+                        ~live_owner,
+                    ),
                 )
             )
             .values(
                 owner_token=owner_token,
+                owner_worker_id=worker_id,
                 status="RUNNING",
                 phase="STARTING",
                 discovered_count=0,

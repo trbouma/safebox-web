@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 from unittest.mock import AsyncMock
+
+from sqlmodel import Session
 
 from app.database import create_database_engine, run_migrations
 from app.funds_finalization import (
@@ -9,6 +12,8 @@ from app.funds_finalization import (
     get_finalization_job,
     run_finalization_job,
 )
+from app.models import FundsFinalizationJob, WebWorkerHeartbeat, utc_now
+from app.worker_liveness import heartbeat_worker
 
 
 def job_engine(tmp_path):
@@ -35,6 +40,76 @@ def test_finalization_job_lease_prevents_duplicate_worker(tmp_path) -> None:
     assert duplicate_token == ""
     assert duplicate_job["status"] == "RUNNING"
     assert "nsec" not in job
+
+
+def test_finalization_job_can_reclaim_stale_worker_without_waiting_for_lease(
+    tmp_path,
+) -> None:
+    engine = job_engine(tmp_path)
+    try:
+        heartbeat_worker(engine, "worker-one")
+        heartbeat_worker(engine, "worker-two")
+        claimed, _owner_token, _job = claim_finalization_job(
+            engine,
+            "npub1wallet",
+            worker_id="worker-one",
+        )
+        duplicate, _duplicate_token, _duplicate_job = claim_finalization_job(
+            engine,
+            "npub1wallet",
+            worker_id="worker-two",
+        )
+        with Session(engine) as session:
+            stale_worker = session.get(WebWorkerHeartbeat, "worker-one")
+            assert stale_worker is not None
+            stale_worker.heartbeat_at = utc_now() - timedelta(minutes=2)
+            session.add(stale_worker)
+            session.commit()
+        reclaimed, replacement_token, replacement_job = claim_finalization_job(
+            engine,
+            "npub1wallet",
+            worker_id="worker-two",
+        )
+    finally:
+        engine.dispose()
+
+    assert claimed is True
+    assert duplicate is False
+    assert reclaimed is True
+    assert replacement_token
+    assert replacement_job["owner_worker_id"] == "worker-two"
+
+
+def test_finalization_does_not_reclaim_live_worker_with_expired_job_lease(
+    tmp_path,
+) -> None:
+    engine = job_engine(tmp_path)
+    try:
+        heartbeat_worker(engine, "worker-one")
+        heartbeat_worker(engine, "worker-two")
+        claimed, _owner_token, _job = claim_finalization_job(
+            engine,
+            "npub1wallet",
+            worker_id="worker-one",
+        )
+        with Session(engine) as session:
+            job = session.get(FundsFinalizationJob, "npub1wallet")
+            assert job is not None
+            job.lease_expires_at = utc_now() - timedelta(minutes=1)
+            session.add(job)
+            session.commit()
+        duplicate, duplicate_token, duplicate_job = claim_finalization_job(
+            engine,
+            "npub1wallet",
+            worker_id="worker-two",
+        )
+    finally:
+        engine.dispose()
+
+    assert claimed is True
+    assert duplicate is False
+    assert duplicate_token == ""
+    assert duplicate_job["owner_worker_id"] == "worker-one"
 
 
 def test_background_job_finalizes_all_visible_receipts(tmp_path) -> None:
