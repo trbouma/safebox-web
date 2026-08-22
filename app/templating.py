@@ -20,18 +20,19 @@ _LONG_LIST_TEMPLATES = {
     "transactions.html",
 }
 _PARENT_NAVIGATION = {
+    "balances.html": ("/wallet", "Back to Wallet"),
     "blob_upload.html": ("/records", "Back to Records"),
-    "clear_transactions.html": ("/wallet", "Back to Wallet"),
+    "clear_transactions.html": ("/balances", "Back to Balances"),
     "control_history.html": (None, "Back to Record"),
-    "receive_funds.html": ("/wallet", "Back to Wallet"),
+    "receive_funds.html": ("/balances", "Back to Balances"),
     "receive_funds_request.html": ("/receive-funds", "Back to Receive Funds"),
     "deferred_recovery.html": ("/recovery", "Back to Recovery"),
     "deferred_recovery_warning.html": ("/wallet", "Back to Wallet"),
     "handle.html": ("/wallet", "Back to Wallet"),
     "onboard_invite.html": ("/wallet", "Back to Wallet"),
-    "pay.html": ("/wallet", "Back to Wallet"),
+    "pay.html": ("/balances", "Back to Balances"),
     "pay_invoice.html": ("/scan/lightning", "Back to Scanner"),
-    "payment_result.html": ("/wallet", "Back to Wallet"),
+    "payment_result.html": ("/balances", "Back to Balances"),
     "record.html": ("/records", "Back to Records"),
     "record_deleted.html": ("/records", "Back to Records"),
     "record_form.html": ("/records", "Back to Records"),
@@ -43,7 +44,7 @@ _PARENT_NAVIGATION = {
     "silent_payment_receipts.html": ("/wallet", "Back to Wallet"),
     "silent_payment_sweep_result.html": ("/wallet", "Back to Wallet"),
     "silent_payment_sweep_review.html": ("/wallet", "Back to Wallet"),
-    "transactions.html": ("/wallet", "Back to Wallet"),
+    "transactions.html": ("/balances", "Back to Balances"),
 }
 
 

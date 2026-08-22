@@ -83,6 +83,19 @@ Pending means the transfer arrived, not that it has already become spendable
 Clear proof state. The user may retain it for future acceptance or delete it.
 A deleted transfer does not return on the next relay check.
 
+### Paying from a Clear balance
+
+The **Pay to an Address** page lists Cash and every spendable Clear balance as
+separate payment sources. Selecting Clear carries the exact issuing mint and
+canonical CMU through the request; a friendly program name is display metadata,
+not a currency identifier.
+
+Safebox Web resolves the recipient's NIP-05 document and requires compatible
+Clear transfer support before Acorn exports any bearer value. It then asks
+Acorn to select and swap proofs from that exact balance and deliver the result
+as a private NIP-59 transfer. It does not combine balances, convert the units,
+or fall back to Cash or Lightning.
+
 ## A new organizational capability
 
 This working flow means an organization can now:
@@ -93,8 +106,9 @@ This working flow means an organization can now:
 4. send an exact amount to a person's address; and
 5. let the person see and control the transfer beside their cash wallet.
 
-The next stage is recipient acceptance and onward wallet spending. Until that
-stage and security review are complete, Clear should be used only for test
+Recipient acceptance and exact-balance onward wallet spending are now
+implemented. Outgoing delivery recovery, wider interoperability testing, and
+security review remain; Clear should therefore still be used only for test
 units with no promise of financial value.
 
 [Read the technical milestone](https://github.com/trbouma/safebox-web/blob/main/docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md){ .md-button .md-button--primary }

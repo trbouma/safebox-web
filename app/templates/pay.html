@@ -6,18 +6,31 @@
       data-progress-message="Payment in progress. Please wait and do not refresh this page."
       data-progress-button="Sending payment…">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="payment_asset">Pay From</label>
+  <select id="payment_asset" name="payment_asset" required>
+    <option value="cash" {% if payment_asset == "cash" %}selected{% endif %}>
+      Cash Balance
+    </option>
+    {% for balance in clear_balances %}
+      <option value="{{ balance.asset_id }}"
+              {% if payment_asset == balance.asset_id %}selected{% endif %}>
+        {{ balance.display_name }} — {{ balance.amount }} {{ balance.display_unit }}
+      </option>
+    {% endfor %}
+  </select>
   <label for="lightning_address">Payment Address</label>
   <input id="lightning_address" name="lightning_address" type="text"
          value="{{ lightning_address }}" placeholder="alice@example.com" required
          spellcheck="false" autocapitalize="none" autocomplete="off">
-  <label for="amount">Amount in sats</label>
+  <label for="amount">Amount</label>
   <input id="amount" name="amount" type="number" min="1" step="1"
          value="{{ amount }}" required>
+  <p class="form-hint">Enter sats for Cash, or units from the selected Clear Balance.</p>
   <label for="comment">Comment</label>
   <input id="comment" name="comment" type="text" maxlength="200"
          value="{{ comment }}">
   <fieldset class="payment-mode">
-    <legend>Payment mode</legend>
+    <legend>Cash Payment Mode</legend>
     <div class="payment-mode-options">
       <label>
         <input name="payment_mode" type="radio" value="confirmed"
@@ -49,6 +62,9 @@
     with another Safebox address and only when the wallet already holds an exact
     set of proofs for the amount. The recipient holds those proofs provisionally
     until mint reconciliation is available.</p>
+    <p>A Clear payment spends from exactly one issuing mint and canonical CMU.
+    It is sent privately to a compatible Safebox address and never mixed with
+    the Cash Balance. Cash Payment Mode does not apply to Clear payments.</p>
     <p>Scanning is available from the wallet home page.</p>
   </div>
 </details>

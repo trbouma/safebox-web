@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Receive, transfer, and review the balances controlled by this Acorn.</p>
+<nav class="wallet-actions" aria-label="Balance actions">
+  <a href="/receive-funds">Receive</a>
+  <a href="/pay">Pay to an Address</a>
+  <a href="/transactions">Cash Balance and Transactions</a>
+  <a href="/clear">Clear Balances and Transactions</a>
+</nav>
+<details class="general-advisories">
+  <summary>About Balances</summary>
+  <div class="general-advisories-content">
+    <p>Cash and Clear are separate kinds of transferable balance. Cash is
+    denominated in sats. Each Clear Balance belongs to one exact issuing mint
+    and canonical CMU. Safebox never combines unrelated balances.</p>
+  </div>
+</details>
+{% endblock %}

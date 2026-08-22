@@ -56,7 +56,9 @@ The same workflow demonstrated durable deletion of an unwanted pending
 transfer. Ordinary kind `7378` cash payment receipt continued to operate
 through its existing path.
 
-Recipient finalization and onward Clear spending remain future work.
+Recipient finalization and exact-balance onward Clear spending are now
+implemented. Durable recovery from an unknown outgoing delivery outcome and
+broader interoperability hardening remain future work.
 
 [Read the Clear transfer product milestone](https://github.com/trbouma/safebox-web/blob/main/docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md){ .md-button .md-button--primary }
 

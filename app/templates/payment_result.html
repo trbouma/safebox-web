@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<p>Sent: <strong>{{ amount }} sats</strong></p>
-<p>Fee: <strong>{{ fees }} sats</strong></p>
+<p>Sent: <strong>{{ amount }} {{ unit | default("sats", true) }}</strong></p>
+<p>Fee: <strong>{{ fees }} {{ unit | default("sats", true) }}</strong></p>
 <p>Recipient: <code>{{ recipient }}</code></p>
 <p>{{ message }}</p>
 <p>Do not refresh this result page.</p>

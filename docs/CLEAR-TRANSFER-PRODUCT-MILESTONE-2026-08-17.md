@@ -184,8 +184,14 @@ The recipient can now explicitly accept a pending transfer into spendable kind
 Web displays pending and spendable amounts separately for each exact mint and
 CMU.
 
-The next milestone requires the stronger pre-swap crash-recovery journal and
-exact-balance onward spending from a Clear Balance.
+The Pay page can now select one exact Clear Balance and send its units to a
+NIP-05 recipient that advertises compatible Clear support. Safebox Web passes
+the canonical mint URL and CMU to Acorn; it never combines balances or silently
+falls back to Cash or Lightning.
+
+The next milestone requires stronger crash recovery for an unknown outcome
+between bearer-token export and confirmed relay delivery, plus broader live
+multi-mint interoperability testing.
 
 All current Clear units should be treated as test units with no financial
 value. Clear, Acorn, and Safebox Web remain unaudited developer-stage software.

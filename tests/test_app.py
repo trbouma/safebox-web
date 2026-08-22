@@ -228,6 +228,7 @@ class FakeLoadedAcorn:
             "previewed_amount": 0,
             "previewed": [],
         }
+        self.clear_transfers: list[dict] = []
 
     async def load_data(self) -> None:
         self.loaded = True
@@ -495,6 +496,24 @@ class FakeLoadedAcorn:
         )
         self.balance -= amount
         return {"status": "OK", "event_id": "ecash-event-1"}
+
+    async def send_clear_transfer(self, **kwargs):
+        self.clear_transfers.append(dict(kwargs))
+        for balance in self.clear_balances:
+            if (
+                str(balance.get("mint") or "").rstrip("/")
+                == str(kwargs.get("mint") or "").rstrip("/")
+                and str(balance.get("unit") or "") == str(kwargs.get("unit") or "")
+            ):
+                balance["amount"] = int(balance.get("amount") or 0) - int(
+                    kwargs.get("amount") or 0
+                )
+                break
+        return {
+            "status": "OK",
+            "event_id": "clear-event-1",
+            "fee": 0,
+        }
 
     async def pay_multi_invoice(self, lninvoice: str, comment: str):
         self.invoice_payments.append(
@@ -1644,14 +1663,14 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert '<nav class="wallet-actions" aria-label="Wallet actions">' in response.text
+    assert '<nav class="wallet-actions" aria-label="Safebox resources">' in response.text
     assert '<h1 class="wallet-headline">Safebox is Connected</h1>' in response.text
     assert '<p class="continuity-mode">Connected Mode</p>' in response.text
     assert 'class="page-navigation"' not in response.text
-    assert '<a href="/receive-funds">Receive Funds</a>' in response.text
+    assert '<a href="/balances">Manage Balances</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text
     assert "Claim a Custom Address" not in response.text
-    assert '<a href="/invite">Invite</a>' in response.text
+    assert '<a href="/invite">Invite someone to create an Acorn</a>' in response.text
     assert "Scan a Code" not in response.text
     assert 'href="/record-protection/enable"' in response.text
     assert "Protected Records" in response.text
@@ -1662,9 +1681,28 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert "Before disconnecting, make sure you have your" in response.text
     assert "recovery information" in response.text
     assert 'name="confirmed" type="checkbox" value="yes" required' in response.text
-    assert response.text.index("wallet-balance") < response.text.index("wallet-actions")
+    assert response.text.index("wallet-actions") < response.text.index("wallet-balance")
     assert response.text.index("wallet-actions") < response.text.index("Component public key")
     assert response.text.index("Disconnect") < response.text.index("Advisories")
+
+
+def test_manage_balances_is_the_parent_for_balance_actions(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example",
+    )
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/balances")
+
+    assert response.status_code == 200
+    assert "<h1>Manage Balances</h1>" in response.text
+    assert 'href="/receive-funds">Receive</a>' in response.text
+    assert 'href="/pay">Pay to an Address</a>' in response.text
+    assert 'href="/transactions">Cash Balance and Transactions</a>' in response.text
+    assert 'href="/clear">Clear Balances and Transactions</a>' in response.text
+    assert 'href="/wallet">Back to Wallet</a>' in response.text
 
 
 def test_wallet_prominently_warns_while_recovery_backup_is_pending(tmp_path) -> None:
@@ -3154,7 +3192,7 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert response.text.index(">Home</a>") < response.text.index(
         'class="wallet-balance transaction-balance"'
     )
-    assert response.text.index(">Back to Wallet</a>") < response.text.index(
+    assert response.text.index(">Back to Balances</a>") < response.text.index(
         'class="wallet-balance transaction-balance"'
     )
     assert response.text.index('class="wallet-balance transaction-balance"') < response.text.index(
@@ -4242,6 +4280,196 @@ def test_payment_form_displays_balance_and_confirmation() -> None:
     assert "fee reserve" in response.text
     assert "Scan a Lightning address or invoice QR code" not in response.text
     assert "spendable" not in response.text.lower()
+
+
+def test_payment_form_lists_each_clear_balance_without_combining_it() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    acorn.clear_balances = [
+        {
+            "mint": "http://clear.one",
+            "unit": "cmu-one",
+            "amount": 25,
+            "proof_count": 3,
+        },
+        {
+            "mint": "http://clear.two",
+            "unit": "cmu-two",
+            "amount": 40,
+            "proof_count": 2,
+        },
+    ]
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/pay")
+
+    assert response.status_code == 200
+    assert '<select id="payment_asset" name="payment_asset"' in response.text
+    assert "Cash Balance" in response.text
+    assert "cmu-one — 25 cmu-one" in response.text
+    assert "cmu-two — 40 cmu-two" in response.text
+
+
+def test_clear_payment_sends_exact_mint_and_cmu_to_compatible_address(
+    monkeypatch,
+) -> None:
+    recipient_hex = "11" * 32
+    recipient_npub = main_module.Keys.hex_to_bech32(recipient_hex, prefix="npub")
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "names": {"alice": recipient_hex},
+                "relays": {recipient_hex: ["wss://recipient-relay.example"]},
+                "clear": {
+                    "alice": {
+                        "protocols": ["clear-token-transfer"],
+                        "transports": ["nip59"],
+                        "kinds": [7379],
+                        "mints": ["http://clear.one"],
+                        "units": ["cmu-one"],
+                    }
+                },
+            }
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            assert url == "https://example.com/.well-known/nostr.json"
+            assert params == {"name": "alice"}
+            return FakeResponse()
+
+    async def cash_mint_must_not_be_checked(_acorn, _timeout):
+        raise AssertionError("A Clear payment must not check the Cash balance")
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(
+        main_module,
+        "_read_proof_verification",
+        cash_mint_must_not_be_checked,
+    )
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    acorn.clear_balances = [
+        {
+            "mint": "http://clear.one",
+            "unit": "cmu-one",
+            "amount": 25,
+            "proof_count": 3,
+        }
+    ]
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "payment_asset": main_module._encode_clear_payment_asset(
+                "http://clear.one",
+                "cmu-one",
+            ),
+            "lightning_address": "alice@example.com",
+            "amount": "5",
+            "comment": "meeting room",
+            "payment_mode": "confirmed",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Clear payment sent" in response.text
+    assert "5 cmu-one" in response.text
+    assert "recipient must accept" in response.text
+    assert acorn.payments == []
+    assert acorn.ecash_transfers == []
+    assert acorn.clear_transfers == [
+        {
+            "amount": 5,
+            "recipient": recipient_npub,
+            "relay": "wss://recipient-relay.example",
+            "mint": "http://clear.one",
+            "unit": "cmu-one",
+            "comment": "meeting room",
+        }
+    ]
+
+
+def test_clear_payment_rejects_address_without_compatible_advertisement(
+    monkeypatch,
+) -> None:
+    recipient_hex = "11" * 32
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "names": {"alice": recipient_hex},
+                "relays": {recipient_hex: ["wss://recipient-relay.example"]},
+            }
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            return FakeResponse()
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    acorn.clear_balances = [
+        {
+            "mint": "http://clear.one",
+            "unit": "cmu-one",
+            "amount": 25,
+            "proof_count": 3,
+        }
+    ]
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "payment_asset": main_module._encode_clear_payment_asset(
+                "http://clear.one",
+                "cmu-one",
+            ),
+            "lightning_address": "alice@example.com",
+            "amount": "5",
+            "comment": "must not send",
+            "payment_mode": "confirmed",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "does not advertise support for this Clear Balance" in response.text
+    assert "No value was sent" in response.text
+    assert acorn.clear_transfers == []
+    assert acorn.payments == []
 
 
 def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None:

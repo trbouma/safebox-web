@@ -52,6 +52,10 @@
   <a class="nav-button" href="/handle">Claim a Handle</a>
 </section>
 {% endif %}
+<nav class="wallet-actions" aria-label="Safebox resources">
+  <a href="/balances">Manage Balances</a>
+  <a href="/records">Manage Records</a>
+</nav>
 <a class="wallet-balance" href="/transactions" aria-labelledby="wallet-balance-heading">
   <h2 id="wallet-balance-heading">Cash Balance</h2>
   {% if fiat_estimate %}
@@ -75,12 +79,6 @@
   <p class="wallet-balance-state">No Clear balances yet.</p>
   {% endif %}
 </a>
-<nav class="wallet-actions" aria-label="Wallet actions">
-  <a href="/receive-funds">Receive Funds</a>
-  <a href="/pay">Pay to an Address</a>
-  <a href="/records">Manage Records</a>
-  <a href="{{ onboard_invite_path }}">Invite</a>
-</nav>
 {% if silent_payment_address %}
 <details class="receive-payment-card silent-payment-card">
   <summary>Receive Silent Payment</summary>
@@ -138,6 +136,7 @@
       {% if nip05_address %}
       <p>NIP-05 address: <strong><a href="/handle">{{ nip05_address }}</a></strong></p>
       {% endif %}
+      <p><a href="{{ onboard_invite_path }}">Invite someone to create an Acorn</a>.</p>
       <p>Wallet state was loaded from the relay for this request. It was not stored
       by the web application.</p>
     </div>

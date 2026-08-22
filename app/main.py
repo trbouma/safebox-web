@@ -250,6 +250,8 @@ def _payment_form(
     amount: str = "",
     comment: str = "Paid from Safebox Web",
     payment_mode: str = "confirmed",
+    payment_asset: str = "cash",
+    clear_balances: list[dict] | None = None,
 ) -> str:
     if balance_status is None:
         balance_status = (
@@ -265,6 +267,8 @@ def _payment_form(
         amount=amount,
         comment=comment,
         payment_mode=payment_mode,
+        payment_asset=payment_asset,
+        clear_balances=clear_balances or [],
     )
 
 
@@ -366,6 +370,91 @@ async def _resolve_safebox_lightning_recipient(
     if not relay.startswith(("wss://", "ws://")):
         return None
 
+    try:
+        recipient_npub = Keys.hex_to_bech32(pubkey_hex.lower(), prefix="npub")
+    except Exception:
+        return None
+    return {"npub": recipient_npub, "relay": relay}
+
+
+async def _resolve_safebox_clear_recipient(
+    payment_address: str,
+    *,
+    mint: str,
+    unit: str,
+    timeout: float,
+) -> dict[str, str] | None:
+    """Resolve a NIP-05 address advertising compatible Clear receipt support."""
+
+    try:
+        local_part, domain = payment_address.split("@", 1)
+    except ValueError:
+        return None
+    if not local_part or not domain:
+        return None
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout, connect=min(timeout, 5.0)),
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(
+                f"https://{domain}/.well-known/nostr.json",
+                params={"name": local_part},
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except Exception as exc:
+        logger.info(
+            "Clear recipient NIP-05 resolution skipped address=%s error_type=%s",
+            payment_address,
+            type(exc).__name__,
+        )
+        return None
+    if not isinstance(payload, dict):
+        return None
+    names = payload.get("names")
+    relays = payload.get("relays")
+    clear = payload.get("clear")
+    if (
+        not isinstance(names, dict)
+        or not isinstance(relays, dict)
+        or not isinstance(clear, dict)
+    ):
+        return None
+    pubkey_hex = names.get(local_part) or names.get(local_part.lower())
+    descriptor = clear.get(local_part) or clear.get(local_part.lower())
+    if (
+        not isinstance(pubkey_hex, str)
+        or not re.fullmatch(r"[0-9a-fA-F]{64}", pubkey_hex)
+        or not isinstance(descriptor, dict)
+    ):
+        return None
+    if "clear-token-transfer" not in (descriptor.get("protocols") or []):
+        return None
+    if "nip59" not in (descriptor.get("transports") or []):
+        return None
+    try:
+        advertised_kinds = {int(kind) for kind in descriptor.get("kinds") or []}
+    except (TypeError, ValueError):
+        return None
+    if 7379 not in advertised_kinds:
+        return None
+    advertised_mints = {
+        str(candidate).rstrip("/") for candidate in descriptor.get("mints") or []
+    }
+    advertised_units = {
+        str(candidate).strip() for candidate in descriptor.get("units") or []
+    }
+    if advertised_mints and str(mint).rstrip("/") not in advertised_mints:
+        return None
+    if advertised_units and str(unit).strip() not in advertised_units:
+        return None
+    recipient_relays = relays.get(pubkey_hex) or relays.get(pubkey_hex.lower())
+    if not isinstance(recipient_relays, list) or not recipient_relays:
+        return None
+    relay = str(recipient_relays[0]).strip()
+    if not relay.startswith(("wss://", "ws://")):
+        return None
     try:
         recipient_npub = Keys.hex_to_bech32(pubkey_hex.lower(), prefix="npub")
     except Exception:
@@ -651,6 +740,83 @@ async def _read_clear_balances(acorn, timeout: float) -> list[dict]:
         return []
     balances = await asyncio.wait_for(reader(), timeout=timeout)
     return balances if isinstance(balances, list) else []
+
+
+def _encode_clear_payment_asset(mint: str, unit: str) -> str:
+    payload = json.dumps(
+        {"mint": str(mint).rstrip("/"), "unit": str(unit)},
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return "clear:" + base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_clear_payment_asset(value: str) -> tuple[str, str] | None:
+    encoded = str(value or "").strip()
+    if not encoded.startswith("clear:") or len(encoded) > 1024:
+        return None
+    token = encoded[6:]
+    try:
+        payload = json.loads(
+            base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
+        )
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    mint = str(payload.get("mint") or "").rstrip("/")
+    unit = str(payload.get("unit") or "").strip()
+    if (
+        not mint
+        or not unit.startswith("cmu-")
+        or len(mint) > 512
+        or len(unit) > 128
+        or any(character.isspace() for character in unit)
+    ):
+        return None
+    return mint, unit
+
+
+async def _payment_clear_balances(request: Request, acorn) -> list[dict]:
+    """Return spendable Clear balances prepared for an unambiguous form choice."""
+
+    settings = request.app.state.settings
+    balances = await _read_clear_balances(
+        acorn,
+        settings.wallet_load_timeout_seconds,
+    )
+    summary = _clear_balance_summary([], balances)
+    try:
+        summary = await _resolve_clear_aliases(
+            summary,
+            timeout=settings.wallet_load_timeout_seconds,
+            configured_mints=settings.clear_mints,
+            cache=request.app.state.clear_mint_metadata_cache,
+        )
+    except Exception as exc:
+        logger.info(
+            "Clear payment alias lookup skipped error_type=%s",
+            type(exc).__name__,
+        )
+    options: list[dict] = []
+    for balance in summary.get("balances") or []:
+        if not isinstance(balance, dict):
+            continue
+        amount = max(0, int(balance.get("amount") or 0))
+        if amount <= 0:
+            continue
+        mint = str(balance.get("mint") or "").rstrip("/")
+        unit = str(balance.get("unit") or "").strip()
+        if not mint or not unit:
+            continue
+        options.append(
+            {
+                **balance,
+                "amount": amount,
+                "asset_id": _encode_clear_payment_asset(mint, unit),
+            }
+        )
+    return options
 
 
 async def _read_clear_history(acorn, timeout: float) -> list[dict]:
@@ -3821,6 +3987,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             csrf_token=csrf_token,
         )
 
+    @app.get("/balances", response_class=HTMLResponse)
+    async def balances(
+        credentials: CredentialsDependency,
+    ) -> str:
+        """Present the balance domain without treating Cash as the top level."""
+
+        return render_template(
+            "balances.html",
+            title="Manage Balances",
+        )
+
     @app.post("/bitcoin/silent-payment/detect", response_class=HTMLResponse)
     async def bitcoin_silent_payment_detect(
         request: Request,
@@ -4583,6 +4760,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             )
 
+        try:
+            clear_balances = await _payment_clear_balances(request, acorn)
+        except Exception as exc:
+            logger.warning(
+                "Clear payment balance lookup failed after scan error_type=%s",
+                type(exc).__name__,
+            )
+            clear_balances = []
         verification, verification_error = await _read_proof_verification(
             acorn,
             settings.wallet_load_timeout_seconds,
@@ -4598,6 +4783,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     verification_error,
                 ),
                 lightning_address=recipient,
+                clear_balances=clear_balances,
             )
         )
 
@@ -4742,6 +4928,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/pay", response_class=HTMLResponse)
     async def payment_form(request: Request, acorn: PaymentAcornDependency) -> str:
         settings = request.app.state.settings
+        try:
+            clear_balances = await _payment_clear_balances(request, acorn)
+        except Exception as exc:
+            logger.warning(
+                "Clear payment balance lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            clear_balances = []
         verification, verification_error = await _read_proof_verification(
             acorn,
             settings.wallet_load_timeout_seconds,
@@ -4755,6 +4949,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 verification,
                 verification_error,
             ),
+            clear_balances=clear_balances,
         )
 
     @app.post("/pay", response_class=HTMLResponse)
@@ -4766,6 +4961,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         amount: str = Form(...),
         comment: str = Form("Paid from Safebox Web"),
         payment_mode: str = Form("confirmed"),
+        payment_asset: str = Form("cash"),
         confirmed: str | None = Form(None),
     ):
         settings = request.app.state.settings
@@ -4773,9 +4969,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payment_mode = str(payment_mode).strip().lower()
         if payment_mode not in {"confirmed", "continuity"}:
             payment_mode = "confirmed"
+        payment_asset = str(payment_asset or "cash").strip()
+        try:
+            clear_balances = await _payment_clear_balances(request, acorn)
+        except Exception as exc:
+            logger.warning(
+                "Clear payment balance lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            clear_balances = []
+        selected_clear = None
+        asset_error = None
+        if payment_asset != "cash":
+            identity = _decode_clear_payment_asset(payment_asset)
+            if identity is None:
+                asset_error = "Select a valid Cash or Clear Balance."
+            else:
+                selected_clear = next(
+                    (
+                        balance
+                        for balance in clear_balances
+                        if (
+                            str(balance.get("mint") or "").rstrip("/"),
+                            str(balance.get("unit") or ""),
+                        )
+                        == identity
+                    ),
+                    None,
+                )
+                if selected_clear is None:
+                    asset_error = (
+                        "The selected Clear Balance is no longer available. "
+                        "Review the current balances before paying."
+                    )
         verification = None
         verification_error = None
-        if payment_mode == "confirmed":
+        if selected_clear is not None:
+            balance_status = (
+                "<p>Selected Clear Balance: <strong>"
+                f"{int(selected_clear['amount']):,} "
+                f"{escape(str(selected_clear.get('display_unit') or selected_clear['unit']))}"
+                "</strong></p>"
+                f"<p>{escape(str(selected_clear.get('display_name') or selected_clear['unit']))}<br>"
+                f"Canonical CMU: <code>{escape(str(selected_clear['unit']))}</code><br>"
+                f"Issuing mint: <code>{escape(str(selected_clear['mint']))}</code></p>"
+            )
+        elif payment_mode == "confirmed":
             verification, verification_error = await _read_proof_verification(
                 acorn,
                 settings.wallet_load_timeout_seconds,
@@ -4805,6 +5044,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     amount=amount,
                     comment=comment,
                     payment_mode=payment_mode,
+                    payment_asset=payment_asset,
+                    clear_balances=clear_balances,
                 ),
                 status_code=status_code,
             )
@@ -4851,6 +5092,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         amount=amount,
                         comment=comment,
                         payment_mode=payment_mode,
+                        payment_asset=payment_asset,
+                        clear_balances=clear_balances,
                     ),
                     status_code=409,
                 )
@@ -4866,6 +5109,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     amount=amount,
                     comment=comment,
                     payment_mode=payment_mode,
+                    payment_asset=payment_asset,
+                    clear_balances=clear_balances,
                 ),
                 status_code=409,
             )
@@ -4875,15 +5120,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "The form token is invalid or expired. Review the payment again.",
                 403,
             )
+        if asset_error is not None:
+            return payment_error(asset_error)
         if confirmed != "yes":
             return payment_error("Explicit payment confirmation is required.")
-        if payment_mode == "confirmed" and verification is None:
+        if selected_clear is not None and payment_mode == "continuity":
+            return payment_error(
+                "Continuity mode applies only to Cash payments. Select Confirmed "
+                "to send from a Clear Balance."
+            )
+        if (
+            selected_clear is None
+            and payment_mode == "confirmed"
+            and verification is None
+        ):
             return payment_error(
                 "Payment is blocked because a mint is unavailable. Continuity "
                 "Payments remain available for supported Safebox recipients.",
                 503,
             )
-        if payment_mode == "confirmed" and verification.get("status") != "clean":
+        if (
+            selected_clear is None
+            and payment_mode == "confirmed"
+            and verification.get("status") != "clean"
+        ):
             return payment_error(
                 "Payment is blocked because the wallet proof state is not clean. "
                 "Review it with 'acorn balance --verify' before spending.",
@@ -4895,17 +5155,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return payment_error("Enter a valid Lightning address such as alice@example.com.")
 
         try:
-            amount_sats = int(str(amount).strip())
+            payment_amount = int(str(amount).strip())
         except ValueError:
-            return payment_error("Payment amount must be a whole number of sats.")
-        if amount_sats <= 0:
+            return payment_error("Payment amount must be a whole number.")
+        if payment_amount <= 0:
             return payment_error("Payment amount must be greater than zero.")
-        available_balance = (
-            int(verification.get("mint_confirmed_unspent", {}).get("amount", 0))
-            if payment_mode == "confirmed"
-            else int(acorn.get_balance())
-        )
-        if amount_sats > available_balance:
+        if selected_clear is not None:
+            available_balance = int(selected_clear["amount"])
+        elif payment_mode == "confirmed":
+            available_balance = int(
+                verification.get("mint_confirmed_unspent", {}).get("amount", 0)
+            )
+        else:
+            available_balance = int(acorn.get_balance())
+        if payment_amount > available_balance:
             return payment_error(
                 "Payment amount exceeds the available balance for this payment mode."
             )
@@ -4913,6 +5176,110 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payment_comment = str(comment).strip() or "Paid from Safebox Web"
         if len(payment_comment) > 200:
             return payment_error("Payment comment must be 200 characters or fewer.")
+
+        if selected_clear is not None:
+            clear_recipient = await _resolve_safebox_clear_recipient(
+                recipient,
+                mint=str(selected_clear["mint"]),
+                unit=str(selected_clear["unit"]),
+                timeout=settings.payment_timeout_seconds,
+            )
+            if clear_recipient is None:
+                return payment_error(
+                    "That address does not advertise support for this Clear "
+                    "Balance. No value was sent.",
+                    422,
+                )
+            sender = getattr(acorn, "send_clear_transfer", None)
+            if sender is None:
+                return payment_error(
+                    "This Safebox installation does not yet support outgoing "
+                    "Clear payments.",
+                    503,
+                )
+            try:
+                delivery = await asyncio.wait_for(
+                    sender(
+                        amount=payment_amount,
+                        recipient=clear_recipient["npub"],
+                        relay=clear_recipient["relay"],
+                        mint=str(selected_clear["mint"]),
+                        unit=str(selected_clear["unit"]),
+                        comment=payment_comment,
+                    ),
+                    timeout=settings.payment_timeout_seconds,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Clear payment timed out outcome=unknown recipient=%s mint=%s unit=%s",
+                    clear_recipient["npub"],
+                    selected_clear["mint"],
+                    selected_clear["unit"],
+                )
+                return HTMLResponse(
+                    _page(
+                        "Clear payment status unresolved",
+                        "<p>The Clear payment timed out before Safebox received a "
+                        "final result. Do not retry it blindly. Review Clear "
+                        "Transactions before attempting another payment.</p>"
+                        '<p><a href="/clear">Review Clear Transactions</a></p>',
+                    ),
+                    status_code=504,
+                )
+            except Exception as exc:
+                error_reason = str(exc).strip()
+                logger.warning(
+                    "Clear payment failed recipient=%s mint=%s unit=%s error_type=%s",
+                    clear_recipient["npub"],
+                    selected_clear["mint"],
+                    selected_clear["unit"],
+                    type(exc).__name__,
+                )
+                return HTMLResponse(
+                    _page(
+                        "Clear payment not confirmed",
+                        "<p>Safebox did not receive a confirmed successful Clear "
+                        "transfer result. Do not retry blindly. Review Clear "
+                        "Transactions first.</p>"
+                        + (
+                            f"<p><strong>Reason:</strong> {escape(error_reason)}</p>"
+                            if error_reason
+                            else ""
+                        )
+                        + '<p><a href="/clear">Review Clear Transactions</a></p>',
+                    ),
+                    status_code=502,
+                )
+            if not isinstance(delivery, dict) or delivery.get("status") != "OK":
+                return HTMLResponse(
+                    _page(
+                        "Clear payment not confirmed",
+                        "<p>The transfer did not return a confirmed successful "
+                        "result. Do not retry blindly. Review Clear Transactions "
+                        "first.</p>"
+                        '<p><a href="/clear">Review Clear Transactions</a></p>',
+                    ),
+                    status_code=502,
+                )
+            event_id = str(delivery.get("event_id") or "")
+            message = "Private Clear transfer sent."
+            if event_id:
+                message += f" Event: {event_id}."
+            message += (
+                f" Canonical CMU: {selected_clear['unit']}. "
+                "The recipient must accept it into the matching Clear Balance."
+            )
+            return render_template(
+                "payment_result.html",
+                title="Clear payment sent",
+                amount=f"{payment_amount:,}",
+                fees=f"{int(delivery.get('fee') or 0):,}",
+                unit=str(
+                    selected_clear.get("display_unit") or selected_clear["unit"]
+                ),
+                recipient=recipient,
+                message=message,
+            )
 
         direct_recipient = await _resolve_safebox_lightning_recipient(
             recipient,
@@ -4928,7 +5295,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             try:
                 delivery = await asyncio.wait_for(
                     acorn.send_ecash_transfer(
-                        amount=amount_sats,
+                        amount=payment_amount,
                         recipient=direct_recipient["npub"],
                         relay=direct_recipient["relay"],
                         comment=payment_comment,
@@ -5018,7 +5385,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if payment_mode == "continuity"
                     else "Payment successful"
                 ),
-                amount=f"{amount_sats:,}",
+                amount=f"{payment_amount:,}",
                 fees="0",
                 recipient=recipient,
                 message=message,
@@ -5027,7 +5394,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             message, fees = await asyncio.wait_for(
                 acorn.pay_multi(
-                    amount=amount_sats,
+                    amount=payment_amount,
                     lnaddress=recipient,
                     comment=payment_comment,
                 ),
@@ -5083,7 +5450,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return render_template(
             "payment_result.html",
             title="Payment successful",
-            amount=f"{amount_sats:,}",
+            amount=f"{payment_amount:,}",
             fees=f"{int(fees):,}",
             recipient=recipient,
             message=str(message),
