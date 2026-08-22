@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import io
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
@@ -68,6 +69,7 @@ from app.database import create_database_engine, run_migrations
 from app.currency_rates import currency_balance_estimate
 from app.dependencies import (
     AcornDependency,
+    BackgroundAcornFactoryDependency,
     CredentialsDependency,
     DatabaseSessionDependency,
     DepositAcornDependency,
@@ -80,12 +82,12 @@ from app.models import ClaimedHandle, CurrencyRate
 from app.funds_finalization import (
     claim_finalization_job,
     get_finalization_job,
-    run_finalization_job,
+    run_finalization_job_in_thread,
 )
 from app.clear_acceptance import (
     claim_clear_acceptance_job,
     get_clear_acceptance_job,
-    run_clear_acceptance_job,
+    run_clear_acceptance_job_in_thread,
 )
 from app.worker_liveness import (
     new_worker_id,
@@ -2751,6 +2753,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.finalization_tasks = {}
         app.state.clear_acceptance_tasks = {}
+        app.state.background_job_executor = ThreadPoolExecutor(
+            max_workers=runtime_settings.background_job_threads,
+            thread_name_prefix="safebox-wallet-job",
+        )
         try:
             yield
         finally:
@@ -2758,8 +2764,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 *app.state.finalization_tasks.values(),
                 *app.state.clear_acceptance_tasks.values(),
             ]
-            for task in tasks:
-                task.cancel()
+            await asyncio.to_thread(
+                app.state.background_job_executor.shutdown,
+                wait=True,
+                cancel_futures=True,
+            )
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
             stop_worker_heartbeat(
@@ -5719,6 +5728,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def accept_pending_clear_receipt(
         request: Request,
         acorn: AcornDependency,
+        acorn_factory: BackgroundAcornFactoryDependency,
         event_id: str = Form(...),
         csrf_token: str = Form(...),
     ):
@@ -5733,8 +5743,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=403,
             )
 
-        accepter = getattr(acorn, "accept_pending_clear_receipt", None)
-        if accepter is None:
+        if not hasattr(Acorn, "accept_pending_clear_receipt"):
             return HTMLResponse(
                 _page(
                     "Clear transfer acceptance unavailable",
@@ -5772,16 +5781,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             worker_id=request.app.state.worker_id,
         )
         if claimed:
-            task = asyncio.create_task(
-                run_clear_acceptance_job(
+            task = asyncio.wrap_future(
+                request.app.state.background_job_executor.submit(
+                    run_clear_acceptance_job_in_thread,
                     engine=request.app.state.database_engine,
-                    acorn=acorn,
+                    acorn_factory=acorn_factory,
                     npub=npub,
                     event_id=event_id,
                     owner_token=owner_token,
                     load_timeout_seconds=settings.wallet_load_timeout_seconds,
-                ),
-                name=f"clear-acceptance:{npub}",
+                )
             )
             request.app.state.clear_acceptance_tasks[npub] = task
 
@@ -5880,7 +5889,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/transactions/finalize-background")
     async def start_background_funds_finalization(
         request: Request,
-        acorn: ReceiveAcornDependency,
+        acorn: AcornDependency,
+        acorn_factory: BackgroundAcornFactoryDependency,
         csrf_token: str = Form(...),
     ) -> RedirectResponse:
         settings = request.app.state.settings
@@ -5903,14 +5913,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             worker_id=request.app.state.worker_id,
         )
         if claimed:
-            task = asyncio.create_task(
-                run_finalization_job(
+            task = asyncio.wrap_future(
+                request.app.state.background_job_executor.submit(
+                    run_finalization_job_in_thread,
                     engine=request.app.state.database_engine,
-                    acorn=acorn,
+                    acorn_factory=acorn_factory,
                     npub=npub,
                     owner_token=owner_token,
-                ),
-                name=f"funds-finalization:{npub}",
+                    load_timeout_seconds=settings.wallet_load_timeout_seconds,
+                )
             )
             request.app.state.finalization_tasks[npub] = task
 

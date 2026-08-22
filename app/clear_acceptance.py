@@ -6,7 +6,7 @@ import asyncio
 from datetime import timedelta
 import logging
 import secrets
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import and_, exists, or_, select, update
 from sqlalchemy.engine import Engine
@@ -287,3 +287,42 @@ async def run_clear_acceptance_job(
     finally:
         heartbeat.cancel()
         await asyncio.gather(heartbeat, return_exceptions=True)
+
+
+def run_clear_acceptance_job_in_thread(
+    *,
+    engine: Engine,
+    acorn_factory: Callable[[], Any],
+    npub: str,
+    event_id: str,
+    owner_token: str,
+    load_timeout_seconds: float,
+) -> None:
+    """Create and accept with an Acorn wholly inside an executor thread."""
+
+    try:
+        acorn = acorn_factory()
+        asyncio.run(
+            run_clear_acceptance_job(
+                engine=engine,
+                acorn=acorn,
+                npub=npub,
+                event_id=event_id,
+                owner_token=owner_token,
+                load_timeout_seconds=load_timeout_seconds,
+            )
+        )
+    except Exception as exc:
+        logger.exception(
+            "background Clear acceptance thread failed npub=%s event_id=%s",
+            npub,
+            event_id,
+        )
+        update_clear_acceptance_job(
+            engine,
+            npub,
+            owner_token,
+            status="FAILED",
+            phase="REVIEW",
+            error=f"{type(exc).__name__}: {exc}",
+        )

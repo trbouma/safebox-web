@@ -54,6 +54,7 @@ EUDI_PID_FIXTURE = Path(
 )
 PKPASS_MIME_TYPE = "application/vnd.apple.pkpass"
 from app.dependencies import (
+    get_background_acorn_factory,
     get_acorn,
     get_deposit_acorn,
     get_loaded_acorn,
@@ -670,18 +671,22 @@ def test_settings_load_cookie_key_from_working_directory_env_file(
 ) -> None:
     env_key = Fernet.generate_key().decode("ascii")
     (tmp_path / ".env").write_text(
-        f"SAFEBOX_COOKIE_KEY={env_key}\nSAFEBOX_SESSION_TTL_HOURS=2\n",
+        f"SAFEBOX_COOKIE_KEY={env_key}\n"
+        "SAFEBOX_SESSION_TTL_HOURS=2\n"
+        "SAFEBOX_BACKGROUND_JOB_THREADS=3\n",
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
     monkeypatch.delenv("SAFEBOX_SESSION_TTL_HOURS", raising=False)
     monkeypatch.delenv("SAFEBOX_SESSION_TTL_SECONDS", raising=False)
+    monkeypatch.delenv("SAFEBOX_BACKGROUND_JOB_THREADS", raising=False)
 
     settings = Settings.from_env()
 
     assert settings.cookie_key == env_key
     assert settings.session_ttl_seconds == 7200
+    assert settings.background_job_threads == 3
 
 
 def test_default_session_lifetime_is_30_days() -> None:
@@ -692,6 +697,7 @@ def test_default_session_lifetime_is_30_days() -> None:
     assert settings.session_ttl_seconds == DEFAULT_SESSION_TTL_SECONDS
     assert settings.onboard_invite_code == "INVITEME"
     assert settings.onboard_invite_codes == ("INVITEME",)
+    assert settings.background_job_threads == 2
 
 
 def test_settings_load_onboard_invite_code_from_env(tmp_path, monkeypatch) -> None:
@@ -3556,6 +3562,7 @@ def test_user_can_accept_clear_transfer_into_spendable_balance(tmp_path) -> None
         "timestamp": 1_786_430_400,
     }]
     app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_background_acorn_factory] = lambda: lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
@@ -3612,14 +3619,17 @@ def test_clear_acceptance_response_does_not_wait_for_wallet_load(tmp_path) -> No
     }]
     load_started = threading.Event()
     allow_load_to_finish = threading.Event()
+    background_thread_names: list[str] = []
 
     async def delayed_load_data() -> None:
+        background_thread_names.append(threading.current_thread().name)
         load_started.set()
         await asyncio.to_thread(allow_load_to_finish.wait, 2)
         acorn.loaded = True
 
     acorn.load_data = delayed_load_data
     app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_background_acorn_factory] = lambda: lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
@@ -3661,6 +3671,8 @@ def test_clear_acceptance_response_does_not_wait_for_wallet_load(tmp_path) -> No
     assert completed is not None
     assert completed["status"] == "COMPLETE"
     assert acorn.loaded is True
+    assert background_thread_names
+    assert background_thread_names[0].startswith("safebox-wallet-job")
 
 
 def test_user_can_check_then_accept_relay_clear_transfer(tmp_path) -> None:
@@ -3677,6 +3689,7 @@ def test_user_can_check_then_accept_relay_clear_transfer(tmp_path) -> None:
             "timestamp": 1_786_430_400,
         }]
     app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_background_acorn_factory] = lambda: lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
@@ -4077,8 +4090,18 @@ def test_transaction_finalization_runs_in_background(tmp_path) -> None:
         "terminal_error_count": 0,
         "terminal_error_amount": 0,
     }
+    background_thread_names: list[str] = []
+    original_load_data = acorn.load_data
+
+    async def recording_load_data() -> None:
+        background_thread_names.append(threading.current_thread().name)
+        await original_load_data()
+
+    acorn.load_data = recording_load_data
     app.dependency_overrides[get_receive_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_background_acorn_factory] = lambda: lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.post(
@@ -4108,6 +4131,8 @@ def test_transaction_finalization_runs_in_background(tmp_path) -> None:
     assert job["confirmed_amount"] == 50
     assert acorn.receive_calls == 1
     assert acorn.receive_finalize_values == [False]
+    assert background_thread_names
+    assert background_thread_names[0].startswith("safebox-wallet-job")
     assert "Cash transaction finalization completed." in page.text
     assert "Finalized 50 sats from 3 payments." in page.text
 

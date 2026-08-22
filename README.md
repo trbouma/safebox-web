@@ -676,6 +676,7 @@ SAFEBOX_OPENETR_RELAYS=wss://relay.openetr.org
 SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS=5
 SAFEBOX_OPENETR_QUERY_LIMIT=100
 SAFEBOX_WEB_WORKERS=1
+SAFEBOX_BACKGROUND_JOB_THREADS=2
 SAFEBOX_SERVICE_ACORN_ENABLED=true
 SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800
 SAFEBOX_SERVICE_ACORN_SHUTDOWN_RECIPIENT=<provider recovery npub or NIP-05>
@@ -740,6 +741,14 @@ The web tier may use `SAFEBOX_WEB_WORKERS` greater than one. The Compose project
 still starts exactly one wallet-owning worker container. See the
 [Deployment Runbook](docs/DEPLOYMENT.md) for the complete one-image/two-process
 procedure, verification, routine operations, backup boundary, and retirement.
+
+Each Uvicorn process also owns a bounded executor configured by
+`SAFEBOX_BACKGROUND_JOB_THREADS` (default: 2). Session-bound Cash finalization
+and Clear acceptance create their Acorn inside one of these threads with a
+thread-local asyncio loop. Slow relay or mint calls therefore do not block the
+Uvicorn request loop. The executor is not a durable wallet worker: its
+credentials remain only in memory and a process restart still requires the
+connected user to resume from relay-backed state.
 
 Stop the service without deleting the image:
 

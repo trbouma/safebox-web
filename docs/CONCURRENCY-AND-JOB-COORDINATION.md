@@ -78,7 +78,7 @@ database.
 When the user chooses **Finalize Pending Transactions**, Safebox Web now:
 
 1. atomically claims a database lease keyed by the component public key;
-2. starts one in-memory asynchronous task in the claiming web worker;
+2. submits one in-memory job to the claiming web worker's bounded executor;
 3. discovers visible relay-backed transfers and finalizes them sequentially;
 4. updates non-secret progress and result fields in the database; and
 5. lets the HTTP request return immediately so the user can leave the page and
@@ -99,6 +99,12 @@ status, error summary, and an opaque lease token. It never contains the nsec,
 mnemonics, Cashu proofs, transfer tokens, or record-protection material. The
 request-scoped Acorn object—and therefore its private key—remains in memory
 only until the task completes or the web process stops.
+
+The executor thread creates a fresh request-scoped Acorn from the encrypted
+session credentials, runs a private asyncio loop, and discards both when the
+job finishes. This keeps slow or partly synchronous relay and mint calls away
+from Uvicorn's HTTP event loop. The nsec exists only in the executor closure and
+thread memory; it is never added to the coordination row.
 
 The lease prevents two Uvicorn workers or browser tabs from starting competing
 proof mutations for the same Acorn. A job heartbeat renews ownership while work
@@ -134,7 +140,7 @@ recorded in the [Funds Arrival and Finalization Milestone](FUNDS-ARRIVAL-AND-FIN
 
 ## Attached-Acorn background Clear acceptance
 
-Clear acceptance uses a separate wallet-scoped lease and in-memory task but
+Clear acceptance uses a separate wallet-scoped lease and bounded-executor job but
 the same trust boundary. One acceptance runs per Acorn at a time. The job may
 load the relay-backed wallet, discover a specifically previewed receipt,
 refresh its proofs with the exact

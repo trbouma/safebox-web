@@ -133,6 +133,7 @@ SAFEBOX_BIND_ADDRESS=127.0.0.1
 SAFEBOX_PORT=8000
 FORWARDED_ALLOW_IPS=127.0.0.1
 SAFEBOX_WEB_WORKERS=1
+SAFEBOX_BACKGROUND_JOB_THREADS=2
 
 SAFEBOX_SERVICE_ACORN_ENABLED=true
 SAFEBOX_SERVICE_ACORN_HOME_RELAY=wss://relay.getsafebox.app
@@ -155,6 +156,13 @@ Any `ws://` value used as `SAFEBOX_DEFAULT_BOOTSTRAP_RELAY` or
 `SAFEBOX_SERVICE_ACORN_HOME_RELAY` must appear in this list. The connection is
 made by the Safebox process, so `localhost` refers to that process's host
 namespace; inside Docker it normally refers to the container itself.
+
+`SAFEBOX_BACKGROUND_JOB_THREADS` is the per-Uvicorn-process bound for
+session-held Cash finalization and Clear acceptance. The default of two keeps
+slow relay or mint work away from the HTTP event loop while limiting concurrent
+wallet jobs. With two Uvicorn workers and the default setting, at most four
+such jobs can execute concurrently across different Acorns. Database leases
+still prevent concurrent mutation of the same Acorn.
 
 If `SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS` is absent, both the
 application settings and Compose configuration default it to seven days. Set

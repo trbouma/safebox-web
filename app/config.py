@@ -292,6 +292,7 @@ class Settings:
     clear_receive_enabled: bool = False
     clear_mints: tuple[str, ...] = ()
     clear_units: tuple[str, ...] = ()
+    background_job_threads: int = 2
 
     @property
     def onboard_invite_code(self) -> str:
@@ -364,6 +365,10 @@ class Settings:
                 "SAFEBOX_DEFAULT_DISPLAY_CURRENCY must be included in "
                 "SAFEBOX_CURRENCY_RATE_CURRENCIES"
             )
+        if not 1 <= self.background_job_threads <= 16:
+            raise ValueError(
+                "SAFEBOX_BACKGROUND_JOB_THREADS must be between 1 and 16"
+            )
         _validate_gift_wrap_retention(
             self.service_acorn_gift_wrap_retention_seconds
         )
@@ -435,6 +440,9 @@ class Settings:
                     "SAFEBOX_CURRENCY_RATE_STALE_SECONDS",
                     str(DEFAULT_CURRENCY_RATE_STALE_SECONDS),
                 )
+            )
+            background_job_threads = int(
+                os.getenv("SAFEBOX_BACKGROUND_JOB_THREADS", "2")
             )
         except ValueError as exc:
             raise RuntimeError("Safebox numeric application settings are invalid") from exc
@@ -529,4 +537,5 @@ class Settings:
             clear_receive_enabled=_env_bool("SAFEBOX_CLEAR_RECEIVE_ENABLED", False),
             clear_mints=_comma_list_from_env("SAFEBOX_CLEAR_MINTS"),
             clear_units=_comma_list_from_env("SAFEBOX_CLEAR_UNITS"),
+            background_job_threads=background_job_threads,
         )

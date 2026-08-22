@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import logging
 from typing import Annotated
 
@@ -74,9 +75,8 @@ CredentialsDependency = Annotated[
 ]
 
 
-def get_acorn(credentials: CredentialsDependency, settings: SettingsDependency) -> Acorn:
-    """Build a request-scoped Acorn component without loading or storing state."""
-
+def build_acorn(credentials: SessionCredentials, settings: Settings) -> Acorn:
+    """Build an Acorn from client-held credentials without loading state."""
     return Acorn(
         nsec=credentials.nsec,
         home_relay=credentials.bootstrap_relay,
@@ -86,7 +86,44 @@ def get_acorn(credentials: CredentialsDependency, settings: SettingsDependency) 
     )
 
 
+def get_acorn(credentials: CredentialsDependency, settings: SettingsDependency) -> Acorn:
+    """Build a request-scoped Acorn component without loading or storing state."""
+
+    return build_acorn(credentials, settings)
+
+
 AcornDependency = Annotated[Acorn, Depends(get_acorn)]
+
+
+AcornFactory = Callable[[], Acorn]
+
+
+def get_background_acorn_factory(
+    credentials: CredentialsDependency,
+    settings: SettingsDependency,
+) -> AcornFactory:
+    """Capture session credentials for one in-memory background job."""
+
+    nsec = credentials.nsec
+    bootstrap_relay = credentials.bootstrap_relay
+    blossom_home_server = settings.blossom_home_server
+
+    def create() -> Acorn:
+        return Acorn(
+            nsec=nsec,
+            home_relay=bootstrap_relay,
+            relays=[bootstrap_relay],
+            blossom_home_server=blossom_home_server,
+            blossom_servers=[blossom_home_server],
+        )
+
+    return create
+
+
+BackgroundAcornFactoryDependency = Annotated[
+    AcornFactory,
+    Depends(get_background_acorn_factory),
+]
 
 
 async def get_loaded_acorn(

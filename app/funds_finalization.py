@@ -6,7 +6,7 @@ import asyncio
 from datetime import timedelta
 import logging
 import secrets
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import and_, exists, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -277,3 +277,40 @@ async def run_finalization_job(
     finally:
         heartbeat.cancel()
         await asyncio.gather(heartbeat, return_exceptions=True)
+
+
+def run_finalization_job_in_thread(
+    *,
+    engine: Engine,
+    acorn_factory: Callable[[], Any],
+    npub: str,
+    owner_token: str,
+    load_timeout_seconds: float,
+) -> None:
+    """Create and finalize an Acorn wholly inside an executor thread."""
+
+    async def execute() -> None:
+        acorn = acorn_factory()
+        await asyncio.wait_for(
+            acorn.load_data(),
+            timeout=load_timeout_seconds,
+        )
+        await run_finalization_job(
+            engine=engine,
+            acorn=acorn,
+            npub=npub,
+            owner_token=owner_token,
+        )
+
+    try:
+        asyncio.run(execute())
+    except Exception as exc:
+        logger.exception("background funds finalization thread failed npub=%s", npub)
+        update_finalization_job(
+            engine,
+            npub,
+            owner_token,
+            status="FAILED",
+            phase="REVIEW",
+            error=f"{type(exc).__name__}: {exc}",
+        )
