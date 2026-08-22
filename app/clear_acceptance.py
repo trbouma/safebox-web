@@ -145,8 +145,9 @@ async def run_clear_acceptance_job(
     npub: str,
     event_id: str,
     owner_token: str,
+    load_timeout_seconds: float = 20.0,
 ) -> None:
-    """Accept one Clear receipt idempotently after the HTTP response returns."""
+    """Load and accept one Clear receipt after the HTTP response returns."""
 
     async def maintain_lease() -> None:
         while True:
@@ -173,6 +174,16 @@ async def run_clear_acceptance_job(
 
     heartbeat.add_done_callback(stop_job_if_lease_fails)
     try:
+        update_clear_acceptance_job(
+            engine,
+            npub,
+            owner_token,
+            phase="LOADING",
+        )
+        await asyncio.wait_for(
+            acorn.load_data(),
+            timeout=load_timeout_seconds,
+        )
         update_clear_acceptance_job(
             engine,
             npub,

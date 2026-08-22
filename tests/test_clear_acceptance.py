@@ -49,6 +49,7 @@ def test_background_clear_acceptance_records_confirmed_result(tmp_path) -> None:
         "FakeAcorn",
         (),
         {
+            "load_data": AsyncMock(return_value=None),
             "accept_pending_clear_receipt": AsyncMock(
                 return_value={
                     "status": "OK",
@@ -81,6 +82,7 @@ def test_background_clear_acceptance_records_confirmed_result(tmp_path) -> None:
         engine.dispose()
 
     acorn.accept_pending_clear_receipt.assert_awaited_once_with(event_id)
+    acorn.load_data.assert_awaited_once_with()
     acorn.sweep_clear_transfers.assert_not_awaited()
     assert job is not None
     assert job["status"] == "COMPLETE"
@@ -95,6 +97,7 @@ def test_background_clear_acceptance_discovers_previewed_receipt(tmp_path) -> No
         "PreviewAcorn",
         (),
         {
+            "load_data": AsyncMock(return_value=None),
             "accept_pending_clear_receipt": AsyncMock(
                 side_effect=[
                     ValueError("Pending Clear receipt was not found"),
@@ -133,6 +136,7 @@ def test_background_clear_acceptance_discovers_previewed_receipt(tmp_path) -> No
         event_id=event_id,
         advance_cursor=False,
     )
+    acorn.load_data.assert_awaited_once_with()
     assert acorn.accept_pending_clear_receipt.await_count == 2
     assert job is not None
     assert job["status"] == "COMPLETE"

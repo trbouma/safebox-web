@@ -123,10 +123,17 @@ recorded in the [Funds Arrival and Finalization Milestone](FUNDS-ARRIVAL-AND-FIN
 
 Clear acceptance uses a separate wallet-scoped lease and in-memory task but
 the same trust boundary. One acceptance runs per Acorn at a time. The job may
-discover a specifically previewed receipt, refresh its proofs with the exact
+load the relay-backed wallet, discover a specifically previewed receipt,
+refresh its proofs with the exact
 mint and CMU, verify kind `7380` state and kind `7381` history, update the
 receipt journal, and release the wallet lock without holding open the HTTP
 request.
+
+The acceptance POST deliberately uses an unloaded, request-scoped Acorn. It
+validates the session and event identifier, claims the lease, starts the task,
+and redirects immediately. Relay-backed `load_data()` runs in the background
+under the job's `LOADING` phase. A slow bootstrap relay can therefore delay the
+job without producing a gateway timeout before the job has even started.
 
 The coordination row stores the npub, event id, phase, timestamps, result
 amount, mint, CMU, error summary, and opaque lease token. It contains no nsec,

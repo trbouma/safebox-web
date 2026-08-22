@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import time
 from types import SimpleNamespace
 from pathlib import Path
@@ -3478,6 +3479,7 @@ def test_user_can_accept_clear_transfer_into_spendable_balance(tmp_path) -> None
         "comment": "guest passes",
         "timestamp": 1_786_430_400,
     }]
+    app.dependency_overrides[get_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
@@ -3508,6 +3510,7 @@ def test_user_can_accept_clear_transfer_into_spendable_balance(tmp_path) -> None
     assert response.headers["location"] == "/clear?acceptance=started"
     assert job is not None
     assert job["status"] == "COMPLETE"
+    assert acorn.loaded is True
     assert acorn.accepted_clear_receipts == [event_id]
     assert "Clear transfer acceptance completed." in result.text
     assert "Confirmed 25 cmu-test." in result.text
@@ -3515,6 +3518,73 @@ def test_user_can_accept_clear_transfer_into_spendable_balance(tmp_path) -> None
     assert "Accept Clear Transaction" in result.text
     assert "guest passes" in result.text
     assert "Accept Clear Transfer" not in result.text
+
+
+def test_clear_acceptance_response_does_not_wait_for_wallet_load(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    event_id = "7" * 64
+    acorn = FakeLoadedAcorn(balance=100)
+    acorn.clear_receipts = [{
+        "event_id": event_id,
+        "sender_pubkey": "sender-pubkey",
+        "status": "pending",
+        "amount": 9,
+        "unit": "cmu-background",
+        "mint": "https://clear.example",
+        "comment": "background wallet load",
+        "timestamp": 1_786_430_400,
+    }]
+    load_started = threading.Event()
+    allow_load_to_finish = threading.Event()
+
+    async def delayed_load_data() -> None:
+        load_started.set()
+        await asyncio.to_thread(allow_load_to_finish.wait, 2)
+        acorn.loaded = True
+
+    acorn.load_data = delayed_load_data
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.get("/clear")
+        token_match = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            page.text,
+        )
+        assert token_match is not None
+        response = client.post(
+            "/clear/receipts/accept",
+            data={"csrf_token": token_match.group(1), "event_id": event_id},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/clear?acceptance=started"
+        assert load_started.wait(0.5) is True
+        running = get_clear_acceptance_job(
+            app.state.database_engine,
+            acorn.pubkey_bech32,
+        )
+        assert running is not None
+        assert running["status"] == "RUNNING"
+        assert running["phase"] == "LOADING"
+
+        allow_load_to_finish.set()
+        deadline = time.monotonic() + 2
+        completed = None
+        while time.monotonic() < deadline:
+            completed = get_clear_acceptance_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if completed and completed["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
+
+    assert completed is not None
+    assert completed["status"] == "COMPLETE"
+    assert acorn.loaded is True
 
 
 def test_user_can_accept_relay_previewed_clear_transfer(tmp_path) -> None:
@@ -3534,6 +3604,7 @@ def test_user_can_accept_relay_previewed_clear_transfer(tmp_path) -> None:
             "timestamp": 1_786_430_400,
         }],
     }
+    app.dependency_overrides[get_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
@@ -3567,6 +3638,7 @@ def test_user_can_accept_relay_previewed_clear_transfer(tmp_path) -> None:
     assert response.headers["location"] == "/clear?acceptance=started"
     assert job is not None
     assert job["status"] == "COMPLETE"
+    assert acorn.loaded is True
     assert acorn.clear_sweep_calls == 1
     assert acorn.accepted_clear_receipts == [event_id]
     assert "12 <span>cmu-preview</span>" in result.text
@@ -5310,7 +5382,7 @@ def test_lightning_payment_stale_proofs_repairs_and_returns_to_review(monkeypatc
     assert acorn.repair_calls == 1
     assert len(acorn.payments) == 1
     assert "Safebox repaired stale proofs" in response.text
-    assert "confirm the payment again" in response.text
+    assert "confirm the transfer again" in response.text
     assert 'value="alice@example.com"' in response.text
     assert 'value="21"' in response.text
     assert 'value="lightning please"' in response.text
@@ -5361,7 +5433,7 @@ def test_payment_is_blocked_when_mint_verification_is_not_clean() -> None:
     )
 
     assert response.status_code == 409
-    assert "Payment is blocked" in response.text
+    assert "transfer is blocked" in response.text
     assert acorn.payments == []
 
 
@@ -5390,7 +5462,7 @@ def test_confirmed_payment_still_blocks_when_mint_is_unavailable(
 
     assert response.status_code == 503
     assert "a mint is unavailable" in response.text
-    assert "Continuity Payments" in response.text
+    assert "Continuity mode" in response.text
     assert acorn.payments == []
     assert acorn.ecash_transfers == []
 

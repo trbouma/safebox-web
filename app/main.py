@@ -5115,7 +5115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     acorn.get_balance(),
                     form_token.issue(),
                     "Safebox repaired stale proofs. Review the recipient, "
-                        "amount, and updated balance, then confirm the transfer again. "
+                    "amount, and updated balance, then confirm the transfer again. "
                     f"Previous attempt stopped before confirmation: {error_reason}",
                     repaired_balance_status,
                     lightning_address=lightning_address,
@@ -5733,7 +5733,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/clear/receipts/accept", response_class=HTMLResponse)
     async def accept_pending_clear_receipt(
         request: Request,
-        acorn: LoadedAcornDependency,
+        acorn: AcornDependency,
         event_id: str = Form(...),
         csrf_token: str = Form(...),
     ):
@@ -5793,6 +5793,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     npub=npub,
                     event_id=event_id,
                     owner_token=owner_token,
+                    load_timeout_seconds=settings.wallet_load_timeout_seconds,
                 ),
                 name=f"clear-acceptance:{npub}",
             )

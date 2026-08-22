@@ -185,8 +185,11 @@ Web displays pending and spendable amounts separately for each exact mint and
 CMU.
 
 Clear acceptance now runs in the background. Safebox returns control to the
-user immediately while Acorn refreshes proofs, verifies kind `7380` and kind
-`7381` readback, updates the receipt journal, and releases its wallet lock. A
+user immediately while Acorn loads relay-backed wallet state, refreshes proofs,
+verifies kind `7380` and kind `7381` readback, updates the receipt journal, and
+releases its wallet lock. Wallet loading occurs after the redirect under an
+observable `LOADING` phase, so bootstrap-relay latency does not hold the
+acceptance request open. A
 non-secret database lease coordinates multiple web workers; keys, tokens, and
 wallet proof state are not stored in the application database.
 
