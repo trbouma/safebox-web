@@ -1688,6 +1688,9 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert 'class="page-navigation"' not in response.text
     assert '<a href="/balances">Manage Balances</a>' in response.text
     assert '<a href="/records">Manage Records</a>' in response.text
+    assert response.text.index("Clear Balances") < response.text.index(
+        "Manage Balances"
+    ) < response.text.index("Manage Records")
     assert "Claim a Custom Address" not in response.text
     assert '<a href="/invite">Invite someone to create an Acorn</a>' in response.text
     assert "Scan a Code" not in response.text

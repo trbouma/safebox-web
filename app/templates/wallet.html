@@ -52,10 +52,6 @@
   <a class="nav-button" href="/handle">Claim a Handle</a>
 </section>
 {% endif %}
-<nav class="wallet-actions" aria-label="Safebox resources">
-  <a href="/balances">Manage Balances</a>
-  <a href="/records">Manage Records</a>
-</nav>
 <a class="wallet-balance" href="/transactions" aria-labelledby="wallet-balance-heading">
   <h2 id="wallet-balance-heading">Cash Balance</h2>
   {% if fiat_estimate %}
@@ -78,6 +74,10 @@
   {% endif %}
   <p class="wallet-balance-state">Relay-visible snapshot. Open for transfer status and history.</p>
 </a>
+<nav class="wallet-actions" aria-label="Safebox resources">
+  <a href="/balances">Manage Balances</a>
+  <a href="/records">Manage Records</a>
+</nav>
 {% if silent_payment_address %}
 <details class="receive-payment-card silent-payment-card">
   <summary>Receive Silent Payment</summary>
