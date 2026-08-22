@@ -89,17 +89,20 @@ events. Friendly Clear names use the same bounded, short-lived mint metadata
 cache as the Clear detail page. Its job is orientation, current approximate
 balance visibility, and navigation.
 
-Live work is performed only when the user follows the corresponding link:
+Live status work is performed only when the user invokes the corresponding
+control:
 
-- `/transactions` loads Cash state, checks proofs with the mint, reads the Cash
-  journal, and previews incoming Cash transfers; and
-- `/clear` loads Clear balances, history, metadata, and incoming Clear
-  transfers.
+- `/transactions` initially loads Cash state and its stored journal; **Check
+  Balance and Incoming Transfers** then performs mint proof verification and a
+  read-only incoming-transfer scan; and
+- `/clear` initially loads stored Clear balances, receipts, history, and
+  metadata; **Check for Clear Transfers** performs the incoming relay scan.
 
 This keeps the common landing request responsive, avoids querying unrelated
-protocol services, and makes potentially slow network work correspond to the
-resource the user explicitly requested. These detail-page reads remain
-read-only; finalization and acceptance still require separate POST actions.
+protocol services, and makes potentially slow network work correspond to an
+explicit user request. Cash status checks remain read-only. The Clear check
+stages discovered receipts, while proof finalization and Clear acceptance
+remain separate POST actions.
 
 ## Template boundary
 

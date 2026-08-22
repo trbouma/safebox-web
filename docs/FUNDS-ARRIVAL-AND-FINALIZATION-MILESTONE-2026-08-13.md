@@ -19,16 +19,16 @@ for the NUT-00 proof-compatibility incident and kernel-level controls.
 
 ## Immediate assurance without false finality
 
-When the transaction page loads, Safebox Web asks Acorn for two read-only
-views:
+When the user selects **Check Balance and Incoming Transfers**, Safebox Web
+asks Acorn for two read-only views:
 
 - newly visible gift-wrapped transfer events that have not yet been staged;
   and
 - provisional continuity receipts that have been staged but not yet accepted
   by their mint.
 
-The confirmed balance pane immediately reports the aggregate pending amount
-and event count. Directly below it, individual pending transaction cards show:
+The refreshed balance pane reports the aggregate pending amount and event
+count. Directly below it, individual pending transaction cards show:
 
 - amount;
 - relay arrival time;

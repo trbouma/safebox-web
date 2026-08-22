@@ -163,6 +163,7 @@ class FakeLoadedAcorn:
         self.deposit_paid = deposit_paid
         self.verified_balance = balance if verified_balance is None else verified_balance
         self.verification_status = verification_status
+        self.proof_check_calls = 0
         self.loaded = False
         self.payments: list[dict] = []
         self.ecash_transfers: list[dict] = []
@@ -371,6 +372,7 @@ class FakeLoadedAcorn:
         return {"status": "ACTIVE", "active": True, "verified": True}
 
     async def check_proofs(self) -> dict:
+        self.proof_check_calls += 1
         return {
             "status": self.verification_status,
             "recommendation": "Review the proof state.",
@@ -2681,7 +2683,7 @@ def test_transaction_page_warns_when_relay_total_exceeds_mint_confirmed_balance(
     )
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/transactions")
+        response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
     assert "Relay-visible proof total: <strong>33,926 sats" in response.text
@@ -2714,7 +2716,7 @@ def test_clear_page_shows_pending_clear_transfers_separately(tmp_path) -> None:
     assert "Pending cash payments: 25 sats" not in response.text
 
 
-def test_clear_page_previews_new_transfers_without_storing_them(tmp_path) -> None:
+def test_clear_page_defers_new_transfer_scan_until_requested(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=9_836)
     event_id = "7" * 64
@@ -2737,9 +2739,10 @@ def test_clear_page_previews_new_transfers_without_storing_them(tmp_path) -> Non
         response = client.get("/clear")
 
     assert response.status_code == 200
-    assert "1 pending transfer across 1 Clear balance." in response.text
-    assert "40 pending in 1 transfer" in response.text
-    assert acorn.clear_preview_calls == 1
+    assert "1 pending transfer across 1 Clear balance." not in response.text
+    assert "40 pending in 1 transfer" not in response.text
+    assert "Check for Clear Transfers" in response.text
+    assert acorn.clear_preview_calls == 0
     assert acorn.clear_sweep_calls == 0
     assert acorn.clear_receipts == []
 
@@ -3268,7 +3271,10 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert response.status_code == 200
     assert '<h1 class="transaction-headline">Cash Transactions</h1>' in response.text
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
-    assert "Confirmed cash balance" in response.text
+    assert "Mint verification and incoming-transfer discovery run only when requested" in response.text
+    assert "Check Balance and Incoming Transfers" in response.text
+    assert acorn.proof_check_calls == 0
+    assert acorn.preview_calls == 0
     assert "Incoming ecash" not in response.text
     assert response.text.index(
         '<h1 class="transaction-headline">Cash Transactions</h1>'
@@ -3643,14 +3649,11 @@ def test_clear_acceptance_response_does_not_wait_for_wallet_load(tmp_path) -> No
     assert acorn.loaded is True
 
 
-def test_user_can_accept_relay_previewed_clear_transfer(tmp_path) -> None:
+def test_user_can_check_then_accept_relay_clear_transfer(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
     event_id = "8" * 64
-    acorn.clear_preview = {
-        "previewed_count": 1,
-        "previewed_amount": 12,
-        "previewed": [{
+    acorn.clear_sweep_receipts = [{
             "event_id": event_id,
             "sender_pubkey": "sender-pubkey",
             "amount": 12,
@@ -3658,8 +3661,7 @@ def test_user_can_accept_relay_previewed_clear_transfer(tmp_path) -> None:
             "mints": ["http://127.0.0.1:3339"],
             "comment": "preview acceptance",
             "timestamp": 1_786_430_400,
-        }],
-    }
+        }]
     app.dependency_overrides[get_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
@@ -3670,9 +3672,20 @@ def test_user_can_accept_relay_previewed_clear_transfer(tmp_path) -> None:
             page.text,
         )
         assert token_match is not None
+        checked = client.post(
+            "/clear/receive",
+            data={"csrf_token": token_match.group(1)},
+            follow_redirects=True,
+        )
+        page = checked
+        token_match = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            page.text,
+        )
+        assert token_match is not None
         assert "12 pending in 1 transfer" in page.text
         assert "Accept Clear Transfer" in page.text
-        assert "Delete pending transfer" not in page.text
+        assert "Delete pending transfer" in page.text
         response = client.post(
             "/clear/receipts/accept",
             data={"csrf_token": token_match.group(1), "event_id": event_id},
@@ -3701,21 +3714,18 @@ def test_user_can_accept_relay_previewed_clear_transfer(tmp_path) -> None:
     assert "Accept Clear Transfer" not in result.text
 
 
-def test_clear_preview_survives_history_lookup_failure(tmp_path) -> None:
+def test_stored_clear_receipt_survives_history_lookup_failure(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
-    acorn.clear_preview = {
-        "previewed_count": 1,
-        "previewed_amount": 30,
-        "previewed": [{
+    acorn.clear_receipts = [{
             "event_id": "9" * 64,
             "sender_pubkey": "sender-pubkey",
             "amount": 30,
             "unit": "cmu-preview",
-            "mints": ["http://127.0.0.1:3339"],
+            "mint": "http://127.0.0.1:3339",
+            "status": "pending",
             "timestamp": 1_786_430_400,
-        }],
-    }
+        }]
 
     async def broken_history():
         raise RuntimeError("history unavailable")
@@ -3920,7 +3930,7 @@ def test_transaction_page_shows_persisted_payment_awaiting_confirmation(tmp_path
     ]
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/transactions")
+        response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
     assert "Pending cash payments: 5 sats in 1 payment." in response.text
@@ -3936,7 +3946,7 @@ def test_transaction_page_previews_unprocessed_incoming_payments_without_receivi
     acorn.incoming_preview = {"previewed_count": 2, "previewed_amount": 7}
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/transactions")
+        response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
     assert "Pending cash payments: 7 sats in 2 payments." in response.text
@@ -3978,7 +3988,7 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
     }
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/transactions")
+        response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
     assert "Pending cash payments: 12 sats in 3 payments." in response.text
@@ -4026,7 +4036,7 @@ def test_pending_transaction_list_deduplicates_staged_event(tmp_path) -> None:
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/transactions")
+        response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
     assert "Pending cash payments: 9 sats in 1 payment." in response.text

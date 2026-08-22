@@ -575,6 +575,18 @@ def _balance_status_html(
     return relay_html + confirmed_html
 
 
+def _unchecked_balance_status_html(relay_balance: int, proof_count: int) -> str:
+    """Describe relay-visible state without implying a mint check occurred."""
+
+    return (
+        f"<p>Relay-visible proof total: <strong>{int(relay_balance):,} sats</strong> "
+        f"in {int(proof_count):,} proofs</p>"
+        "<p>Mint verification has not been run for this page load. Use "
+        "<strong>Check Balance and Incoming Transfers</strong> when you need "
+        "current mint-confirmed and pending-transfer status.</p>"
+    )
+
+
 def _wallet_balance_summary(
     relay_balance: int,
     verification: dict | None,
@@ -1238,6 +1250,7 @@ def _transactions_page(
     fiat_estimate: dict | None = None,
     finalization_job: dict | None = None,
     pending_transactions: list[dict] | None = None,
+    checks_performed: bool = False,
 ) -> str:
     """Render transaction history with an explicit incoming funds check."""
 
@@ -1257,6 +1270,7 @@ def _transactions_page(
         fiat_estimate=fiat_estimate,
         finalization_job=finalization_job,
         pending_transactions=pending_transactions or [],
+        checks_performed=checks_performed,
     )
 
 
@@ -5411,10 +5425,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: DatabaseSessionDependency,
     ):
         settings = request.app.state.settings
-        verification, _verification_error = await _read_proof_verification(
-            acorn,
-            settings.wallet_load_timeout_seconds,
-        )
+        checks_performed = request.query_params.get("check") == "1"
+        verification = None
+        verification_error = None
+        if checks_performed:
+            verification, verification_error = await _read_proof_verification(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
         wallet_balance, wallet_balance_verified = _wallet_balance_summary(
             acorn.get_balance(),
             verification,
@@ -5465,28 +5483,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             reverse=True,
         )
-        try:
-            continuity_receipts = await _read_continuity_receipts(
-                acorn,
-                settings.wallet_load_timeout_seconds,
-            )
-        except Exception as exc:
-            logger.warning(
-                "continuity receipt lookup failed error_type=%s",
-                type(exc).__name__,
-            )
-            continuity_receipts = []
-        try:
-            incoming_preview = await _preview_incoming_payments(
-                acorn,
-                settings.wallet_load_timeout_seconds,
-            )
-        except Exception as exc:
-            logger.warning(
-                "incoming payment preview failed error_type=%s",
-                type(exc).__name__,
-            )
-            incoming_preview = {}
+        continuity_receipts = []
+        incoming_preview = {}
+        if checks_performed:
+            try:
+                continuity_receipts = await _read_continuity_receipts(
+                    acorn,
+                    settings.wallet_load_timeout_seconds,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "continuity receipt lookup failed error_type=%s",
+                    type(exc).__name__,
+                )
+            try:
+                incoming_preview = await _preview_incoming_payments(
+                    acorn,
+                    settings.wallet_load_timeout_seconds,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "incoming payment preview failed error_type=%s",
+                    type(exc).__name__,
+                )
         pending_amount, pending_count = _pending_transaction_totals(
             continuity_receipts,
             incoming_preview,
@@ -5505,17 +5524,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             retention_notice=_ecash_retention_notice(settings),
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
-            balance_status=_balance_status_html(
-                acorn.get_balance(),
-                len(acorn.proofs),
-                verification,
-                _verification_error,
+            balance_status=(
+                _balance_status_html(
+                    acorn.get_balance(),
+                    len(acorn.proofs),
+                    verification,
+                    verification_error,
+                )
+                if checks_performed
+                else _unchecked_balance_status_html(
+                    acorn.get_balance(),
+                    len(acorn.proofs),
+                )
             ),
             pending_amount=pending_amount,
             pending_count=pending_count,
             fiat_estimate=fiat_estimate,
             finalization_job=finalization_job,
             pending_transactions=pending_transactions,
+            checks_performed=checks_performed,
         )
 
     @app.get("/clear", response_class=HTMLResponse)
@@ -5565,12 +5592,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             history = []
         else:
             history = history_result
-        clear_preview = await _preview_incoming_clear(
-            acorn,
-            settings.wallet_load_timeout_seconds,
-        )
-
-        pending_receipts = _merge_clear_pending(receipts, clear_preview)
+        # New relay transfers are discovered only through the explicit
+        # "Check for Clear Transfers" action below. A normal GET renders stored
+        # receipts, balances, and history without performing another scan.
+        pending_receipts = receipts
 
         try:
             clear_summary = await _resolve_clear_aliases(

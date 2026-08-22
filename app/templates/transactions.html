@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
+<section class="incoming-funds" aria-label="Cash status checks">
+  <p>{% if checks_performed %}Balance and incoming-transfer checks completed for this page load.{% else %}Mint verification and incoming-transfer discovery run only when requested.{% endif %}</p>
+  <a class="nav-button" href="/transactions?check=1">{% if checks_performed %}Check Balance and Incoming Transfers Again{% else %}Check Balance and Incoming Transfers{% endif %}</a>
+</section>
 {% if wallet_balance is not none %}
 <a class="wallet-balance transaction-balance" href="/wallet" aria-labelledby="transaction-balance-heading">
   <h2 id="transaction-balance-heading">Cash Balance</h2>

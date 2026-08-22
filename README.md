@@ -152,17 +152,17 @@ display an operation-specific progress message after submission and disable
 their submit buttons while the request is running. This is progressive browser
 behavior: server validation and transaction safety do not depend on JavaScript.
 
-The transaction-history page provides an explicit **Check and receive ecash**
-action. It asks the attached Acorn to query its home relay, unwrap incoming
-transfers, validate and refresh their Cashu proofs through the issuing mint,
-persist the accepted proofs as normal wallet state, and record the resulting
-credits in transaction history. Merely viewing the wallet or transaction
-history remains read-only; receiving ecash is a separate CSRF-protected
-mutation initiated by the user.
+The transaction-history page opens with the relay-visible balance and stored
+journal only. **Check Balance and Incoming Transfers** explicitly requests a
+read-only mint proof check and relay scan for pending transfers. **Finalize
+Cash Transactions** is the separate CSRF-protected mutation that unwraps the
+incoming transfers, validates and refreshes their proofs through the issuing
+mint, persists accepted proofs as normal wallet state, and records the credits
+in transaction history.
 
-Safebox Web also exposes a separate **Clear Transactions** page. It calls
-Acorn's kind `7379` receiver in read-only preview mode when the Clear page
-loads, so new transfers appear immediately without changing wallet state.
+Safebox Web also exposes a separate **Clear Transactions** page. Its initial
+representation shows stored Clear balances, receipts, and history without
+scanning for new kind `7379` transfers.
 Clear Balances contain organization-issued **transferable units**; Clear
 represents each exact unit as a keyset-bound CMU.
 
