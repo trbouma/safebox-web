@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% macro clear_transaction_card(entry, csrf_token, pending=false) -%}
+{% macro clear_transaction_card(entry, csrf_token, acceptance_job, pending=false) -%}
 <article class="transaction-card {% if pending %}advisory{% elif entry.direction == 'out' %}debit{% else %}credit{% endif %}">
   <header class="transaction-header">
     <span class="transaction-kind">{% if pending %}Pending Clear Transfer{% else %}{{ entry.status_label }} Clear Transaction{% endif %}</span>
@@ -22,9 +22,13 @@
   {% endif %}
   {% if entry.keyset_ids %}<p class="clear-keysets"><strong>Keyset:</strong> {{ entry.keyset_ids | join(", ") }}</p>{% endif %}
   {% if pending and entry.event_id %}
+  {% if acceptance_job and acceptance_job.status == "RUNNING" %}
+  <p role="status"><strong>Clear acceptance is already in progress.</strong>
+    Return to this page shortly to see the confirmed balance.</p>
+  {% else %}
   <form method="post" action="/clear/receipts/accept"
-        data-progress-message="Accepting Clear transfer. Please wait."
-        data-progress-button="Accepting…">
+        data-progress-message="Starting Clear acceptance. Please wait."
+        data-progress-button="Starting…">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="event_id" value="{{ entry.event_id }}">
     <button type="submit">Accept Clear Transfer</button>
@@ -41,10 +45,28 @@
     </form>
   </details>{% endif %}
   {% endif %}
+  {% endif %}
 </article>
 {%- endmacro %}
 {% block content %}
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
+{% if acceptance_job and acceptance_job.status == "RUNNING" %}
+<section class="incoming-funds" aria-label="Clear transfer acceptance">
+  <p role="status"><strong>Clear transfer acceptance is running in the background.</strong></p>
+  <p>You can leave this page and return later. Current phase: {{ acceptance_job.phase | lower }}.</p>
+</section>
+{% elif acceptance_job and acceptance_job.status == "COMPLETE" %}
+<section class="incoming-funds" aria-label="Clear transfer acceptance">
+  <p role="status"><strong>Clear transfer acceptance completed.</strong>
+  {% if acceptance_job.amount %}Confirmed {{ "{:,}".format(acceptance_job.amount) }} {{ acceptance_job.unit }}.{% endif %}</p>
+</section>
+{% elif acceptance_job and acceptance_job.status in ("FAILED", "INTERRUPTED") %}
+<section class="incoming-funds" aria-label="Clear transfer acceptance">
+  <p role="status"><strong>Clear transfer acceptance needs attention.</strong>
+  {% if acceptance_job.error %}{{ acceptance_job.error }}{% endif %}</p>
+  <p>The receipt and any relay-backed progress remain available. Start acceptance again to resume safely.</p>
+</section>
+{% endif %}
 
 <section class="clear-balance-list" aria-labelledby="clear-balances-heading">
   <h2 id="clear-balances-heading">Clear Balances</h2>
@@ -77,7 +99,7 @@
   </div>
   {% if clear_summary.pending %}<p class="clear-balance-summary">{{ "{:,}".format(clear_summary.count) }} pending transfer{% if clear_summary.count != 1 %}s{% endif %} across {{ "{:,}".format(clear_summary.pending_balance_count) }} Clear balance{% if clear_summary.pending_balance_count != 1 %}s{% endif %}.</p>{% endif %}
   {% for entry in pending_entries %}
-  {{ clear_transaction_card(entry, csrf_token, pending=true) }}
+  {{ clear_transaction_card(entry, csrf_token, acceptance_job, pending=true) }}
   {% else %}
   <p>No pending Clear transfers.</p>
   {% endfor %}
@@ -86,7 +108,7 @@
 <section class="transaction-list clear-transaction-list" aria-labelledby="clear-history-heading">
   <h2 id="clear-history-heading">Clear Transaction History</h2>
   {% for entry in history_entries %}
-  {{ clear_transaction_card(entry, csrf_token) }}
+  {{ clear_transaction_card(entry, csrf_token, acceptance_job) }}
   {% else %}
   <p>No completed Clear transactions found.</p>
   {% endfor %}

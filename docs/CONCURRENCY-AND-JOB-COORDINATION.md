@@ -119,6 +119,22 @@ check.
 The complete incident-to-UX narrative and live interoperability evidence are
 recorded in the [Funds Arrival and Finalization Milestone](FUNDS-ARRIVAL-AND-FINALIZATION-MILESTONE-2026-08-13.md).
 
+## Attached-Acorn background Clear acceptance
+
+Clear acceptance uses a separate wallet-scoped lease and in-memory task but
+the same trust boundary. One acceptance runs per Acorn at a time. The job may
+discover a specifically previewed receipt, refresh its proofs with the exact
+mint and CMU, verify kind `7380` state and kind `7381` history, update the
+receipt journal, and release the wallet lock without holding open the HTTP
+request.
+
+The coordination row stores the npub, event id, phase, timestamps, result
+amount, mint, CMU, error summary, and opaque lease token. It contains no nsec,
+bearer token, or proof. A completed, failed, or expired job can be replaced by
+the next explicit acceptance request. Acorn's relay-backed receipt status and
+source-receipt linkage provide idempotent resumption; the application database
+does not become Clear wallet state.
+
 This is sufficient for development and carefully bounded small-value pilot
 traffic. It is not yet a production concurrency guarantee.
 
@@ -265,7 +281,7 @@ protects wallet state. Neither substitutes for the other.
 - Monitor `QUOTE_PENDING`, `INVOICE_PENDING`, `DELIVERING`, and
   `DELIVERY_FAILED` row ages.
 - Do not automatically replay an ambiguous delivery.
-- Do not start another wallet mutation while attached-Acorn background
-  finalization is running.
+- Do not start another wallet mutation while attached-Acorn Cash finalization
+  or Clear acceptance is running.
 - Stop accepting new provider payments before maintenance that may interrupt
   settlement or delivery.

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
-<p>Sent: <strong>{{ amount }} {{ unit | default("sats", true) }}</strong></p>
+<p>Transferred: <strong>{{ amount }} {{ unit | default("sats", true) }}</strong></p>
 <p>Fee: <strong>{{ fees }} {{ unit | default("sats", true) }}</strong></p>
-<p>Recipient: <code>{{ recipient }}</code></p>
+<p>Transfer Address: <code>{{ recipient }}</code></p>
 <p>{{ message }}</p>
 <p>Do not refresh this result page.</p>
 {% endblock %}

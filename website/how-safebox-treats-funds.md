@@ -1,16 +1,35 @@
 ---
-title: How Safebox Treats Funds
-description: Why Safebox separates payment arrival, mint confirmation, and spendable balance.
+title: How Safebox Treats Balances
+description: How Safebox derives balances from fungible records while keeping arrival, mint confirmation, and spendable state distinct.
 ---
 
-# How Safebox Treats Funds
+# How Safebox Treats Balances
 
-A payment should feel immediate without pretending that every part of the
-network has already finished.
+Safebox presents two top-level resource views: **Balances** and **Records**.
+They are concrete expressions of one uniform record model.
 
-Safebox now applies that honesty to two separate value models. Cash activity is
-presented as payments. Organization-issued Clear activity is presented as
-transfers.
+```text
+fungible records in one equivalence domain -> Balance
+non-fungible records                       -> Records
+```
+
+Cash proofs and Clear mint notes remain individual cryptographic records
+underneath. Safebox aggregates compatible quantities into a balance only when
+they share the required mint, unit, and policy context. A balance is therefore
+derived wallet state, not an account number maintained independently by the
+web application.
+
+Non-fungible records remain individually visible because their exact content,
+issuer, provenance, attachment, or control history matters.
+
+## Arrival and finality
+
+A value transfer should feel immediate without pretending that every part of
+the network has already finished.
+
+Safebox applies that honesty to two separate balance models. Cash activity may
+be presented as payment activity when it settles an obligation.
+Organization-issued Clear activity is presented more generally as transfers.
 
 ```text
 Cash Balance   -> one sat-denominated payment balance
@@ -25,7 +44,7 @@ Pending     -> the transfer is preserved and awaiting mint finalization
 Spendable   -> compatible proofs have been accepted and confirmed by the mint
 ```
 
-The user sees an incoming payment as soon as Safebox can read the transfer.
+The user sees an incoming transfer as soon as Safebox can read it.
 The confirmed balance changes only after Acorn has completed the mint and
 relay checks needed to make the value spendable.
 
@@ -91,6 +110,18 @@ groups it by exact mint and canonical CMU.
 Clear amounts never increase the Cash Balance. Amounts from different Clear
 mints or CMUs are never added together. Friendly aliases make the balances
 readable while the mint URL and complete CMU remain visible.
+
+## Payment is the settlement side of a transaction
+
+**Transfer** is the general operation: controlled value moves from one Acorn
+to another. **Payment** is the economic role of that transfer when it supplies
+the value or settlement side of a larger transaction.
+
+Not every transfer is a payment. Clear units might be allocated as a member
+benefit, gifted, refunded, or disbursed by a treasury. A purchase may pair a
+balance transfer with delivery of a service or with control over a
+non-fungible record. Safebox can support both sides without calling the entire
+economic transaction a payment.
 
 The user explicitly checks for Clear transfers from the Clear Transactions
 page. A pending transfer can be deleted before finalization; its bearer token

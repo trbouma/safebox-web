@@ -122,3 +122,22 @@ class FundsFinalizationJob(SQLModel, table=True):
     started_at: datetime = Field(default_factory=utc_now, nullable=False)
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
     lease_expires_at: datetime = Field(nullable=False, index=True)
+
+
+class ClearAcceptanceJob(SQLModel, table=True):
+    """Non-secret coordination state for one Clear acceptance task per Acorn."""
+
+    __tablename__ = "clear_acceptance_job"
+
+    npub: str = Field(primary_key=True)
+    event_id: str = Field(nullable=False)
+    status: str = Field(default="RUNNING", nullable=False, index=True)
+    owner_token: str = Field(nullable=False)
+    phase: str = Field(default="STARTING", nullable=False)
+    amount: int = Field(default=0, nullable=False)
+    mint: Optional[str] = Field(default=None, nullable=True)
+    unit: Optional[str] = Field(default=None, nullable=True)
+    error: Optional[str] = Field(default=None, nullable=True)
+    started_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    lease_expires_at: datetime = Field(nullable=False, index=True)

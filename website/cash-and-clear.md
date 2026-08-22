@@ -7,6 +7,12 @@ description: How Safebox Web keeps cash payments and organization-issued Clear t
 
 Safebox Web can hold two kinds of value without pretending they are the same.
 
+Both are concrete examples of the uniform record model. Their underlying
+proofs or mint notes are individually identifiable records; Safebox presents
+compatible quantities as balances only within one explicit equivalence
+domain. Individually meaningful non-fungible resources continue to appear
+under **Manage Records**.
+
 ## Cash Balance
 
 The singular **Cash Balance** contains sat-denominated funds from
@@ -83,12 +89,23 @@ Pending means the transfer arrived, not that it has already become spendable
 Clear proof state. The user may retain it for future acceptance or delete it.
 A deleted transfer does not return on the next relay check.
 
+Acceptance can involve a mint refresh and several verified relay writes, so it
+runs in the background. Safebox immediately reports that acceptance has
+started; the user can leave and return to see whether the balance is confirmed
+or needs attention. The coordination record contains no wallet key or bearer
+token, and an interrupted acceptance can resume from relay-backed state.
+
 ### Paying from a Clear balance
 
-The **Pay to an Address** page lists Cash and every spendable Clear balance as
-separate payment sources. Selecting Clear carries the exact issuing mint and
+The **Transfer a Balance** page lists Cash and every spendable Clear balance as
+separate transfer sources. Selecting Clear carries the exact issuing mint and
 canonical CMU through the request; a friendly program name is display metadata,
 not a currency identifier.
+
+The word **payment** remains useful when a transfer supplies the value or
+settlement leg of an economic transaction. It is not the umbrella term for
+every movement of a balance: allocations, gifts, benefits, refunds, and
+treasury disbursements are transfers too.
 
 Safebox Web resolves the recipient's NIP-05 document and requires compatible
 Clear transfer support before Acorn exports any bearer value. It then asks
@@ -112,5 +129,5 @@ security review remain; Clear should therefore still be used only for test
 units with no promise of financial value.
 
 [Read the technical milestone](https://github.com/trbouma/safebox-web/blob/main/docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md){ .md-button .md-button--primary }
-[How Safebox treats funds](how-safebox-treats-funds.md){ .md-button }
+[How Safebox treats balances](how-safebox-treats-funds.md){ .md-button }
 [Project status](project-status.md){ .md-button }

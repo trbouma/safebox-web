@@ -3,10 +3,10 @@
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 {{ balance_status | safe }}
 <form method="post" action="/pay" autocomplete="off"
-      data-progress-message="Payment in progress. Please wait and do not refresh this page."
-      data-progress-button="Sending payment…">
+      data-progress-message="Balance transfer in progress. Please wait and do not refresh this page."
+      data-progress-button="Transferring…">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <label for="payment_asset">Pay From</label>
+  <label for="payment_asset">Transfer From</label>
   <select id="payment_asset" name="payment_asset" required>
     <option value="cash" {% if payment_asset == "cash" %}selected{% endif %}>
       Cash Balance
@@ -18,7 +18,7 @@
       </option>
     {% endfor %}
   </select>
-  <label for="lightning_address">Payment Address</label>
+  <label for="lightning_address">Transfer Address</label>
   <input id="lightning_address" name="lightning_address" type="text"
          value="{{ lightning_address }}" placeholder="alice@example.com" required
          spellcheck="false" autocapitalize="none" autocomplete="off">
@@ -30,7 +30,7 @@
   <input id="comment" name="comment" type="text" maxlength="200"
          value="{{ comment }}">
   <fieldset class="payment-mode">
-    <legend>Cash Payment Mode</legend>
+    <legend>Cash Transfer Mode</legend>
     <div class="payment-mode-options">
       <label>
         <input name="payment_mode" type="radio" value="confirmed"
@@ -46,25 +46,25 @@
   </fieldset>
   <label>
     <input name="confirmed" type="checkbox" value="yes" required>
-    I confirm the recipient and amount and understand that this spends funds.
+    I confirm the transfer address and amount and understand that this transfers value.
   </label>
-  <button type="submit">Send payment</button>
+  <button type="submit">Transfer Balance</button>
 </form>
 <details class="payment-advisories">
   <summary>Advisories</summary>
   <div class="payment-advisories-content">
-    <p>The payment amount and the mint's fee reserve must fit within one
+    <p>The transfer amount and the mint's fee reserve must fit within one
     keyset accepted by the mint. The displayed total balance may therefore be greater than
-    the amount available for one payment.</p>
+    the amount available for one transfer.</p>
     <p>Confirmed mode checks the mint and can use Lightning when the address is
     outside Safebox.</p>
     <p>Continuity mode does not contact the mint or use Lightning. It works only
     with another Safebox address and only when the wallet already holds an exact
     set of proofs for the amount. The recipient holds those proofs provisionally
     until mint reconciliation is available.</p>
-    <p>A Clear payment spends from exactly one issuing mint and canonical CMU.
+    <p>A Clear transfer spends from exactly one issuing mint and canonical CMU.
     It is sent privately to a compatible Safebox address and never mixed with
-    the Cash Balance. Cash Payment Mode does not apply to Clear payments.</p>
+    the Cash Balance. Cash Transfer Mode does not apply to Clear transfers.</p>
     <p>Scanning is available from the wallet home page.</p>
   </div>
 </details>

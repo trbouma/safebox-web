@@ -82,6 +82,11 @@ from app.funds_finalization import (
     get_finalization_job,
     run_finalization_job,
 )
+from app.clear_acceptance import (
+    claim_clear_acceptance_job,
+    get_clear_acceptance_job,
+    run_clear_acceptance_job,
+)
 from app.handles import default_handle_from_pubkey
 from app.openetr import query_openetr_history
 from app.lnurl_pay import (
@@ -248,7 +253,7 @@ def _payment_form(
     balance_status: str | None = None,
     lightning_address: str = "",
     amount: str = "",
-    comment: str = "Paid from Safebox Web",
+    comment: str = "Transferred from Safebox Web",
     payment_mode: str = "confirmed",
     payment_asset: str = "cash",
     clear_balances: list[dict] | None = None,
@@ -259,7 +264,7 @@ def _payment_form(
         )
     return render_template(
         "pay.html",
-        title="Pay to an Address",
+        title="Transfer a Balance",
         balance_status=balance_status,
         csrf_token=csrf_token,
         error=error,
@@ -1063,6 +1068,10 @@ def _clear_transaction_view(
 
 
 def _clear_page_notice(query_params) -> str | None:
+    if query_params.get("acceptance") == "started":
+        return "Clear transfer acceptance started. You may leave this page."
+    if query_params.get("acceptance") == "running":
+        return "A Clear transfer acceptance is already running for this Acorn."
     if query_params.get("receipt_accepted") == "1":
         return "Clear transfer accepted into your Clear balance."
     if query_params.get("receipt_deleted") == "1":
@@ -2712,10 +2721,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runtime_settings.database_url
         )
         app.state.finalization_tasks = {}
+        app.state.clear_acceptance_tasks = {}
         try:
             yield
         finally:
-            tasks = list(app.state.finalization_tasks.values())
+            tasks = [
+                *app.state.finalization_tasks.values(),
+                *app.state.clear_acceptance_tasks.values(),
+            ]
             for task in tasks:
                 task.cancel()
             if tasks:
@@ -4959,7 +4972,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         csrf_token: str = Form(...),
         lightning_address: str = Form(...),
         amount: str = Form(...),
-        comment: str = Form("Paid from Safebox Web"),
+        comment: str = Form("Transferred from Safebox Web"),
         payment_mode: str = Form("confirmed"),
         payment_asset: str = Form("cash"),
         confirmed: str | None = Form(None),
@@ -5000,7 +5013,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if selected_clear is None:
                     asset_error = (
                         "The selected Clear Balance is no longer available. "
-                        "Review the current balances before paying."
+                        "Review the current balances before transferring."
                     )
         verification = None
         verification_error = None
@@ -5102,7 +5115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     acorn.get_balance(),
                     form_token.issue(),
                     "Safebox repaired stale proofs. Review the recipient, "
-                    "amount, and updated balance, then confirm the payment again. "
+                        "amount, and updated balance, then confirm the transfer again. "
                     f"Previous attempt stopped before confirmation: {error_reason}",
                     repaired_balance_status,
                     lightning_address=lightning_address,
@@ -5117,16 +5130,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         if not form_token.verify(csrf_token):
             return payment_error(
-                "The form token is invalid or expired. Review the payment again.",
+                "The form token is invalid or expired. Review the transfer again.",
                 403,
             )
         if asset_error is not None:
             return payment_error(asset_error)
         if confirmed != "yes":
-            return payment_error("Explicit payment confirmation is required.")
+            return payment_error("Explicit transfer confirmation is required.")
         if selected_clear is not None and payment_mode == "continuity":
             return payment_error(
-                "Continuity mode applies only to Cash payments. Select Confirmed "
+                "Continuity mode applies only to Cash transfers. Select Confirmed "
                 "to send from a Clear Balance."
             )
         if (
@@ -5135,8 +5148,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             and verification is None
         ):
             return payment_error(
-                "Payment is blocked because a mint is unavailable. Continuity "
-                "Payments remain available for supported Safebox recipients.",
+                "The transfer is blocked because a mint is unavailable. Continuity "
+                "mode remains available for supported Safebox recipients.",
                 503,
             )
         if (
@@ -5145,21 +5158,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             and verification.get("status") != "clean"
         ):
             return payment_error(
-                "Payment is blocked because the wallet proof state is not clean. "
+                "The transfer is blocked because the wallet proof state is not clean. "
                 "Review it with 'acorn balance --verify' before spending.",
                 409,
             )
 
         recipient = _normalize_lightning_address(lightning_address)
         if recipient is None:
-            return payment_error("Enter a valid Lightning address such as alice@example.com.")
+            return payment_error("Enter a valid transfer address such as alice@example.com.")
 
         try:
             payment_amount = int(str(amount).strip())
         except ValueError:
-            return payment_error("Payment amount must be a whole number.")
+            return payment_error("Transfer amount must be a whole number.")
         if payment_amount <= 0:
-            return payment_error("Payment amount must be greater than zero.")
+            return payment_error("Transfer amount must be greater than zero.")
         if selected_clear is not None:
             available_balance = int(selected_clear["amount"])
         elif payment_mode == "confirmed":
@@ -5170,12 +5183,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             available_balance = int(acorn.get_balance())
         if payment_amount > available_balance:
             return payment_error(
-                "Payment amount exceeds the available balance for this payment mode."
+                "Transfer amount exceeds the available balance for this transfer mode."
             )
 
-        payment_comment = str(comment).strip() or "Paid from Safebox Web"
+        payment_comment = str(comment).strip() or "Transferred from Safebox Web"
         if len(payment_comment) > 200:
-            return payment_error("Payment comment must be 200 characters or fewer.")
+            return payment_error("Transfer comment must be 200 characters or fewer.")
 
         if selected_clear is not None:
             clear_recipient = await _resolve_safebox_clear_recipient(
@@ -5194,7 +5207,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if sender is None:
                 return payment_error(
                     "This Safebox installation does not yet support outgoing "
-                    "Clear payments.",
+                    "Clear transfers.",
                     503,
                 )
             try:
@@ -5218,8 +5231,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 return HTMLResponse(
                     _page(
-                        "Clear payment status unresolved",
-                        "<p>The Clear payment timed out before Safebox received a "
+                        "Clear transfer status unresolved",
+                        "<p>The Clear transfer timed out before Safebox received a "
                         "final result. Do not retry it blindly. Review Clear "
                         "Transactions before attempting another payment.</p>"
                         '<p><a href="/clear">Review Clear Transactions</a></p>',
@@ -5237,7 +5250,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 return HTMLResponse(
                     _page(
-                        "Clear payment not confirmed",
+                        "Clear transfer not confirmed",
                         "<p>Safebox did not receive a confirmed successful Clear "
                         "transfer result. Do not retry blindly. Review Clear "
                         "Transactions first.</p>"
@@ -5253,7 +5266,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not isinstance(delivery, dict) or delivery.get("status") != "OK":
                 return HTMLResponse(
                     _page(
-                        "Clear payment not confirmed",
+                        "Clear transfer not confirmed",
                         "<p>The transfer did not return a confirmed successful "
                         "result. Do not retry blindly. Review Clear Transactions "
                         "first.</p>"
@@ -5271,7 +5284,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return render_template(
                 "payment_result.html",
-                title="Clear payment sent",
+                title="Clear balance transferred",
                 amount=f"{payment_amount:,}",
                 fees=f"{int(delivery.get('fee') or 0):,}",
                 unit=str(
@@ -5315,10 +5328,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 return HTMLResponse(
                     _page(
-                        "Payment status unresolved",
+                        "Transfer status unresolved",
                         "<p>The direct Safebox transfer timed out before Safebox "
                         "received a final result. Do not retry it blindly. Review "
-                        "transaction history before attempting another payment.</p>"
+                        "transaction history before attempting another transfer.</p>"
                         '<p><a href="/wallet">Return to wallet</a></p>',
                     ),
                     status_code=504,
@@ -5336,11 +5349,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 return HTMLResponse(
                     _page(
-                        "Payment not completed",
+                        "Transfer not completed",
                         "<p>Safebox found a recipient Safebox address, but direct "
                         "funds delivery could not be completed. Review "
                         "transaction history before deciding whether another "
-                        "payment is safe.</p>"
+                        "transfer is safe.</p>"
                         + (
                             f"<p><strong>Reason:</strong> {escape(error_reason)}</p>"
                             if error_reason
@@ -5359,11 +5372,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
                 return HTMLResponse(
                     _page(
-                        "Payment not confirmed",
+                        "Transfer not confirmed",
                         "<p>Safebox found a recipient Safebox address, but direct "
                         "funds delivery did not return a confirmed successful "
                         "result. Review transaction history before deciding "
-                        "whether another payment is safe.</p>"
+                        "whether another transfer is safe.</p>"
                         '<p><a href="/wallet">Return to wallet</a></p>',
                     ),
                     status_code=502,
@@ -5383,7 +5396,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 title=(
                     "Continuity Payment sent"
                     if payment_mode == "continuity"
-                    else "Payment successful"
+                    else "Balance transferred"
                 ),
                 amount=f"{payment_amount:,}",
                 fees="0",
@@ -5404,10 +5417,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             logger.warning("lightning payment timed out outcome=unknown")
             return HTMLResponse(
                 _page(
-                    "Payment status unresolved",
-                    "<p>The payment timed out before Safebox received a final result. "
+                    "Transfer status unresolved",
+                    "<p>The Lightning payment timed out before Safebox received a final result. "
                     "Do not retry it. Use <code>acorn reconcile-payments</code> and "
-                    "review transaction history before attempting another payment.</p>"
+                    "review transaction history before attempting another transfer.</p>"
                     '<p><a href="/wallet">Return to wallet</a></p>',
                 ),
                 status_code=504,
@@ -5419,13 +5432,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return await repair_stale_proofs_for_review(error_reason)
             recovery_guidance = (
                 "<p>The wallet proof state needs maintenance before another "
-                "payment. Run <code>acorn check-proofs</code>, then "
+                "transfer. Run <code>acorn check-proofs</code>, then "
                 "<code>acorn repair-proofs</code> if repair is recommended, "
                 "and confirm the balance with <code>acorn balance --verify</code>.</p>"
                 if stale_proofs
                 else "<p>Do not retry blindly. Review transaction history and run "
                 "<code>acorn reconcile-payments</code> before deciding whether "
-                "another payment is safe.</p>"
+                "another transfer is safe.</p>"
             )
             logger.warning(
                 "lightning payment did not return success error_type=%s error=%s",
@@ -5434,7 +5447,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return HTMLResponse(
                 _page(
-                    "Payment not confirmed",
+                    "Transfer not confirmed",
                     "<p>Safebox did not receive a confirmed successful result.</p>"
                     + recovery_guidance
                     + (
@@ -5449,7 +5462,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return render_template(
             "payment_result.html",
-            title="Payment successful",
+            title="Balance transferred",
             amount=f"{payment_amount:,}",
             fees=f"{int(fees):,}",
             recipient=recipient,
@@ -5646,6 +5659,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         history_entries = [
             entry for entry in entries if entry.get("status") != "pending"
         ]
+        acceptance_job = get_clear_acceptance_job(
+            request.app.state.database_engine,
+            acorn.pubkey_bech32,
+        )
 
         return HTMLResponse(
             render_template(
@@ -5655,6 +5672,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 clear_summary=clear_summary,
                 pending_entries=pending_entries,
                 history_entries=history_entries,
+                acceptance_job=acceptance_job,
                 csrf_token=CsrfProtector(settings).issue(),
                 notice=_clear_page_notice(request.query_params),
             )
@@ -5742,60 +5760,57 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 status_code=501,
             )
-        try:
-            try:
-                await accepter(event_id)
-            except ValueError as exc:
-                if "not found" not in str(exc).lower():
-                    raise
-                receiver = getattr(acorn, "sweep_clear_transfers", None)
-                if receiver is None:
-                    raise
-                try:
-                    receive_awaitable = receiver(
-                        event_id=event_id,
-                        advance_cursor=False,
-                    )
-                except TypeError:
-                    raise exc
-                await asyncio.wait_for(
-                    receive_awaitable,
-                    timeout=settings.wallet_load_timeout_seconds,
-                )
-                await accepter(event_id)
-        except ValueError as exc:
-            error_text = str(exc).lower()
-            if "not found" in error_text:
-                message = "Pending Clear transfer was not found."
-            elif "only pending" in error_text:
-                message = "Only pending Clear transfers can be accepted."
-            else:
-                message = "The pending Clear transfer could not be accepted."
+        event_id = str(event_id or "").strip().lower()
+        if re.fullmatch(r"[0-9a-f]{64}", event_id) is None:
             return HTMLResponse(
                 _page(
                     "Clear transfer not accepted",
-                    f'<p class="error">{escape(message)}</p>'
+                    '<p class="error">The pending transfer identifier is invalid.</p>'
                     '<p><a href="/clear">Return to Clear Transactions</a></p>',
                 ),
                 status_code=400,
             )
-        except Exception as exc:
-            logger.warning(
-                "pending Clear transfer acceptance failed error_type=%s",
-                type(exc).__name__,
+        npub = acorn.pubkey_bech32
+        cash_job = get_finalization_job(
+            request.app.state.database_engine,
+            npub,
+        )
+        if cash_job and cash_job.get("status") == "RUNNING":
+            return RedirectResponse(
+                "/transactions?finalization=running",
+                status_code=303,
             )
-            return HTMLResponse(
-                _page(
-                    "Clear transfer not accepted",
-                    '<p class="error">Safebox could not safely accept the '
-                    "pending Clear transfer. Its receipt remains available for "
-                    "review.</p>"
-                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
+        claimed, owner_token, _job = claim_clear_acceptance_job(
+            request.app.state.database_engine,
+            npub,
+            event_id,
+        )
+        if claimed:
+            task = asyncio.create_task(
+                run_clear_acceptance_job(
+                    engine=request.app.state.database_engine,
+                    acorn=acorn,
+                    npub=npub,
+                    event_id=event_id,
+                    owner_token=owner_token,
                 ),
-                status_code=502,
+                name=f"clear-acceptance:{npub}",
             )
+            request.app.state.clear_acceptance_tasks[npub] = task
 
-        return RedirectResponse("/clear?receipt_accepted=1", status_code=303)
+            def remove_completed_task(completed: asyncio.Task) -> None:
+                current = request.app.state.clear_acceptance_tasks.get(npub)
+                if current is completed:
+                    request.app.state.clear_acceptance_tasks.pop(npub, None)
+
+            task.add_done_callback(remove_completed_task)
+            state = "started"
+        else:
+            state = "running"
+        return RedirectResponse(
+            f"/clear?acceptance={state}",
+            status_code=303,
+        )
 
     @app.post("/clear/receipts/delete", response_class=HTMLResponse)
     async def delete_pending_clear_receipt(
@@ -5886,6 +5901,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=403, detail="Form token is invalid or expired")
 
         npub = acorn.pubkey_bech32
+        clear_job = get_clear_acceptance_job(
+            request.app.state.database_engine,
+            npub,
+        )
+        if clear_job and clear_job.get("status") == "RUNNING":
+            return RedirectResponse(
+                "/clear?acceptance=running",
+                status_code=303,
+            )
         claimed, owner_token, _job = claim_finalization_job(
             request.app.state.database_engine,
             npub,

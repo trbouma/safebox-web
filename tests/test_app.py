@@ -63,6 +63,7 @@ from app.dependencies import (
 )
 from app.main import create_app
 from app.funds_finalization import get_finalization_job
+from app.clear_acceptance import get_clear_acceptance_job
 from app.security import (
     CsrfProtector,
     DepositQuoteCipher,
@@ -290,7 +291,14 @@ class FakeLoadedAcorn:
                 "memo": str(receipt.get("comment") or ""),
                 "source_event": event_id,
             })
-            return {"status": "OK", "event_id": event_id, "accepted": True}
+            return {
+                "status": "OK",
+                "event_id": event_id,
+                "accepted": True,
+                "amount": amount,
+                "mint": mint,
+                "unit": unit,
+            }
         raise ValueError("Pending Clear transfer was not found")
 
     async def delete_pending_clear_receipt(self, event_id: str) -> dict:
@@ -1699,7 +1707,7 @@ def test_manage_balances_is_the_parent_for_balance_actions(tmp_path) -> None:
     assert response.status_code == 200
     assert "<h1>Manage Balances</h1>" in response.text
     assert 'href="/receive-funds">Receive</a>' in response.text
-    assert 'href="/pay">Pay to an Address</a>' in response.text
+    assert 'href="/pay">Transfer a Balance</a>' in response.text
     assert 'href="/transactions">Cash Balance and Transactions</a>' in response.text
     assert 'href="/clear">Clear Balances and Transactions</a>' in response.text
     assert 'href="/wallet">Back to Wallet</a>' in response.text
@@ -2723,6 +2731,12 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
                 "PRAGMA table_info(funds_finalization_job)"
             )
         }
+        clear_acceptance_job_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(clear_acceptance_job)"
+            )
+        }
     assert {
         "alembic_version",
         "claimed_handle",
@@ -2731,8 +2745,9 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "provider_zap",
         "currency_rate",
         "funds_finalization_job",
+        "clear_acceptance_job",
     }.issubset(tables)
-    assert revision == ("20260813_0005",)
+    assert revision == ("20260822_0006",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -2791,6 +2806,20 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "updated_at",
         "lease_expires_at",
     } == finalization_job_columns
+    assert {
+        "npub",
+        "event_id",
+        "status",
+        "owner_token",
+        "phase",
+        "amount",
+        "mint",
+        "unit",
+        "error",
+        "started_at",
+        "updated_at",
+        "lease_expires_at",
+    } == clear_acceptance_job_columns
 
 
 def test_web_lifespan_does_not_own_the_service_acorn(tmp_path) -> None:
@@ -3463,12 +3492,25 @@ def test_user_can_accept_clear_transfer_into_spendable_balance(tmp_path) -> None
             data={"csrf_token": token_match.group(1), "event_id": event_id},
             follow_redirects=False,
         )
-        result = client.get(response.headers["location"])
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_clear_acceptance_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
+        result = client.get("/clear")
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/clear?receipt_accepted=1"
+    assert response.headers["location"] == "/clear?acceptance=started"
+    assert job is not None
+    assert job["status"] == "COMPLETE"
     assert acorn.accepted_clear_receipts == [event_id]
-    assert "Clear transfer accepted into your Clear balance." in result.text
+    assert "Clear transfer acceptance completed." in result.text
+    assert "Confirmed 25 cmu-test." in result.text
     assert "25 <span>cmu-test</span>" in result.text
     assert "Accept Clear Transaction" in result.text
     assert "guest passes" in result.text
@@ -3509,9 +3551,22 @@ def test_user_can_accept_relay_previewed_clear_transfer(tmp_path) -> None:
             data={"csrf_token": token_match.group(1), "event_id": event_id},
             follow_redirects=False,
         )
-        result = client.get(response.headers["location"])
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_clear_acceptance_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
+        result = client.get("/clear")
 
     assert response.status_code == 303
+    assert response.headers["location"] == "/clear?acceptance=started"
+    assert job is not None
+    assert job["status"] == "COMPLETE"
     assert acorn.clear_sweep_calls == 1
     assert acorn.accepted_clear_receipts == [event_id]
     assert "12 <span>cmu-preview</span>" in result.text
@@ -4266,16 +4321,17 @@ def test_payment_form_displays_balance_and_confirmation() -> None:
     response = client.get("/pay")
 
     assert response.status_code == 200
-    assert "Pay to an Address" in response.text
+    assert "Transfer a Balance" in response.text
     assert "500 sats" in response.text
-    assert "Payment Address" in response.text
+    assert "Transfer Address" in response.text
+    assert "Transfer From" in response.text
     assert 'name="csrf_token"' in response.text
     assert 'name="confirmed"' in response.text
     assert 'name="payment_mode"' in response.text
     assert 'value="confirmed"' in response.text
     assert 'value="continuity"' in response.text
-    assert "Payment in progress. Please wait" in response.text
-    assert "Sending payment…" in response.text
+    assert "Balance transfer in progress. Please wait" in response.text
+    assert "Transferring…" in response.text
     assert "<summary>Advisories</summary>" in response.text
     assert "fee reserve" in response.text
     assert "Scan a Lightning address or invoice QR code" not in response.text
@@ -4390,7 +4446,7 @@ def test_clear_payment_sends_exact_mint_and_cmu_to_compatible_address(
     )
 
     assert response.status_code == 200
-    assert "Clear payment sent" in response.text
+    assert "Clear balance transferred" in response.text
     assert "5 cmu-one" in response.text
     assert "recipient must accept" in response.text
     assert acorn.payments == []
@@ -4518,7 +4574,7 @@ def test_scanned_lightning_address_prefills_payment_review() -> None:
     )
 
     assert response.status_code == 200
-    assert "Pay to an Address" in response.text
+    assert "Transfer a Balance" in response.text
     assert 'value="alice@example.com"' in response.text
 
 
@@ -4540,7 +4596,7 @@ def test_scanned_lnurl_pay_qr_derives_lightning_address() -> None:
     )
 
     assert response.status_code == 200
-    assert "Pay to an Address" in response.text
+    assert "Transfer a Balance" in response.text
     assert 'value="alice@safebox.example"' in response.text
     assert lnurl not in response.text
 
@@ -4931,7 +4987,7 @@ def test_confirmed_lightning_payment_delegates_to_acorn() -> None:
     )
 
     assert response.status_code == 200
-    assert "Payment successful" in response.text
+    assert "Balance transferred" in response.text
     assert "21 sats" in response.text
     assert "Fee: <strong>1 sat" in response.text
     assert acorn.payments == [
@@ -4992,7 +5048,7 @@ def test_safebox_lightning_address_prefers_direct_ecash_transfer(
     )
 
     assert response.status_code == 200
-    assert "Payment successful" in response.text
+    assert "Balance transferred" in response.text
     assert "Direct Safebox funds transfer sent" in response.text
     assert "Fee: <strong>0 sats" in response.text
     assert acorn.payments == []
@@ -5279,7 +5335,7 @@ def test_payment_requires_explicit_confirmation_before_calling_acorn() -> None:
     )
 
     assert response.status_code == 400
-    assert "Explicit payment confirmation is required" in response.text
+    assert "Explicit transfer confirmation is required" in response.text
     assert acorn.payments == []
 
 

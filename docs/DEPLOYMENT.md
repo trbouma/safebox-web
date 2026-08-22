@@ -30,7 +30,8 @@ The containers have separate memory. They communicate through the durable
 `safebox-web-data` volume at `/app/data`. The volume contains:
 
 - `database.db`, including claimed handles and provider-payment jobs; and
-- non-secret attached-Acorn finalization leases and progress; and
+- non-secret attached-Acorn Cash-finalization and Clear-acceptance leases and
+  progress; and
 - `service-acorn.json`, the provider wallet recovery secret while that wallet
   exists.
 
@@ -62,6 +63,12 @@ PostgreSQL stores only a public-key-scoped lease and non-secret progress. A
 deployment restart interrupts that task, after which the user can reconnect
 and resume from relay-backed payment receipts. Do not delete the database
 volume merely to clear a job; an expired lease is safely reclaimable.
+
+Clear transfer acceptance uses the same boundary. The database stores only the
+recipient npub, transfer event id, phase, result metadata, and lease—not the
+nsec, Clear bearer token, or proofs. A restart may interrupt the in-memory task;
+the connected user can start acceptance again and Acorn resumes from its
+relay-backed receipt and proof state.
 
 ## 1. Prepare the Acorn dependency
 

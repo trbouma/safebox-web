@@ -73,6 +73,15 @@ receipt accepted, and erases its bearer token. The resulting amount is shown as
 spendable in that exact Clear Balance. Pending and spendable amounts are never
 combined in the display.
 
+Acceptance runs as a session-bound background job because mint refresh and
+exact relay readback may outlast an HTTP gateway request. The browser returns
+immediately and the Clear page reports running, completed, interrupted, or
+failed status. A database lease prevents two web workers from accepting Clear
+receipts for the same Acorn concurrently. The lease contains only the npub,
+event identifier, progress, and result metadata—never an nsec or bearer token.
+The receipt and proof state remain relay-backed and Acorn acceptance remains
+idempotent, so an interrupted job can be started again safely.
+
 This terminology is deliberate: cash is used for payments, while CMUs are
 transferable units moved as credits for the products, services, or purposes
 defined by their issuing program. Transferability does not make those units

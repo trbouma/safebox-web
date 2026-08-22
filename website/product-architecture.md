@@ -11,9 +11,32 @@ operated independently.
 
 The user-facing promise is simpler than the component diagram: Safebox Web is
 the wallet app available today. It is also the practical foundation for
-Mainstay, the future unified application for keys, records, and payments.
+Mainstay, the future unified application for keys, balances, and records.
 The other pieces preserve state and evidence without making one hosted service
 permanent.
+
+## One record model, two practical views
+
+Safebox's **Manage Balances** and **Manage Records** areas are not backed by
+unrelated data models. Both arise from Acorn's uniform controlled-resource
+model:
+
+```text
+fungible records     -> aggregated within an equivalence domain -> Balance
+non-fungible records -> retained as individually meaningful     -> Record
+```
+
+Cash proofs and Clear mint notes are unique cryptographic records, but the
+quantities they represent can be fungible within tightly defined domains.
+Safebox projects those compatible quantities as balances. A passport image,
+attestation, credential, or controlled original remains individually visible
+because its identity and history cannot be replaced by a sum.
+
+This also clarifies the product vocabulary. **Transfer** is the general
+movement of controlled value or authority. **Payment** describes the value or
+settlement leg when a transfer forms part of an economic transaction. A
+transfer may instead be an allocation, gift, benefit, refund, or treasury
+disbursement.
 
 ```text
               Safebox Web
@@ -137,7 +160,7 @@ prevent them from becoming barriers: each component can remain independently
 deployable and replaceable while Mainstay and Safebox Web coordinate a
 coherent experience across them.
 
-[Read the funds model](how-safebox-treats-funds.md){ .md-button }
+[Read the balance model](how-safebox-treats-funds.md){ .md-button }
 
 ## Toward Mainstay and Lockbox
 

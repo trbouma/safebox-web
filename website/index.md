@@ -31,7 +31,7 @@ Safebox Web gives people a practical place to create or connect a wallet,
 hold private records, receive value, share evidence, and recover continuity
 when surrounding services change.
 
-Underneath the app is Acorn: the portable protocol state for keys, funds,
+Underneath the app is Acorn: the portable protocol state for keys, balances,
 records, and recovery. The design keeps application convenience separate from
 user authority, so Safebox Web can be replaced without replacing the wallet.
 
@@ -39,6 +39,11 @@ Safebox Web now makes a further distinction visible: one **Cash Balance** for
 sat-denominated payments and plural **Clear Balances** for transfers of
 organization-issued credits. The balances coexist in one wallet without being
 summed or presented as interchangeable.
+
+Balances and records are two practical views of one controlled-resource
+model. Fungible proof records are aggregated within an exact equivalence
+domain and displayed as a balance. Non-fungible records remain individually
+visible because their content, provenance, and control history matter.
 
 The same application can safeguard exact Original Records and present them
 according to what they are. Apple Wallet passes, W3C Verifiable Credentials,
@@ -58,7 +63,7 @@ without asking the underlying blob store to understand any of those formats.
 
 <img class="safebox-brand-mark" src="assets/images/safebox-logo.png" alt="Safebox logo">
 
-<p>Safebox Web is one interface for user-controlled funds, records, handles, and evidence.</p>
+<p>Safebox Web is one interface for user-controlled balances, records, handles, and evidence.</p>
 
 </section>
 

@@ -184,6 +184,12 @@ The recipient can now explicitly accept a pending transfer into spendable kind
 Web displays pending and spendable amounts separately for each exact mint and
 CMU.
 
+Clear acceptance now runs in the background. Safebox returns control to the
+user immediately while Acorn refreshes proofs, verifies kind `7380` and kind
+`7381` readback, updates the receipt journal, and releases its wallet lock. A
+non-secret database lease coordinates multiple web workers; keys, tokens, and
+wallet proof state are not stored in the application database.
+
 The Pay page can now select one exact Clear Balance and send its units to a
 NIP-05 recipient that advertises compatible Clear support. Safebox Web passes
 the canonical mint URL and CMU to Acorn; it never combines balances or silently
