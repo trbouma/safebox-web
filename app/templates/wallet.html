@@ -61,7 +61,7 @@
   {% else %}
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
   {% endif %}
-  <p class="wallet-balance-state">Relay-visible snapshot. Open to verify and view transactions.</p>
+  <p class="wallet-balance-state">Previously confirmed balance. Click to receive and accept pending transactions.</p>
 </a>
 <a class="wallet-balance clear-balance" href="/clear" aria-labelledby="clear-balance-heading">
   <h2 id="clear-balance-heading">Clear Balances</h2>
@@ -72,7 +72,7 @@
   {% else %}
   <p class="wallet-balance-state">No Clear balances yet.</p>
   {% endif %}
-  <p class="wallet-balance-state">Relay-visible snapshot. Open for transfer status and history.</p>
+  <p class="wallet-balance-state">Previously confirmed balance. Click to receive and accept pending transactions.</p>
 </a>
 <nav class="wallet-actions" aria-label="Safebox resources">
   <a href="/balances">Manage Balances</a>
