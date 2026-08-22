@@ -105,12 +105,14 @@ This implementation intentionally provides:
 - explicit Acorn disconnection.
 
 It does **not** maintain user accounts, write attached-Acorn configuration, or
-store server-side user sessions. The wallet page loads encrypted wallet and proof events
-from the bootstrap relay into request-scoped memory to derive the displayed
-balance. An explicitly confirmed payment delegates all proof, locking, mint,
-journal, and relay mutations to Acorn. The server-side database contains the
-public NIP-05 directory and operational provider-payment jobs. It does not
-contain attached-user wallet state.
+store server-side user sessions. The wallet landing page is session-only: it
+derives the component identity and public receive information without loading
+relay-backed balances, querying a mint, or scanning incoming transfers. The
+Cash and Clear transaction pages load their respective live state on demand.
+An explicitly confirmed transfer delegates all proof, locking, mint, journal,
+and relay mutations to Acorn. The server-side database contains the public
+NIP-05 directory and operational provider-payment jobs. It does not contain
+attached-user wallet state.
 
 When explicitly enabled, a standalone worker maintains one provider-owned
 service Acorn. This operational wallet is not held in FastAPI application state
@@ -140,7 +142,8 @@ method requests a Lightning invoice from the Acorn home mint and
 renders it as both a QR code and copyable text. It performs no browser polling.
 The user explicitly indicates that the invoice has been paid, after which
 Safebox asks Acorn to check the quote once, mint the proofs when payment is
-confirmed, and return to the wallet page for a freshly loaded balance. An
+confirmed, and return to the wallet page. The current verified balance is
+loaded when the user opens **Cash Balance and Transactions**. An
 unconfirmed invoice remains available for another user-initiated check.
 
 Payment-request creation, receipt confirmation, and outgoing payment forms
@@ -157,8 +160,8 @@ history remains read-only; receiving ecash is a separate CSRF-protected
 mutation initiated by the user.
 
 Safebox Web also exposes a separate **Clear Transactions** page. It calls
-Acorn's kind `7379` receiver in read-only preview mode when the wallet and Clear
-pages load, so new transfers appear immediately without changing wallet state.
+Acorn's kind `7379` receiver in read-only preview mode when the Clear page
+loads, so new transfers appear immediately without changing wallet state.
 Clear Balances contain organization-issued **transferable units**; Clear
 represents each exact unit as a keyset-bound CMU.
 

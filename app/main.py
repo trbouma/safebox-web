@@ -1232,6 +1232,7 @@ def _transactions_page(
     retention_notice: str = "",
     wallet_balance: int | None = None,
     wallet_balance_verified: bool = False,
+    balance_status: str = "",
     pending_amount: int = 0,
     pending_count: int = 0,
     fiat_estimate: dict | None = None,
@@ -1250,6 +1251,7 @@ def _transactions_page(
         retention_notice=retention_notice,
         wallet_balance=wallet_balance,
         wallet_balance_verified=wallet_balance_verified,
+        balance_status=balance_status,
         pending_amount=int(pending_amount),
         pending_count=int(pending_count),
         fiat_estimate=fiat_estimate,
@@ -3821,7 +3823,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/wallet", response_class=HTMLResponse)
     async def wallet(
         request: Request,
-        acorn: LoadedAcornDependency,
+        acorn: AcornDependency,
         session: DatabaseSessionDependency,
     ) -> str:
         settings = request.app.state.settings
@@ -3868,103 +3870,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "silent payment public derivation unavailable error_type=%s",
                 type(exc).__name__,
             )
-        recovery_backup_pending = False
-        try:
-            recovery_state = await asyncio.wait_for(
-                acorn.get_deferred_recovery_status(),
-                timeout=settings.wallet_load_timeout_seconds,
-            )
-            recovery_backup_pending = bool(recovery_state.get("pending"))
-        except Exception as exc:
-            logger.warning(
-                "deferred recovery status unavailable error_type=%s",
-                type(exc).__name__,
-            )
-        verification, verification_error = await _read_proof_verification(
-            acorn,
-            settings.wallet_load_timeout_seconds,
+        # Keep the wallet landing page session-only. The encrypted session tells
+        # us enough to identify the component and whether this browser still
+        # holds deferred recovery material. Relay and mint checks belong on the
+        # dedicated balance and transaction pages.
+        recovery_backup_pending = bool(
+            session_credentials is not None
+            and session_credentials.deferred_acorn_mnemonic
         )
-        balance_status = _balance_status_html(
-            acorn.get_balance(),
-            len(acorn.proofs),
-            verification,
-            verification_error,
-        )
-        wallet_balance, wallet_balance_verified = _wallet_balance_summary(
-            acorn.get_balance(),
-            verification,
-        )
-        fiat_estimate = None
-        if settings.currency_rates_enabled:
-            fiat_estimate = currency_balance_estimate(
-                session,
-                sats=wallet_balance,
-                currency_code=settings.default_display_currency,
-                stale_seconds=settings.currency_rate_stale_seconds,
-            )
-        try:
-            continuity_receipts = await _read_continuity_receipts(
-                acorn,
-                settings.wallet_load_timeout_seconds,
-            )
-        except Exception as exc:
-            logger.warning(
-                "continuity receipt lookup failed error_type=%s",
-                type(exc).__name__,
-            )
-            continuity_receipts = []
-        try:
-            incoming_preview = await _preview_incoming_payments(
-                acorn,
-                settings.wallet_load_timeout_seconds,
-            )
-        except Exception as exc:
-            logger.warning(
-                "incoming payment preview failed error_type=%s",
-                type(exc).__name__,
-            )
-            incoming_preview = {}
-        pending_payment_amount, pending_payment_count = _pending_transaction_totals(
-            continuity_receipts,
-            incoming_preview,
-        )
-        try:
-            clear_receipts, clear_balances, clear_preview = await asyncio.gather(
-                _read_clear_receipts(
-                    acorn,
-                    settings.wallet_load_timeout_seconds,
-                    status=None,
-                ),
-                _read_clear_balances(
-                    acorn,
-                    settings.wallet_load_timeout_seconds,
-                ),
-                _preview_incoming_clear(
-                    acorn,
-                    settings.wallet_load_timeout_seconds,
-                ),
-            )
-            pending_clear_receipts = _merge_clear_pending(
-                clear_receipts,
-                clear_preview,
-            )
-            pending_clear = await _resolve_clear_aliases(
-                _clear_balance_summary(pending_clear_receipts, clear_balances),
-                timeout=settings.wallet_load_timeout_seconds,
-                configured_mints=settings.clear_mints,
-                cache=request.app.state.clear_mint_metadata_cache,
-            )
-        except Exception as exc:
-            logger.warning(
-                "clear receipt lookup failed error_type=%s",
-                type(exc).__name__,
-            )
-            pending_clear = {
-                "pending": False,
-                "count": 0,
-                "balance_count": 0,
-                "balances": [],
-            }
         return render_template(
             "wallet.html",
             title="Safebox is Connected",
@@ -3989,13 +3902,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             silent_payment_address=silent_payment_address,
             silent_payment_qr=silent_payment_qr,
             retention_notice=_ecash_retention_notice(settings),
-            balance_status=balance_status,
-            wallet_balance=wallet_balance,
-            wallet_balance_verified=wallet_balance_verified,
-            fiat_estimate=fiat_estimate,
-            pending_payment_amount=pending_payment_amount,
-            pending_payment_count=pending_payment_count,
-            pending_clear=pending_clear,
             onboard_invite_path="/invite",
             csrf_token=csrf_token,
         )
@@ -5570,6 +5476,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             retention_notice=_ecash_retention_notice(settings),
             wallet_balance=wallet_balance,
             wallet_balance_verified=wallet_balance_verified,
+            balance_status=_balance_status_html(
+                acorn.get_balance(),
+                len(acorn.proofs),
+                verification,
+                _verification_error,
+            ),
             pending_amount=pending_amount,
             pending_count=pending_count,
             fiat_estimate=fiat_estimate,

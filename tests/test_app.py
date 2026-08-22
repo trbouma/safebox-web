@@ -1041,7 +1041,7 @@ def test_legacy_session_routes_redirect_to_connect_and_disconnect() -> None:
     assert disconnect_submission.headers["location"] == "/disconnect"
 
 
-def test_browser_wallet_load_failure_offers_session_recovery() -> None:
+def test_browser_balance_load_failure_offers_session_recovery() -> None:
     app = create_app(TEST_SETTINGS)
 
     async def unavailable_wallet():
@@ -1053,7 +1053,7 @@ def test_browser_wallet_load_failure_offers_session_recovery() -> None:
     app.dependency_overrides[get_loaded_acorn] = unavailable_wallet
     client = TestClient(app, base_url="https://safebox.example")
 
-    response = client.get("/wallet", headers={"Accept": "text/html"})
+    response = client.get("/transactions", headers={"Accept": "text/html"})
 
     assert response.status_code == 502
     assert "Unable to Load Acorn" in response.text
@@ -1061,7 +1061,7 @@ def test_browser_wallet_load_failure_offers_session_recovery() -> None:
     assert "Clear Session and Disconnect" in response.text
 
 
-def test_api_wallet_load_failure_remains_json() -> None:
+def test_api_balance_load_failure_remains_json() -> None:
     app = create_app(TEST_SETTINGS)
 
     async def unavailable_wallet():
@@ -1073,7 +1073,7 @@ def test_api_wallet_load_failure_remains_json() -> None:
     app.dependency_overrides[get_loaded_acorn] = unavailable_wallet
     client = TestClient(app, base_url="https://safebox.example")
 
-    response = client.get("/wallet", headers={"Accept": "application/json"})
+    response = client.get("/transactions", headers={"Accept": "application/json"})
 
     assert response.status_code == 502
     assert response.json() == {
@@ -1667,7 +1667,9 @@ def test_record_page_navigation_links_home_and_parent_records() -> None:
 
 def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    fake = FakeLoadedAcorn()
+    app.dependency_overrides[get_acorn] = lambda: fake
+    app.dependency_overrides[get_loaded_acorn] = lambda: fake
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.get("/wallet")
 
@@ -1683,14 +1685,13 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert "Scan a Code" not in response.text
     assert 'href="/record-protection/enable"' in response.text
     assert "Protected Records" in response.text
-    assert '<a class="wallet-balance" href="/transactions"' in response.text
-    assert '<a class="wallet-balance clear-balance" href="/clear"' in response.text
-    assert "321 <span>sats</span>" in response.text
+    assert 'class="wallet-balance"' not in response.text
+    assert "321 <span>sats</span>" not in response.text
+    assert "mint verification, and pending transfers are loaded only" in response.text
     assert "View transaction history" not in response.text
     assert "Before disconnecting, make sure you have your" in response.text
     assert "recovery information" in response.text
     assert 'name="confirmed" type="checkbox" value="yes" required' in response.text
-    assert response.text.index("wallet-actions") < response.text.index("wallet-balance")
     assert response.text.index("wallet-actions") < response.text.index("Component public key")
     assert response.text.index("Disconnect") < response.text.index("Advisories")
 
@@ -1715,14 +1716,36 @@ def test_manage_balances_is_the_parent_for_balance_actions(tmp_path) -> None:
 
 
 def test_wallet_prominently_warns_while_recovery_backup_is_pending(tmp_path) -> None:
-    app = create_app(database_settings(tmp_path))
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
     fake = FakeLoadedAcorn()
-    fake.deferred_recovery_state = {"status": "PENDING", "pending": True}
     app.dependency_overrides[get_loaded_acorn] = lambda: fake
 
     with TestClient(app, base_url="https://safebox.example") as client:
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            SessionCipher(settings).encode(
+                SessionCredentials(
+                    nsec=TEST_NSEC,
+                    bootstrap_relay="wss://relay.example.com",
+                    deferred_acorn_mnemonic=TEST_MNEMONIC,
+                )
+            ),
+            domain="safebox.example",
+            path="/",
+        )
         response = client.get("/wallet")
-        fake.deferred_recovery_state = {"status": "COMPLETE", "pending": False}
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            SessionCipher(settings).encode(
+                SessionCredentials(
+                    nsec=TEST_NSEC,
+                    bootstrap_relay="wss://relay.example.com",
+                )
+            ),
+            domain="safebox.example",
+            path="/",
+        )
         completed_response = client.get("/wallet")
 
     assert response.status_code == 200
@@ -1732,7 +1755,7 @@ def test_wallet_prominently_warns_while_recovery_backup_is_pending(tmp_path) -> 
     assert 'href="/recovery"' in response.text
     assert "Copy Recovery Words" in response.text
     assert response.text.index("Recovery Backup Required") < response.text.index(
-        "wallet-balance"
+        "wallet-actions"
     )
     assert completed_response.status_code == 200
     assert "Recovery Backup Required" not in completed_response.text
@@ -1746,6 +1769,7 @@ def test_wallet_shows_collapsible_silent_payment_address_and_qr(tmp_path) -> Non
     )
     fake = FakeLoadedAcorn()
     client.app.dependency_overrides[get_loaded_acorn] = lambda: fake
+    client.app.dependency_overrides[get_acorn] = lambda: fake
 
     with client:
         response = client.get("/wallet")
@@ -2550,34 +2574,46 @@ def test_loaded_acorn_dependency_loads_request_scoped_state() -> None:
     assert acorn.loaded is True
 
 
-def test_wallet_page_displays_loaded_balance(tmp_path) -> None:
+def test_wallet_page_defers_live_balance_and_transfer_checks(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=12_345)
+
+    async def unexpected_live_check(*args, **kwargs):
+        raise AssertionError("wallet landing page performed a deferred live check")
+
+    acorn.check_proofs = unexpected_live_check
+    acorn.get_deferred_recovery_status = unexpected_live_check
+    acorn.get_continuity_receipts = unexpected_live_check
+    acorn.sweep_ecash_transfers = unexpected_live_check
+    acorn.get_clear_receipts = unexpected_live_check
+    acorn.get_clear_balances = unexpected_live_check
+    acorn.sweep_clear_transfers = unexpected_live_check
+    app.dependency_overrides[get_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "12,345 sats" in response.text
-    assert "Relay-visible proof total" in response.text
-    assert "Confirmed cash balance" in response.text
-    assert "spendable" not in response.text.lower()
+    assert "12,345 sats" not in response.text
+    assert "Relay-visible proof total" not in response.text
+    assert "Confirmed cash balance" not in response.text
+    assert "mint verification, and pending transfers are loaded only" in response.text
     assert "wss://relay.example.com" in response.text
     assert "not stored" in response.text
     assert "NIP-05 address" not in response.text
 
 
-def test_wallet_displays_cached_default_currency_estimate(tmp_path) -> None:
+def test_wallet_defers_cached_currency_estimate_to_balance_pages(tmp_path) -> None:
     settings = replace(
         database_settings(tmp_path),
         currency_rates_enabled=True,
         default_display_currency="CAD",
     )
     app = create_app(settings)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn(
-        balance=50_000
-    )
+    fake = FakeLoadedAcorn(balance=50_000)
+    app.dependency_overrides[get_acorn] = lambda: fake
+    app.dependency_overrides[get_loaded_acorn] = lambda: fake
     with TestClient(app, base_url="https://safebox.example") as client:
         with Session(app.state.database_engine) as session:
             from app.models import CurrencyRate
@@ -2597,12 +2633,12 @@ def test_wallet_displays_cached_default_currency_estimate(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert 'class="wallet-balance-amount">≈ $100.00 <span>CAD</span>' in response.text
-    assert 'class="wallet-balance-sats">50,000 sats' in response.text
+    assert 'class="wallet-balance-amount"' not in response.text
+    assert 'class="wallet-balance-sats"' not in response.text
     assert "Cached rate may be stale" not in response.text
 
 
-def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) -> None:
+def test_transaction_page_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
     acorn = FakeLoadedAcorn(
@@ -2612,7 +2648,7 @@ def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) 
     )
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/wallet")
+        response = client.get("/transactions")
 
     assert response.status_code == 200
     assert "Relay-visible proof total: <strong>33,926 sats" in response.text
@@ -2621,7 +2657,7 @@ def test_wallet_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) 
     assert "Do not make a payment" in response.text
 
 
-def test_wallet_shows_pending_clear_transfers_separately(tmp_path) -> None:
+def test_clear_page_shows_pending_clear_transfers_separately(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=9_836)
@@ -2636,31 +2672,16 @@ def test_wallet_shows_pending_clear_transfers_separately(tmp_path) -> None:
     ]
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/wallet")
+        response = client.get("/clear")
 
     assert response.status_code == 200
-    cash_pane = response.text.split('<a class="wallet-balance"', 1)[1].split(
-        "</a>", 1
-    )[0]
-    clear_pane = response.text.split(
-        '<a class="wallet-balance clear-balance"', 1
-    )[1].split("</a>", 1)[0]
-    assert "Cash Balance" in cash_pane
-    assert "Clear Balances" not in cash_pane
-    assert "Cash Balance" not in clear_pane
-    assert "Clear Balances" in clear_pane
-    assert "1 pending Clear transfer across 1 Clear balance." in clear_pane
-    assert "0 cmu-00ce29eeaf094301 confirmed; 25 pending." in clear_pane
-    assert cash_pane.index("Cash Balance") < cash_pane.index(
-        'class="wallet-balance-amount"'
-    )
-    assert clear_pane.index("Clear Balances") < clear_pane.index(
-        "1 pending Clear transfer"
-    )
+    assert "Clear Balances" in response.text
+    assert "1 pending transfer across 1 Clear balance." in response.text
+    assert "25 pending in 1 transfer" in response.text
     assert "Pending cash payments: 25 sats" not in response.text
 
 
-def test_wallet_previews_new_clear_transfers_without_storing_them(tmp_path) -> None:
+def test_clear_page_previews_new_transfers_without_storing_them(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=9_836)
     event_id = "7" * 64
@@ -2680,11 +2701,11 @@ def test_wallet_previews_new_clear_transfers_without_storing_them(tmp_path) -> N
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/wallet")
+        response = client.get("/clear")
 
     assert response.status_code == 200
-    assert "1 pending Clear transfer across 1 Clear balance." in response.text
-    assert "0 cmu-preview confirmed; 40 pending." in response.text
+    assert "1 pending transfer across 1 Clear balance." in response.text
+    assert "40 pending in 1 transfer" in response.text
     assert acorn.clear_preview_calls == 1
     assert acorn.clear_sweep_calls == 0
     assert acorn.clear_receipts == []
@@ -3305,16 +3326,18 @@ def test_transaction_history_displays_cached_currency_estimate(tmp_path) -> None
     assert 'class="wallet-balance-sats">50,000 sats' in response.text
 
 
-def test_wallet_uses_balance_as_the_transaction_history_link(tmp_path) -> None:
+def test_wallet_uses_manage_balances_as_the_balance_navigation(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    fake = FakeLoadedAcorn()
+    app.dependency_overrides[get_acorn] = lambda: fake
+    app.dependency_overrides[get_loaded_acorn] = lambda: fake
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert '<a class="wallet-balance" href="/transactions"' in response.text
-    assert '<a href="/transactions">Pending Transactions</a>' not in response.text
+    assert '<a href="/balances">Manage Balances</a>' in response.text
+    assert '<a class="wallet-balance" href="/transactions"' not in response.text
 
 
 def test_cash_transactions_do_not_include_clear_transfers(tmp_path) -> None:
@@ -3764,7 +3787,7 @@ def test_clear_receipt_deletion_requires_confirmation(tmp_path) -> None:
     assert acorn.deleted_clear_receipts == []
 
 
-def test_wallet_resolves_clear_aliases_without_summing_distinct_balances(
+def test_clear_page_resolves_aliases_without_summing_distinct_balances(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -3837,26 +3860,19 @@ def test_wallet_resolves_clear_aliases_without_summing_distinct_balances(
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/wallet")
+        response = client.get("/clear")
 
     assert response.status_code == 200
-    balance_pane = response.text.split(
-        '<a class="wallet-balance clear-balance"', 1
-    )[1].split("</a>", 1)[0]
-    assert "2 pending Clear transfers across 2 Clear balances." in balance_pane
-    assert "Clear Lab Credits</strong>: 0 credits confirmed; 25 pending." in (
-        balance_pane
-    )
-    assert "Harbour Lab Credits</strong>: 0 smiles confirmed; 25 pending." in (
-        balance_pane
-    )
-    assert "cmu-new · https://clear.safebox.dev" in balance_pane
-    assert "cmu-old · https://harbour.example" in balance_pane
-    assert "50" not in balance_pane
+    assert "2 pending transfers across 2 Clear balances." in response.text
+    assert "Clear Lab Credits" in response.text
+    assert "Harbour Lab Credits" in response.text
+    assert "25 pending in 1 transfer" in response.text
+    assert "cmu-new" in response.text
+    assert "cmu-old" in response.text
     assert sorted(requested_urls) == sorted(metadata)
 
 
-def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:
+def test_transaction_page_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=100)
@@ -3871,14 +3887,14 @@ def test_wallet_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:
     ]
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/wallet")
+        response = client.get("/transactions")
 
     assert response.status_code == 200
     assert "Pending cash payments: 5 sats in 1 payment." in response.text
     assert "100 <span>sats</span>" in response.text
 
 
-def test_wallet_balance_previews_unprocessed_incoming_payments_without_receiving(
+def test_transaction_page_previews_unprocessed_incoming_payments_without_receiving(
     tmp_path,
 ) -> None:
     settings = database_settings(tmp_path)
@@ -3887,7 +3903,7 @@ def test_wallet_balance_previews_unprocessed_incoming_payments_without_receiving
     acorn.incoming_preview = {"previewed_count": 2, "previewed_amount": 7}
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
-        response = client.get("/wallet")
+        response = client.get("/transactions")
 
     assert response.status_code == 200
     assert "Pending cash payments: 7 sats in 2 payments." in response.text

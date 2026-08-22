@@ -56,29 +56,6 @@
   <a href="/balances">Manage Balances</a>
   <a href="/records">Manage Records</a>
 </nav>
-<a class="wallet-balance" href="/transactions" aria-labelledby="wallet-balance-heading">
-  <h2 id="wallet-balance-heading">Cash Balance</h2>
-  {% if fiat_estimate %}
-  <p class="wallet-balance-amount">≈ {{ fiat_estimate.currency_symbol }}{{ "{:,.2f}".format(fiat_estimate.amount) }} <span>{{ fiat_estimate.currency_code }}</span></p>
-  <p class="wallet-balance-sats">{{ "{:,}".format(wallet_balance) }} sats</p>
-  {% if fiat_estimate.stale %}<p class="wallet-balance-rate-state">Cached rate may be stale.</p>{% endif %}
-  {% else %}
-  <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
-  {% endif %}
-  <p class="wallet-balance-state">{% if wallet_balance_verified %}Confirmed cash balance.{% else %}Balance requires verification—review the advisory below.{% endif %}</p>
-  {% if pending_payment_amount %}<p class="wallet-balance-state">Pending cash payments: {{ "{:,}".format(pending_payment_amount) }} sats in {{ "{:,}".format(pending_payment_count) }} payment{% if pending_payment_count != 1 %}s{% endif %}.</p>{% endif %}
-</a>
-<a class="wallet-balance clear-balance" href="/clear" aria-labelledby="clear-balance-heading">
-  <h2 id="clear-balance-heading">Clear Balances</h2>
-  {% if pending_clear.balance_count %}
-  {% if pending_clear.pending %}<p class="wallet-balance-state">{{ "{:,}".format(pending_clear.count) }} pending Clear transfer{% if pending_clear.count != 1 %}s{% endif %} across {{ "{:,}".format(pending_clear.pending_balance_count) }} Clear balance{% if pending_clear.pending_balance_count != 1 %}s{% endif %}.</p>{% endif %}
-  {% for balance in pending_clear.balances %}
-  <p class="wallet-clear-balance"><strong>{{ balance.display_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance.display_unit }} confirmed{% if balance.pending_amount %}; {{ "{:,}".format(balance.pending_amount) }} pending{% endif %}. <span>{{ balance.unit }} · {{ balance.mint }}</span></p>
-  {% endfor %}
-  {% else %}
-  <p class="wallet-balance-state">No Clear balances yet.</p>
-  {% endif %}
-</a>
 {% if silent_payment_address %}
 <details class="receive-payment-card silent-payment-card">
   <summary>Receive Silent Payment</summary>
@@ -137,13 +114,11 @@
       <p>NIP-05 address: <strong><a href="/handle">{{ nip05_address }}</a></strong></p>
       {% endif %}
       <p><a href="{{ onboard_invite_path }}">Invite someone to create an Acorn</a>.</p>
-      <p>Wallet state was loaded from the relay for this request. It was not stored
-      by the web application.</p>
+      <p>This landing page uses only the attached browser session. Relay-backed
+      balances, mint verification, and pending transfers are loaded only when
+      you open the corresponding Balance or Transaction page.</p>
+      <p>Wallet state was not stored by the web application.</p>
     </div>
-    <aside class="balance-details" aria-labelledby="balance-details-heading">
-      <h3 id="balance-details-heading">Balance verification</h3>
-      {{ balance_status | safe }}
-    </aside>
     {% if retention_notice %}
     {{ retention_notice | safe }}
     {% endif %}

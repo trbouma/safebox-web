@@ -79,6 +79,26 @@ All application decisions remain on the server. FastAPI routes validate input,
 verify CSRF tokens, reconstruct the request-scoped Acorn, invoke component
 operations, interpret results, and render the next representation.
 
+## Resource-scoped loading
+
+Hypermedia navigation also defines the cost boundary. The connected-wallet
+landing page reconstructs Acorn from the encrypted browser session but does not
+load its relay-backed wallet state. It therefore makes no mint proof check and
+does not scan Cash or Clear transfer events. Its job is orientation and
+navigation.
+
+Live work is performed only when the user follows the corresponding link:
+
+- `/transactions` loads Cash state, checks proofs with the mint, reads the Cash
+  journal, and previews incoming Cash transfers; and
+- `/clear` loads Clear balances, history, metadata, and incoming Clear
+  transfers.
+
+This keeps the common landing request responsive, avoids querying unrelated
+protocol services, and makes potentially slow network work correspond to the
+resource the user explicitly requested. These detail-page reads remain
+read-only; finalization and acceptance still require separate POST actions.
+
 ## Template boundary
 
 The template directory is deliberately a presentation layer rather than a

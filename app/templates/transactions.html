@@ -85,6 +85,7 @@
 <details class="transaction-advisories">
   <summary>Advisories</summary>
   <div class="transaction-advisories-content">
+    {{ balance_status | safe }}
     <p>Pending cash payments are added to the confirmed balance and journal when
     their proofs can be finalized with the mint.</p>
     {{ retention_notice | safe }}
