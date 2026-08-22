@@ -4397,6 +4397,8 @@ def test_payment_form_displays_balance_and_confirmation() -> None:
     assert "500 sats" in response.text
     assert "Transfer Address" in response.text
     assert "Transfer From" in response.text
+    assert "Balance Transfer Mode" in response.text
+    assert "Cash Transfer Mode" not in response.text
     assert 'name="csrf_token"' in response.text
     assert 'name="confirmed"' in response.text
     assert 'name="payment_mode"' in response.text

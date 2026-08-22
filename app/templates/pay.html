@@ -30,7 +30,7 @@
   <input id="comment" name="comment" type="text" maxlength="200"
          value="{{ comment }}">
   <fieldset class="payment-mode">
-    <legend>Cash Transfer Mode</legend>
+    <legend>Balance Transfer Mode</legend>
     <div class="payment-mode-options">
       <label>
         <input name="payment_mode" type="radio" value="confirmed"
@@ -64,7 +64,8 @@
     until mint reconciliation is available.</p>
     <p>A Clear transfer spends from exactly one issuing mint and canonical CMU.
     It is sent privately to a compatible Safebox address and never mixed with
-    the Cash Balance. Cash Transfer Mode does not apply to Clear transfers.</p>
+    the Cash Balance. These mode options apply only to Cash Balance transfers;
+    Clear transfers use confirmed mode.</p>
     <p>Scanning is available from the wallet home page.</p>
   </div>
 </details>
