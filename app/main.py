@@ -3823,7 +3823,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/wallet", response_class=HTMLResponse)
     async def wallet(
         request: Request,
-        acorn: AcornDependency,
+        acorn: LoadedAcornDependency,
         session: DatabaseSessionDependency,
     ) -> str:
         settings = request.app.state.settings
@@ -3870,14 +3870,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "silent payment public derivation unavailable error_type=%s",
                 type(exc).__name__,
             )
-        # Keep the wallet landing page session-only. The encrypted session tells
-        # us enough to identify the component and whether this browser still
-        # holds deferred recovery material. Relay and mint checks belong on the
-        # dedicated balance and transaction pages.
+        # Show lightweight relay-visible balance snapshots on the landing page.
+        # Mint verification, journals, pending-transfer scans, and Clear mint
+        # metadata remain scoped to their dedicated detail pages.
         recovery_backup_pending = bool(
             session_credentials is not None
             and session_credentials.deferred_acorn_mnemonic
         )
+        wallet_balance = acorn.get_balance()
+        fiat_estimate = None
+        if settings.currency_rates_enabled:
+            fiat_estimate = currency_balance_estimate(
+                session,
+                sats=wallet_balance,
+                currency_code=settings.default_display_currency,
+                stale_seconds=settings.currency_rate_stale_seconds,
+            )
+        try:
+            clear_balances = await _read_clear_balances(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "wallet clear balance snapshot unavailable error_type=%s",
+                type(exc).__name__,
+            )
+            clear_balances = []
+        clear_summary = _clear_balance_summary([], clear_balances)
         return render_template(
             "wallet.html",
             title="Safebox is Connected",
@@ -3902,6 +3922,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             silent_payment_address=silent_payment_address,
             silent_payment_qr=silent_payment_qr,
             retention_notice=_ecash_retention_notice(settings),
+            wallet_balance=wallet_balance,
+            fiat_estimate=fiat_estimate,
+            clear_summary=clear_summary,
             onboard_invite_path="/invite",
             csrf_token=csrf_token,
         )

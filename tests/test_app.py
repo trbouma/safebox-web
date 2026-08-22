@@ -1685,9 +1685,10 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert "Scan a Code" not in response.text
     assert 'href="/record-protection/enable"' in response.text
     assert "Protected Records" in response.text
-    assert 'class="wallet-balance"' not in response.text
-    assert "321 <span>sats</span>" not in response.text
-    assert "mint verification, and pending transfers are loaded only" in response.text
+    assert '<a class="wallet-balance" href="/transactions"' in response.text
+    assert '<a class="wallet-balance clear-balance" href="/clear"' in response.text
+    assert "321 <span>sats</span>" in response.text
+    assert "Mint\n      verification, transaction history, pending transfers" in response.text
     assert "View transaction history" not in response.text
     assert "Before disconnecting, make sure you have your" in response.text
     assert "recovery information" in response.text
@@ -2574,7 +2575,7 @@ def test_loaded_acorn_dependency_loads_request_scoped_state() -> None:
     assert acorn.loaded is True
 
 
-def test_wallet_page_defers_live_balance_and_transfer_checks(tmp_path) -> None:
+def test_wallet_page_shows_snapshot_but_defers_verification_and_transfer_checks(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=12_345)
@@ -2587,7 +2588,6 @@ def test_wallet_page_defers_live_balance_and_transfer_checks(tmp_path) -> None:
     acorn.get_continuity_receipts = unexpected_live_check
     acorn.sweep_ecash_transfers = unexpected_live_check
     acorn.get_clear_receipts = unexpected_live_check
-    acorn.get_clear_balances = unexpected_live_check
     acorn.sweep_clear_transfers = unexpected_live_check
     app.dependency_overrides[get_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
@@ -2595,16 +2595,17 @@ def test_wallet_page_defers_live_balance_and_transfer_checks(tmp_path) -> None:
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "12,345 sats" not in response.text
+    assert "12,345 <span>sats</span>" in response.text
     assert "Relay-visible proof total" not in response.text
     assert "Confirmed cash balance" not in response.text
-    assert "mint verification, and pending transfers are loaded only" in response.text
+    assert "Relay-visible snapshot" in response.text
+    assert "Mint\n      verification, transaction history, pending transfers" in response.text
     assert "wss://relay.example.com" in response.text
     assert "not stored" in response.text
     assert "NIP-05 address" not in response.text
 
 
-def test_wallet_defers_cached_currency_estimate_to_balance_pages(tmp_path) -> None:
+def test_wallet_displays_cached_currency_estimate_without_mint_verification(tmp_path) -> None:
     settings = replace(
         database_settings(tmp_path),
         currency_rates_enabled=True,
@@ -2633,8 +2634,8 @@ def test_wallet_defers_cached_currency_estimate_to_balance_pages(tmp_path) -> No
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert 'class="wallet-balance-amount"' not in response.text
-    assert 'class="wallet-balance-sats"' not in response.text
+    assert 'class="wallet-balance-amount">≈ $100.00 <span>CAD</span>' in response.text
+    assert 'class="wallet-balance-sats">50,000 sats' in response.text
     assert "Cached rate may be stale" not in response.text
 
 
@@ -3337,7 +3338,7 @@ def test_wallet_uses_manage_balances_as_the_balance_navigation(tmp_path) -> None
 
     assert response.status_code == 200
     assert '<a href="/balances">Manage Balances</a>' in response.text
-    assert '<a class="wallet-balance" href="/transactions"' not in response.text
+    assert '<a class="wallet-balance" href="/transactions"' in response.text
 
 
 def test_cash_transactions_do_not_include_clear_transfers(tmp_path) -> None:
