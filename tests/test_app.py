@@ -1688,7 +1688,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert '<a class="wallet-balance" href="/transactions"' in response.text
     assert '<a class="wallet-balance clear-balance" href="/clear"' in response.text
     assert "321 <span>sats</span>" in response.text
-    assert "Mint\n      verification, transaction history, pending transfers" in response.text
+    assert "verification, transaction history, and pending transfers" in response.text
     assert "View transaction history" not in response.text
     assert "Before disconnecting, make sure you have your" in response.text
     assert "recovery information" in response.text
@@ -2599,7 +2599,7 @@ def test_wallet_page_shows_snapshot_but_defers_verification_and_transfer_checks(
     assert "Relay-visible proof total" not in response.text
     assert "Confirmed cash balance" not in response.text
     assert "Relay-visible snapshot" in response.text
-    assert "Mint\n      verification, transaction history, pending transfers" in response.text
+    assert "verification, transaction history, and pending transfers" in response.text
     assert "wss://relay.example.com" in response.text
     assert "not stored" in response.text
     assert "NIP-05 address" not in response.text
@@ -2637,6 +2637,38 @@ def test_wallet_displays_cached_currency_estimate_without_mint_verification(tmp_
     assert 'class="wallet-balance-amount">≈ $100.00 <span>CAD</span>' in response.text
     assert 'class="wallet-balance-sats">50,000 sats' in response.text
     assert "Cached rate may be stale" not in response.text
+
+
+def test_wallet_clear_snapshot_uses_friendly_cached_mint_metadata(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn()
+    acorn.clear_balances = [
+        {
+            "mint": "https://clear.example",
+            "unit": "cmu-friendly",
+            "amount": 150,
+            "proof_count": 4,
+        }
+    ]
+    app.state.clear_mint_metadata_cache[(
+        "https://clear.example",
+        "cmu-friendly",
+    )] = (
+        time.monotonic(),
+        {
+            "display_name": "Community Credits",
+            "display_unit": "credits",
+            "metadata_resolved": True,
+        },
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "Community Credits</strong>: 150 credits." in response.text
+    assert "cmu-friendly · https://clear.example" in response.text
 
 
 def test_transaction_page_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) -> None:

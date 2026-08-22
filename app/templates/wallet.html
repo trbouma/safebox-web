@@ -137,8 +137,9 @@
       {% endif %}
       <p><a href="{{ onboard_invite_path }}">Invite someone to create an Acorn</a>.</p>
       <p>This landing page loads only relay-visible balance snapshots. Mint
-      verification, transaction history, pending transfers, and detailed Clear
-      metadata are loaded only when you open the corresponding transaction page.</p>
+      verification, transaction history, and pending transfers are loaded only
+      when you open the corresponding transaction page. Friendly Clear names
+      come from bounded, cached mint metadata.</p>
       <p>Wallet state was not stored by the web application.</p>
     </div>
     {% if retention_notice %}

@@ -107,9 +107,9 @@ This implementation intentionally provides:
 It does **not** maintain user accounts, write attached-Acorn configuration, or
 store server-side user sessions. The wallet landing page loads lightweight,
 relay-visible Cash and Clear balance snapshots, but it does not query a mint,
-load transaction journals, scan incoming transfers, or resolve detailed Clear
-metadata. The Cash and Clear transaction pages load and verify that additional
-live state on demand.
+load transaction journals or scan incoming transfers. Friendly Clear names use
+the existing bounded metadata lookup and short-lived cache. The Cash and Clear
+transaction pages load and verify the remaining live state on demand.
 An explicitly confirmed transfer delegates all proof, locking, mint, journal,
 and relay mutations to Acorn. The server-side database contains the public
 NIP-05 directory and operational provider-payment jobs. It does not contain

@@ -84,9 +84,10 @@ operations, interpret results, and render the next representation.
 Hypermedia navigation also defines the cost boundary. The connected-wallet
 landing page reconstructs Acorn from the encrypted browser session and loads
 only lightweight, relay-visible Cash and Clear balance snapshots. It makes no
-mint proof check, loads no transaction journal, scans no incoming transfer
-events, and performs no detailed Clear mint metadata lookup. Its job is
-orientation, current approximate balance visibility, and navigation.
+mint proof check, loads no transaction journal, and scans no incoming transfer
+events. Friendly Clear names use the same bounded, short-lived mint metadata
+cache as the Clear detail page. Its job is orientation, current approximate
+balance visibility, and navigation.
 
 Live work is performed only when the user follows the corresponding link:
 

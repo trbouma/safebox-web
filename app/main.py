@@ -3871,8 +3871,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
         # Show lightweight relay-visible balance snapshots on the landing page.
-        # Mint verification, journals, pending-transfer scans, and Clear mint
-        # metadata remain scoped to their dedicated detail pages.
+        # Mint verification, journals, and pending-transfer scans remain scoped
+        # to their dedicated detail pages. Clear aliases use the same bounded,
+        # short-lived metadata cache as the Clear page.
         recovery_backup_pending = bool(
             session_credentials is not None
             and session_credentials.deferred_acorn_mnemonic
@@ -3897,7 +3898,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
             clear_balances = []
-        clear_summary = _clear_balance_summary([], clear_balances)
+        clear_summary = await _resolve_clear_aliases(
+            _clear_balance_summary([], clear_balances),
+            timeout=settings.wallet_load_timeout_seconds,
+            configured_mints=settings.clear_mints,
+            cache=request.app.state.clear_mint_metadata_cache,
+        )
         return render_template(
             "wallet.html",
             title="Safebox is Connected",
