@@ -5786,7 +5786,7 @@ def test_continuity_payment_rejects_external_lightning_address(
 
 def test_record_index_links_encoded_labels() -> None:
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    app.dependency_overrides[get_acorn] = lambda: FakeLoadedAcorn()
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get("/records")
@@ -5804,6 +5804,96 @@ def test_record_index_links_encoded_labels() -> None:
     assert ">Open</a>" not in response.text
 
 
+def test_record_index_uses_relay_catalog_without_loading_wallet_or_records() -> None:
+    class CatalogAcorn(FakeLoadedAcorn):
+        async def get_record_catalog(self) -> dict:
+            return {
+                "records": [
+                    {"label": "Fast Record", "modified_at": 200},
+                    {"label": "Older Record", "modified_at": 100},
+                ]
+            }
+
+    app = create_app(TEST_SETTINGS)
+    acorn = CatalogAcorn()
+    acorn.get_user_records = AsyncMock(
+        side_effect=AssertionError("authoritative records should not be scanned")
+    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/records")
+
+    assert response.status_code == 200
+    assert response.text.index("Fast Record") < response.text.index("Older Record")
+    assert acorn.loaded is False
+    acorn.get_user_records.assert_not_awaited()
+
+
+def test_record_index_rebuilds_missing_relay_catalog_once() -> None:
+    class MissingCatalogAcorn(FakeLoadedAcorn):
+        def __init__(self):
+            super().__init__()
+            self.rebuild_calls = 0
+
+        async def get_record_catalog(self):
+            return None
+
+        async def rebuild_record_catalog(self):
+            self.rebuild_calls += 1
+            return {
+                "records": [
+                    {"label": "Recovered Catalog", "modified_at": 123}
+                ]
+            }
+
+    app = create_app(TEST_SETTINGS)
+    acorn = MissingCatalogAcorn()
+    app.dependency_overrides[get_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/records")
+
+    assert response.status_code == 200
+    assert "Recovered Catalog" in response.text
+    assert acorn.rebuild_calls == 1
+    assert acorn.loaded is False
+
+
+def test_record_index_offers_explicit_catalog_rebuild() -> None:
+    class RefreshableCatalogAcorn(FakeLoadedAcorn):
+        async def get_record_catalog(self):
+            return {"records": []}
+
+        async def rebuild_record_catalog(self):
+            return {
+                "records": [
+                    {"label": "Refreshed Record", "modified_at": 321}
+                ]
+            }
+
+    app = create_app(TEST_SETTINGS)
+    acorn = RefreshableCatalogAcorn()
+    acorn.rebuild_record_catalog = AsyncMock(
+        wraps=acorn.rebuild_record_catalog
+    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.get("/records")
+        response = client.post(
+            "/records/rebuild",
+            data={"csrf_token": valid_csrf_token()},
+            follow_redirects=False,
+        )
+
+    assert page.status_code == 200
+    assert "Refresh Record List" in page.text
+    assert response.status_code == 303
+    assert response.headers["location"] == "/records?catalog=rebuilt"
+    acorn.rebuild_record_catalog.assert_awaited_once_with()
+
+
 def test_record_index_orders_unique_labels_by_last_modified_descending() -> None:
     class TimestampedRecordAcorn(FakeLoadedAcorn):
         async def get_user_records(self, **_kwargs) -> list[dict]:
@@ -5815,7 +5905,7 @@ def test_record_index_orders_unique_labels_by_last_modified_descending() -> None
             ]
 
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: TimestampedRecordAcorn()
+    app.dependency_overrides[get_acorn] = lambda: TimestampedRecordAcorn()
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get("/records")
@@ -5840,7 +5930,7 @@ def test_record_index_paginates_ten_clickable_panels_at_a_time() -> None:
             ]
 
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: PaginatedRecordAcorn()
+    app.dependency_overrides[get_acorn] = lambda: PaginatedRecordAcorn()
     client = TestClient(app, base_url="https://safebox.example")
 
     first = client.get("/records")
@@ -5873,7 +5963,7 @@ def test_record_index_paginates_ten_clickable_panels_at_a_time() -> None:
 
 def test_record_index_rejects_invalid_page_and_clamps_excessive_page() -> None:
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    app.dependency_overrides[get_acorn] = lambda: FakeLoadedAcorn()
     client = TestClient(app, base_url="https://safebox.example")
 
     invalid = client.get("/records", params={"page": "not-a-number"})
@@ -5896,7 +5986,7 @@ def test_record_index_folder_view_groups_paths_and_preserves_flat_records() -> N
             ]
 
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FolderRecordAcorn()
+    app.dependency_overrides[get_acorn] = lambda: FolderRecordAcorn()
     client = TestClient(app, base_url="https://safebox.example")
 
     root = client.get("/records", params={"view": "folders"})
@@ -5929,7 +6019,7 @@ def test_record_index_folder_view_groups_paths_and_preserves_flat_records() -> N
 
 def test_record_index_rejects_unknown_view_and_handles_empty_folder() -> None:
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    app.dependency_overrides[get_acorn] = lambda: FakeLoadedAcorn()
     client = TestClient(app, base_url="https://safebox.example")
 
     invalid = client.get("/records", params={"view": "grid"})

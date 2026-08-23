@@ -1313,14 +1313,54 @@ def _transactions_page(
     )
 
 
-async def _record_index_entries(acorn, timeout: float) -> list[dict]:
-    """Load unique record labels ordered by newest relay event first."""
+async def _record_index_entries(
+    acorn,
+    *,
+    catalog_timeout: float,
+    rebuild_timeout: float,
+) -> list[dict]:
+    """Load the relay-backed record catalog, rebuilding it once if absent."""
 
+    catalog_reader = getattr(acorn, "get_record_catalog", None)
+    if callable(catalog_reader):
+        rebuilder = getattr(acorn, "rebuild_record_catalog", None)
+        try:
+            catalog = await asyncio.wait_for(
+                catalog_reader(),
+                timeout=catalog_timeout,
+            )
+        except RuntimeError:
+            if not callable(rebuilder):
+                raise
+            catalog = await asyncio.wait_for(
+                rebuilder(),
+                timeout=rebuild_timeout,
+            )
+        if catalog is None:
+            if callable(rebuilder):
+                catalog = await asyncio.wait_for(
+                    rebuilder(),
+                    timeout=rebuild_timeout,
+                )
+        if isinstance(catalog, dict):
+            records = catalog.get("records")
+            if isinstance(records, list):
+                return [
+                    {
+                        "label": str(entry.get("label") or "").strip(),
+                        "modified_at": int(entry.get("modified_at") or 0),
+                    }
+                    for entry in records
+                    if isinstance(entry, dict)
+                    and str(entry.get("label") or "").strip()
+                ]
+
+    # Compatibility fallback for Acorn versions predating the catalog.
     records_reader = getattr(acorn, "get_user_records", None)
     if callable(records_reader):
         records = await asyncio.wait_for(
             records_reader(record_kind=37375, reverse=True),
-            timeout=timeout,
+            timeout=rebuild_timeout,
         )
         if isinstance(records, list):
             newest_by_label: dict[str, int] = {}
@@ -1358,7 +1398,7 @@ async def _record_index_entries(acorn, timeout: float) -> list[dict]:
 
     labels = await asyncio.wait_for(
         acorn.get_user_record_labels(),
-        timeout=timeout,
+        timeout=rebuild_timeout,
     )
     unique_labels = {str(label).strip() for label in labels if str(label).strip()}
     return [
@@ -6812,7 +6852,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/records", response_class=HTMLResponse)
     async def records(
         request: Request,
-        acorn: LoadedAcornDependency,
+        acorn: AcornDependency,
         page: str | None = None,
         view: str | None = None,
         folder: str | None = None,
@@ -6845,7 +6885,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             record_entries = await _record_index_entries(
                 acorn,
-                settings.wallet_load_timeout_seconds,
+                catalog_timeout=settings.record_catalog_timeout_seconds,
+                rebuild_timeout=settings.wallet_load_timeout_seconds,
             )
         except TimeoutError:
             return HTMLResponse(
@@ -6940,6 +6981,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 total_pages=None,
                 previous_url=None,
                 next_url=None,
+                csrf_token=CsrfProtector(settings).issue(),
+                catalog_rebuilt=request.query_params.get("catalog") == "rebuilt",
             )
 
         total_records = len(record_entries)
@@ -6980,7 +7023,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if current_page < total_pages
                 else None
             ),
+            csrf_token=CsrfProtector(settings).issue(),
+            catalog_rebuilt=request.query_params.get("catalog") == "rebuilt",
         )
+
+    @app.post("/records/rebuild")
+    async def rebuild_records_catalog(
+        request: Request,
+        acorn: AcornDependency,
+        csrf_token: str = Form(...),
+    ):
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            raise HTTPException(status_code=403, detail="Form token is invalid or expired")
+        rebuilder = getattr(acorn, "rebuild_record_catalog", None)
+        if not callable(rebuilder):
+            raise HTTPException(
+                status_code=501,
+                detail="This Safebox Acorn version cannot rebuild the record catalog",
+            )
+        try:
+            await asyncio.wait_for(
+                rebuilder(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except TimeoutError as exc:
+            raise HTTPException(
+                status_code=504,
+                detail="Timed out while rebuilding the record catalog",
+            ) from exc
+        except Exception as exc:
+            logger.warning(
+                "record catalog rebuild failed error_type=%s",
+                type(exc).__name__,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Unable to rebuild the record catalog from relay records",
+            ) from exc
+        return RedirectResponse("/records?catalog=rebuilt", status_code=303)
 
     @app.get("/blob/upload", response_class=HTMLResponse)
     async def blob_upload_form(request: Request, acorn: LoadedAcornDependency):

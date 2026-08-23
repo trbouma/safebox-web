@@ -3,6 +3,9 @@
 <div class="record-actions">
   <a class="record-add" href="/record/edit">Add a Record</a>
 </div>
+{% if catalog_rebuilt %}
+<p class="success" role="status">Record list refreshed from authoritative relay records.</p>
+{% endif %}
 <nav class="record-view-switcher" aria-label="Record view">
   <a class="nav-button{% if record_view == 'list' %} active{% endif %}" href="{{ list_view_url }}"{% if record_view == 'list' %} aria-current="page"{% endif %}>List</a>
   <a class="nav-button{% if record_view == 'folders' %} active{% endif %}" href="{{ folder_view_url }}"{% if record_view == 'folders' %} aria-current="page"{% endif %}>Folders</a>
@@ -39,4 +42,14 @@
 {% else %}
 <p>No records were found.</p>
 {% endif %}
+<details class="advisory">
+  <summary>Record List Advisory</summary>
+  <p>This list is an encrypted relay-backed catalog. Refresh it if records appear missing or out of date.</p>
+  <form method="post" action="/records/rebuild"
+        data-progress-message="Refreshing the record list from relay records. Please wait."
+        data-progress-button="Refreshing…">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="secondary-button">Refresh Record List</button>
+  </form>
+</details>
 {% endblock %}

@@ -212,6 +212,19 @@ workflow state into JavaScript, `localStorage`, or `sessionStorage`. The
 encrypted session cookie contains the minimum material required to reconstruct
 the attached Acorn. Because it is HTTP-only, page scripts cannot read it.
 
+The **Manage Records** representation uses Acorn's encrypted relay-backed
+record catalog. A normal page request reads one non-authoritative catalog event
+without calling `load_data()` or loading proof state. Pagination and folder
+navigation operate on that server-rendered catalog representation. Opening a
+record still performs a direct authoritative lookup for that record.
+
+For an older wallet with no catalog, Acorn rebuilds it once from authoritative
+record events. The user can explicitly choose **Refresh Record List** to repeat
+that rebuild if the catalog appears stale. Safebox Web does not persist a copy
+in its database, cookie, or browser storage. Catalog reads have a separate
+bounded timeout so an unavailable relay does not turn record navigation into an
+unbounded wallet load.
+
 The current `v2` cookie envelope uses AES-256-GCM with a fresh random nonce and
 a purpose-specific key derived from the server-held application key using
 HKDF-SHA256. Its issuance time, purpose, and credentials are authenticated

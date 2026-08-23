@@ -263,6 +263,7 @@ class Settings:
     session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
     wallet_load_timeout_seconds: float = 20.0
     wallet_home_snapshot_timeout_seconds: float = 3.0
+    record_catalog_timeout_seconds: float = 3.0
     payment_timeout_seconds: float = 90.0
     allowed_ws_relays: tuple[str, ...] = ()
     default_bootstrap_relay: str = "wss://relay.getsafebox.app"
@@ -322,6 +323,8 @@ class Settings:
             raise ValueError(
                 "SAFEBOX_WALLET_HOME_SNAPSHOT_TIMEOUT_SECONDS must be positive"
             )
+        if self.record_catalog_timeout_seconds <= 0:
+            raise ValueError("SAFEBOX_RECORD_CATALOG_TIMEOUT_SECONDS must be positive")
         if self.payment_timeout_seconds <= 0:
             raise ValueError("SAFEBOX_PAYMENT_TIMEOUT_SECONDS must be positive")
         if not self.onboard_invite_codes:
@@ -419,6 +422,14 @@ class Settings:
                 "SAFEBOX_WALLET_HOME_SNAPSHOT_TIMEOUT_SECONDS must be a number"
             ) from exc
         try:
+            record_catalog_timeout = float(
+                os.getenv("SAFEBOX_RECORD_CATALOG_TIMEOUT_SECONDS", "3")
+            )
+        except ValueError as exc:
+            raise RuntimeError(
+                "SAFEBOX_RECORD_CATALOG_TIMEOUT_SECONDS must be a number"
+            ) from exc
+        try:
             payment_timeout = float(os.getenv("SAFEBOX_PAYMENT_TIMEOUT_SECONDS", "90"))
         except ValueError as exc:
             raise RuntimeError("SAFEBOX_PAYMENT_TIMEOUT_SECONDS must be a number") from exc
@@ -486,6 +497,7 @@ class Settings:
             session_ttl_seconds=ttl,
             wallet_load_timeout_seconds=load_timeout,
             wallet_home_snapshot_timeout_seconds=home_snapshot_timeout,
+            record_catalog_timeout_seconds=record_catalog_timeout,
             payment_timeout_seconds=payment_timeout,
             allowed_ws_relays=_allowed_ws_relays_from_env(),
             default_bootstrap_relay=default_relay,
