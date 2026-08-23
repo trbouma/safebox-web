@@ -181,10 +181,15 @@ def _acorn_safekeeping_message(
     acorn_mnemonic: str,
     npub: str,
     home_relay: str,
-    home_mint: str,
+    home_mint: str | None,
 ) -> str:
     """Build the recovery message for an Acorn without record protection."""
 
+    mint_line = (
+        f"Home mint: {home_mint}"
+        if home_mint
+        else "Home mint: stored in relay-backed wallet configuration"
+    )
     return "\n".join(
         (
             "SAFEBOX ACORN RECOVERY MESSAGE",
@@ -194,7 +199,7 @@ def _acorn_safekeeping_message(
             acorn_mnemonic,
             "",
             f"Bootstrap relay: {home_relay}",
-            f"Home mint: {home_mint}",
+            mint_line,
             f"Component public key: {npub}",
             "",
             "Protected records: not enabled",
@@ -3300,6 +3305,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             secret_type="nsec",
             secret=generated_nsec,
             bootstrap_relay=normalized_relay,
+            home_mint=normalized_mint,
             deferred_acorn_mnemonic=(
                 seed_phrase if defer_recovery == "yes" else None
             ),
@@ -3505,39 +3511,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def deferred_recovery_warning(
         request: Request,
         credentials: CredentialsDependency,
-        acorn: LoadedAcornDependency,
+        acorn: AcornDependency,
     ) -> HTMLResponse:
         settings = request.app.state.settings
-        try:
-            state = await asyncio.wait_for(
-                acorn.get_deferred_recovery_status(),
-                timeout=settings.wallet_load_timeout_seconds,
-            )
-        except Exception as exc:
-            logger.warning(
-                "deferred recovery status failed error_type=%s",
-                type(exc).__name__,
-            )
-            return HTMLResponse(
-                _page(
-                    "Recovery status unavailable",
-                    "<p>Safebox could not read the deferred recovery state. "
-                    "Try again before disconnecting this Acorn.</p>"
-                    '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
-                ),
-                status_code=502,
-                headers={"Cache-Control": "no-store"},
-            )
-        if not state.get("pending"):
-            return HTMLResponse(
-                _page(
-                    "Recovery backup is not pending",
-                    "<p>This Acorn does not have a pending temporary recovery bundle.</p>"
-                    '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
-                ),
-                headers={"Cache-Control": "no-store"},
-            )
         if credentials.deferred_acorn_mnemonic is None:
+            try:
+                state = await asyncio.wait_for(
+                    acorn.get_deferred_recovery_status(),
+                    timeout=min(settings.wallet_load_timeout_seconds, 10),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "deferred recovery status failed error_type=%s",
+                    type(exc).__name__,
+                )
+                return HTMLResponse(
+                    _page(
+                        "Recovery status unavailable",
+                        "<p>Safebox could not read the deferred recovery state. "
+                        "Try again before disconnecting this Acorn.</p>"
+                        '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
+                    ),
+                    status_code=502,
+                    headers={"Cache-Control": "no-store"},
+                )
+            if not state.get("pending"):
+                return HTMLResponse(
+                    _page(
+                        "Recovery backup is not pending",
+                        "<p>This Acorn does not have a pending temporary recovery bundle.</p>"
+                        '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
+                    ),
+                    headers={"Cache-Control": "no-store"},
+                )
             return HTMLResponse(
                 _page(
                     "Recovery material unavailable",
@@ -3562,7 +3568,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def display_deferred_recovery(
         request: Request,
         credentials: CredentialsDependency,
-        acorn: LoadedAcornDependency,
+        acorn: AcornDependency,
         csrf_token: str = Form(...),
         confirmed: str | None = Form(None),
     ) -> HTMLResponse:
@@ -3596,7 +3602,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     acorn_mnemonic=credentials.deferred_acorn_mnemonic,
                     npub=acorn.pubkey_bech32,
                     home_relay=acorn.home_relay,
-                    home_mint=acorn.home_mint,
+                    home_mint=credentials.home_mint,
                 ),
                 csrf_token=CsrfProtector(settings).issue(),
             ),

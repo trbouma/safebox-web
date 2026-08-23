@@ -37,6 +37,7 @@ class SessionCredentials:
 
     nsec: str
     bootstrap_relay: str
+    home_mint: str | None = None
     deferred_acorn_mnemonic: str | None = None
     record_protection_key: str | None = None
     record_protection_backup_confirmed: bool = False
@@ -388,6 +389,7 @@ def credentials_from_connection(
     secret_type: str,
     secret: str,
     bootstrap_relay: str,
+    home_mint: str | None = None,
     deferred_acorn_mnemonic: str | None = None,
     record_protection_key: str | None = None,
     record_protection_backup_confirmed: bool = False,
@@ -408,6 +410,11 @@ def credentials_from_connection(
         bootstrap_relay=normalize_bootstrap_relay(
             bootstrap_relay,
             allowed_ws_relays,
+        ),
+        home_mint=(
+            (str(home_mint).strip() or None)
+            if home_mint is not None
+            else None
         ),
         deferred_acorn_mnemonic=deferred_acorn_mnemonic,
         record_protection_key=record_protection_key,

@@ -1240,6 +1240,10 @@ def test_quick_onboarding_accepts_custom_home_relay_and_mint(
     assert created.kwargs["home_relay"] == "wss://relay.known.example"
     assert created.kwargs["relays"] == ["wss://relay.known.example"]
     assert created.kwargs["mints"] == ["https://mint.known.example"]
+    credentials = SessionCipher(settings).decode(
+        client.cookies.get(SECURE_COOKIE_NAME)
+    )
+    assert credentials.home_mint == "https://mint.known.example"
 
 
 def test_quick_onboarding_passes_selected_24_word_mnemonic_strength(
@@ -2158,10 +2162,12 @@ def test_deferred_recovery_display_and_completion_updates_session() -> None:
     credentials = SessionCredentials(
         nsec=TEST_NSEC,
         bootstrap_relay="wss://relay.example.com",
+        home_mint="https://mint.recovery.example.com",
         deferred_acorn_mnemonic=TEST_MNEMONIC,
         record_protection_key=None,
         record_protection_backup_confirmed=False,
     )
+    app.dependency_overrides[get_acorn] = lambda: fake
     app.dependency_overrides[get_loaded_acorn] = lambda: fake
     app.dependency_overrides[get_session_credentials] = lambda: credentials
     client = TestClient(app, base_url="https://safebox.example")
@@ -2179,7 +2185,9 @@ def test_deferred_recovery_display_and_completion_updates_session() -> None:
     assert TEST_MNEMONIC in displayed.text
     assert TEST_RPK_PHRASE not in displayed.text
     assert "Protected records: not enabled" in displayed.text
+    assert "Home mint: https://mint.recovery.example.com" in displayed.text
     assert displayed.headers["cache-control"] == "no-store"
+    assert fake.loaded is False
 
     completed = client.post(
         "/recovery/confirm",
