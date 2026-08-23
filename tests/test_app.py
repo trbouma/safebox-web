@@ -13,6 +13,7 @@ import sqlite3
 import threading
 import time
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from pathlib import Path
 import zipfile
 
@@ -233,9 +234,29 @@ class FakeLoadedAcorn:
             "previewed": [],
         }
         self.clear_transfers: list[dict] = []
+        self.balance_snapshot_reads = 0
+        self.balance_snapshot_publishes = 0
 
     async def load_data(self) -> None:
         self.loaded = True
+
+    async def get_balance_snapshot(self) -> dict:
+        self.balance_snapshot_reads += 1
+        return {
+            "type": "acorn-balance-snapshot",
+            "version": 1,
+            "observed_at": 1_786_430_400,
+            "cash": {
+                "amount": self.balance,
+                "proof_count": len(self.proofs),
+                "event_ids": [],
+            },
+            "clear": list(self.clear_balances),
+        }
+
+    async def publish_balance_snapshot(self, **kwargs) -> dict:
+        self.balance_snapshot_publishes += 1
+        return await self.get_balance_snapshot()
 
     async def get_deferred_recovery_status(self) -> dict:
         return self.deferred_recovery_state
@@ -581,6 +602,17 @@ def stub_deferred_recovery_status(acorn) -> None:
         return {"status": "ABSENT", "pending": False}
 
     acorn.get_deferred_recovery_status = absent_status
+
+    async def balance_snapshot() -> dict:
+        return {
+            "type": "acorn-balance-snapshot",
+            "version": 1,
+            "observed_at": 1_786_430_400,
+            "cash": {"amount": 0, "proof_count": 0, "event_ids": []},
+            "clear": [],
+        }
+
+    acorn.get_balance_snapshot = balance_snapshot
 
 
 class FakeCreatedAcorn:
@@ -1731,6 +1763,7 @@ def test_wallet_prominently_warns_while_recovery_backup_is_pending(tmp_path) -> 
     settings = database_settings(tmp_path)
     app = create_app(settings)
     fake = FakeLoadedAcorn()
+    app.dependency_overrides[get_acorn] = lambda: fake
     app.dependency_overrides[get_loaded_acorn] = lambda: fake
 
     with TestClient(app, base_url="https://safebox.example") as client:
@@ -2614,6 +2647,37 @@ def test_wallet_page_shows_snapshot_but_defers_verification_and_transfer_checks(
     assert "wss://relay.example.com" in response.text
     assert "not stored" in response.text
     assert "NIP-05 address" not in response.text
+    assert acorn.balance_snapshot_reads == 1
+    assert acorn.loaded is False
+    assert acorn.balance_snapshot_publishes == 0
+
+
+def test_wallet_bootstraps_missing_balance_snapshot_from_authoritative_state(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=777)
+    acorn.clear_balances = [
+        {
+            "mint": "https://clear.example",
+            "unit": "cmu-bootstrap",
+            "amount": 12,
+            "proof_count": 2,
+        }
+    ]
+    acorn.get_balance_snapshot = AsyncMock(return_value=None)
+    acorn.publish_balance_snapshot = AsyncMock(return_value={"status": "OK"})
+    app.dependency_overrides[get_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "777 <span>sats</span>" in response.text
+    assert "12 cmu-bootstrap" in response.text
+    assert acorn.loaded is True
+    acorn.publish_balance_snapshot.assert_awaited_once_with(
+        clear_balances=acorn.clear_balances,
+        verify=False,
+    )
 
 
 def test_wallet_displays_cached_currency_estimate_without_mint_verification(tmp_path) -> None:
@@ -2672,6 +2736,7 @@ def test_wallet_clear_snapshot_uses_friendly_cached_mint_metadata(tmp_path) -> N
             "metadata_resolved": True,
         },
     )
+    app.dependency_overrides[get_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:

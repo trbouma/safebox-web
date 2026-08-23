@@ -766,6 +766,38 @@ async def _read_clear_balances(acorn, timeout: float) -> list[dict]:
     return balances if isinstance(balances, list) else []
 
 
+async def _read_balance_snapshot(acorn, timeout: float) -> dict | None:
+    """Read Acorn's relay-backed display cache without loading proof state."""
+
+    reader = getattr(acorn, "get_balance_snapshot", None)
+    if reader is None:
+        return None
+    snapshot = await asyncio.wait_for(reader(), timeout=timeout)
+    return snapshot if isinstance(snapshot, dict) else None
+
+
+async def _publish_balance_snapshot(
+    acorn,
+    clear_balances: list[dict],
+    timeout: float,
+) -> None:
+    """Best-effort snapshot bootstrap after an authoritative fallback load."""
+
+    publisher = getattr(acorn, "publish_balance_snapshot", None)
+    if publisher is None:
+        return
+    try:
+        await asyncio.wait_for(
+            publisher(clear_balances=clear_balances, verify=False),
+            timeout=timeout,
+        )
+    except Exception as exc:
+        logger.warning(
+            "wallet balance snapshot publish unavailable error_type=%s",
+            type(exc).__name__,
+        )
+
+
 def _encode_clear_payment_asset(mint: str, unit: str) -> str:
     payload = json.dumps(
         {"mint": str(mint).rstrip("/"), "unit": str(unit)},
@@ -3876,10 +3908,63 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/wallet", response_class=HTMLResponse)
     async def wallet(
         request: Request,
-        acorn: LoadedAcornDependency,
+        acorn: AcornDependency,
         session: DatabaseSessionDependency,
     ) -> str:
         settings = request.app.state.settings
+        balance_snapshot = None
+        try:
+            balance_snapshot = await _read_balance_snapshot(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "wallet balance snapshot unavailable error_type=%s",
+                type(exc).__name__,
+            )
+
+        if balance_snapshot is None:
+            try:
+                await asyncio.wait_for(
+                    acorn.load_data(),
+                    timeout=settings.wallet_load_timeout_seconds,
+                )
+            except TimeoutError as exc:
+                raise HTTPException(
+                    status_code=504,
+                    detail="Timed out while loading the Acorn wallet from its bootstrap relay",
+                ) from exc
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Unable to load the Acorn wallet from its bootstrap relay",
+                ) from exc
+            try:
+                clear_balances = await _read_clear_balances(
+                    acorn,
+                    settings.wallet_load_timeout_seconds,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "wallet clear balance snapshot unavailable error_type=%s",
+                    type(exc).__name__,
+                )
+                clear_balances = []
+            balance_snapshot = {
+                "observed_at": int(datetime.now().timestamp()),
+                "cash": {
+                    "amount": acorn.get_balance(),
+                    "proof_count": len(acorn.proofs),
+                },
+                "clear": clear_balances,
+            }
+            await _publish_balance_snapshot(
+                acorn,
+                clear_balances,
+                min(settings.wallet_load_timeout_seconds, 5.0),
+            )
+
         csrf_token = CsrfProtector(settings).issue()
         session_credentials = None
         session_token = request.cookies.get(cookie_name_for_request(request))
@@ -3931,7 +4016,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             session_credentials is not None
             and session_credentials.deferred_acorn_mnemonic
         )
-        wallet_balance = acorn.get_balance()
+        cash_snapshot = balance_snapshot.get("cash") or {}
+        wallet_balance = int(cash_snapshot.get("amount") or 0)
         fiat_estimate = None
         if settings.currency_rates_enabled:
             fiat_estimate = currency_balance_estimate(
@@ -3940,17 +4026,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 currency_code=settings.default_display_currency,
                 stale_seconds=settings.currency_rate_stale_seconds,
             )
-        try:
-            clear_balances = await _read_clear_balances(
-                acorn,
-                settings.wallet_load_timeout_seconds,
-            )
-        except Exception as exc:
-            logger.warning(
-                "wallet clear balance snapshot unavailable error_type=%s",
-                type(exc).__name__,
-            )
-            clear_balances = []
+        clear_balances = balance_snapshot.get("clear") or []
         clear_summary = await _resolve_clear_aliases(
             _clear_balance_summary([], clear_balances),
             timeout=settings.wallet_load_timeout_seconds,

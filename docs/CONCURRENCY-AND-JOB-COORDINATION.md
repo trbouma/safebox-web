@@ -174,6 +174,31 @@ does not become Clear wallet state.
 This is sufficient for development and carefully bounded small-value pilot
 traffic. It is not yet a production concurrency guarantee.
 
+## Snapshot-first wallet landing page
+
+The wallet landing page reads Acorn's encrypted, relay-backed
+`balance_snapshot` system record before considering a full wallet load. A
+snapshot hit provides the previously confirmed Cash and Clear totals through
+one focused record lookup and does not reconstruct bearer proofs or contact a
+mint.
+
+If an older Acorn has no snapshot, Safebox Web performs one authoritative
+`load_data()` fallback, reads its Clear balances, renders those values, and asks
+Acorn to publish the initial snapshot. Snapshot publication is best effort; a
+failure does not hide the already loaded balance or alter wallet state.
+
+This optimization is deliberately limited to presentation:
+
+- transfer, acceptance, swap, repair, and deposit paths still load current
+  relay-backed proof state;
+- the snapshot never establishes spendability;
+- mint verification remains an explicit balance-page action; and
+- Safebox Web does not persist a local copy of wallet balances or proofs.
+
+Cash and Clear transaction completion refresh the snapshot through the Acorn
+kernel. This keeps the result portable across web workers and devices rather
+than creating a process-local cache with inconsistent values.
+
 ## Known concurrency gaps
 
 ### Duplicate LNURL callbacks
