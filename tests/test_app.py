@@ -2609,7 +2609,7 @@ def test_wallet_page_shows_snapshot_but_defers_verification_and_transfer_checks(
     assert "12,345 <span>sats</span>" in response.text
     assert "Relay-visible proof total" not in response.text
     assert "Confirmed cash balance" not in response.text
-    assert "Relay-visible snapshot" in response.text
+    assert "Previously confirmed balance" in response.text
     assert "verification, transaction history, and pending transfers" in response.text
     assert "wss://relay.example.com" in response.text
     assert "not stored" in response.text

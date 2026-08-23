@@ -136,6 +136,7 @@ SAFEBOX_WEB_WORKERS=1
 SAFEBOX_BACKGROUND_JOB_THREADS=2
 
 SAFEBOX_SERVICE_ACORN_ENABLED=true
+SAFEBOX_SERVICE_ACORN_MIGRATE=false
 SAFEBOX_SERVICE_ACORN_HOME_RELAY=wss://relay.getsafebox.app
 SAFEBOX_SERVICE_ACORN_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_SERVICE_ACORN_STATE_FILE=data/service-acorn.json
@@ -143,6 +144,13 @@ SAFEBOX_SERVICE_ACORN_POLL_SECONDS=0.5
 SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800
 SAFEBOX_NIP57_REQUIRE_DESCRIPTION_HASH=false
 ```
+
+The persisted service-Acorn recovery file overrides later relay and mint
+environment changes. Use `SAFEBOX_SERVICE_ACORN_MIGRATE=true` only for a
+deliberate, drained-wallet replacement. A failed migration falls back to the
+persisted service Acorn unless that existing wallet is itself unavailable. The
+guarded startup flow and its operational prerequisites are documented in
+[Standalone Service Acorn Worker](SERVICE-ACORN-LIFECYCLE.md#migrating-the-service-acorn).
 
 Secure `wss://` relay URLs need no allowlist entry. To deliberately use one or
 more non-TLS relays on localhost, a private network, or a protected VPN, list

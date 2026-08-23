@@ -29,6 +29,7 @@ Set the service variables in `.env`, including:
 
 ```env
 SAFEBOX_SERVICE_ACORN_ENABLED=true
+SAFEBOX_SERVICE_ACORN_MIGRATE=false
 SAFEBOX_SERVICE_ACORN_HOME_RELAY=wss://relay.getsafebox.app
 SAFEBOX_SERVICE_ACORN_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_SERVICE_ACORN_STATE_FILE=data/service-acorn.json
@@ -95,6 +96,43 @@ The current SQLite Compose deployment mounts the same `/app/data` volume into
 both containers. The web process does not load the recovery file, but this is
 not strict filesystem isolation. Moving the file to a worker-only volume is a
 production hardening item and requires a deliberate stopped-worker migration.
+
+## Migrating the service Acorn
+
+Changing the relay or mint environment variables does not normally alter an
+existing service Acorn. The persisted recovery file remains authoritative so
+an ordinary restart cannot silently disconnect the provider wallet.
+
+For an intentional replacement, first stop new provider-payment intake and
+confirm that the existing service Acorn has no balance, unsettled invoices, or
+unclaimed delivery obligations. Then configure the new endpoints and enable
+the guarded migration switch:
+
+```env
+SAFEBOX_SERVICE_ACORN_MIGRATE=true
+SAFEBOX_SERVICE_ACORN_HOME_RELAY=wss://spurline.safebox.dev
+SAFEBOX_SERVICE_ACORN_HOME_MINT=https://mint.safebox.dev
+```
+
+On startup the singleton worker compares those normalized endpoints with the
+persisted state. If they already match, migration is a no-op. If they differ,
+the worker:
+
+1. loads the existing service Acorn and abandons migration if it holds funds;
+2. creates and verifies a new Acorn against the configured relay and mint;
+3. burns the old wallet's relay state; and
+4. atomically replaces the local recovery file with the new key and endpoints.
+
+If a precondition, replacement creation, readback, burning, or local state
+update fails, migration is abandoned and the worker continues with the
+persisted service Acorn. The reason is logged prominently. Startup can still
+fail if the persisted Acorn itself cannot be loaded; there is no healthy
+fallback in that case. The switch does not sweep funds and does not migrate
+outstanding provider jobs. A replacement also changes the service Acorn public
+key, so verify the provider identity and payment behavior after startup. Once
+verified, set `SAFEBOX_SERVICE_ACORN_MIGRATE=false` and restart; the endpoint
+comparison prevents repeated replacement, but disabling the flag records the
+operator's completed intent.
 
 ## Secret ownership and isolation
 

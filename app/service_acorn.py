@@ -31,6 +31,7 @@ class ServiceAcornRuntime:
     acorn: Acorn
     state_path: Path
     recovered: bool
+    migrated: bool = False
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
@@ -92,7 +93,10 @@ async def start_service_acorn(
 
     path = service_acorn_state_path(settings)
     recovered = path.exists()
+    migrated = False
     seed_phrase: str | None = None
+    acorn: Acorn | None = None
+    acorn_loaded = False
 
     if recovered:
         state = _read_private_state(path)
@@ -103,6 +107,133 @@ async def start_service_acorn(
         )
         home_mint = normalize_home_mint(str(state["home_mint"]))
         initialized = bool(state["initialized"])
+
+        migration_required = False
+        if settings.service_acorn_migrate:
+            try:
+                configured_home_relay = normalize_bootstrap_relay(
+                    settings.service_acorn_home_relay,
+                    settings.allowed_ws_relays,
+                )
+                configured_home_mint = normalize_home_mint(
+                    settings.service_acorn_home_mint
+                )
+            except Exception as exc:
+                logger.warning(
+                    "service Acorn migration configuration rejected; "
+                    "continuing with persisted service Acorn relay=%s "
+                    "mint=%s error=%s",
+                    home_relay,
+                    home_mint,
+                    exc,
+                    exc_info=True,
+                )
+            else:
+                migration_required = (
+                    home_relay != configured_home_relay
+                    or home_mint != configured_home_mint
+                )
+        if migration_required:
+            previous_acorn = acorn_factory(
+                nsec=nsec,
+                home_relay=home_relay,
+                relays=[home_relay],
+                mints=[home_mint],
+            )
+            try:
+                if not initialized:
+                    await asyncio.wait_for(
+                        previous_acorn.create_instance(
+                            keepkey=True,
+                            seed_phrase=None,
+                        ),
+                        timeout=settings.wallet_load_timeout_seconds,
+                    )
+                    initialized = True
+                    _write_private_state(
+                        path,
+                        {
+                            "nsec": nsec,
+                            "home_relay": home_relay,
+                            "home_mint": home_mint,
+                            "initialized": True,
+                        },
+                    )
+                await asyncio.wait_for(
+                    previous_acorn.load_data(),
+                    timeout=settings.wallet_load_timeout_seconds,
+                )
+                acorn_loaded = True
+                balance = int(previous_acorn.get_balance())
+                if balance > 0:
+                    raise RuntimeError(
+                        "Service Acorn migration refused: the existing wallet "
+                        f"still holds {balance} sats. Drain and reconcile it "
+                        "before retrying migration."
+                    )
+
+                seed_phrase, replacement_nsec = key_generator()
+                replacement_acorn = acorn_factory(
+                    nsec=replacement_nsec,
+                    home_relay=configured_home_relay,
+                    relays=[configured_home_relay],
+                    mints=[configured_home_mint],
+                )
+                await asyncio.wait_for(
+                    replacement_acorn.create_instance(
+                        keepkey=False,
+                        seed_phrase=seed_phrase,
+                    ),
+                    timeout=settings.wallet_load_timeout_seconds,
+                )
+                await asyncio.wait_for(
+                    replacement_acorn.load_data(),
+                    timeout=settings.wallet_load_timeout_seconds,
+                )
+                await asyncio.wait_for(
+                    previous_acorn.burn_wallet(
+                        send_to=None,
+                        send_relay=None,
+                        relays=[home_relay],
+                        allow_funded=False,
+                    ),
+                    timeout=settings.payment_timeout_seconds,
+                )
+                _write_private_state(
+                    path,
+                    {
+                        "nsec": replacement_nsec,
+                        "home_relay": configured_home_relay,
+                        "home_mint": configured_home_mint,
+                        "initialized": True,
+                    },
+                )
+            except Exception as exc:
+                logger.warning(
+                    "service Acorn migration abandoned; continuing with "
+                    "persisted service Acorn path=%s relay=%s mint=%s error=%s",
+                    path,
+                    home_relay,
+                    home_mint,
+                    exc,
+                    exc_info=True,
+                )
+                acorn = previous_acorn
+            else:
+                nsec = replacement_nsec
+                home_relay = configured_home_relay
+                home_mint = configured_home_mint
+                initialized = True
+                acorn = replacement_acorn
+                acorn_loaded = True
+                migrated = True
+                logger.warning(
+                    "service Acorn migrated old_npub=%s new_npub=%s relay=%s mint=%s",
+                    previous_acorn.pubkey_bech32,
+                    replacement_acorn.pubkey_bech32,
+                    home_relay,
+                    home_mint,
+                )
     else:
         home_relay = normalize_bootstrap_relay(
             settings.service_acorn_home_relay,
@@ -121,12 +252,13 @@ async def start_service_acorn(
             },
         )
 
-    acorn = acorn_factory(
-        nsec=nsec,
-        home_relay=home_relay,
-        relays=[home_relay],
-        mints=[home_mint],
-    )
+    if acorn is None:
+        acorn = acorn_factory(
+            nsec=nsec,
+            home_relay=home_relay,
+            relays=[home_relay],
+            mints=[home_mint],
+        )
 
     try:
         if not initialized:
@@ -146,10 +278,11 @@ async def start_service_acorn(
                     "initialized": True,
                 },
             )
-        await asyncio.wait_for(
-            acorn.load_data(),
-            timeout=settings.wallet_load_timeout_seconds,
-        )
+        if not acorn_loaded:
+            await asyncio.wait_for(
+                acorn.load_data(),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
     except Exception:
         logger.exception(
             "service Acorn startup failed; recovery file retained path=%s",
@@ -158,13 +291,19 @@ async def start_service_acorn(
         raise
 
     logger.info(
-        "service Acorn ready recovered=%s npub=%s relay=%s mint=%s",
+        "service Acorn ready recovered=%s migrated=%s npub=%s relay=%s mint=%s",
         recovered,
+        migrated,
         acorn.pubkey_bech32,
         home_relay,
         home_mint,
     )
-    return ServiceAcornRuntime(acorn=acorn, state_path=path, recovered=recovered)
+    return ServiceAcornRuntime(
+        acorn=acorn,
+        state_path=path,
+        recovered=recovered,
+        migrated=migrated,
+    )
 
 
 async def stop_service_acorn(

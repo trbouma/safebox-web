@@ -134,6 +134,207 @@ def test_service_acorn_recovers_after_unclean_stop(tmp_path) -> None:
     assert recovered.acorn.load_calls == 1
 
 
+def test_service_acorn_migrates_when_configured_endpoints_change(tmp_path) -> None:
+    original_settings = service_settings(tmp_path)
+    first = asyncio.run(
+        start_service_acorn(
+            original_settings,
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: ("old seed phrase", "nsec1oldservice"),
+        )
+    )
+    migration_settings = replace(
+        original_settings,
+        service_acorn_migrate=True,
+        service_acorn_home_relay="wss://spurline.example.com/",
+        service_acorn_home_mint="https://mint-new.example.com/",
+    )
+
+    migrated = asyncio.run(
+        start_service_acorn(
+            migration_settings,
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: ("new seed phrase", "nsec1newservice"),
+        )
+    )
+
+    state = json.loads(migrated.state_path.read_text(encoding="utf-8"))
+    previous_acorn = FakeServiceAcorn.instances[1]
+    assert first.state_path == migrated.state_path
+    assert migrated.recovered is True
+    assert migrated.migrated is True
+    assert migrated.acorn.kwargs == {
+        "nsec": "nsec1newservice",
+        "home_relay": "wss://spurline.example.com/",
+        "relays": ["wss://spurline.example.com/"],
+        "mints": ["https://mint-new.example.com"],
+    }
+    assert migrated.acorn.create_calls == [
+        {"keepkey": False, "seed_phrase": "new seed phrase"}
+    ]
+    assert previous_acorn.burn_calls == [
+        {
+            "send_to": None,
+            "send_relay": None,
+            "relays": ["wss://relay.example.com"],
+            "allow_funded": False,
+        }
+    ]
+    assert state == {
+        "home_mint": "https://mint-new.example.com",
+        "home_relay": "wss://spurline.example.com/",
+        "initialized": True,
+        "nsec": "nsec1newservice",
+    }
+
+
+def test_service_acorn_migration_is_noop_when_endpoints_match(tmp_path) -> None:
+    original_settings = service_settings(tmp_path)
+    asyncio.run(
+        start_service_acorn(
+            original_settings,
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: ("service seed phrase", TEST_SERVICE_NSEC),
+        )
+    )
+
+    recovered = asyncio.run(
+        start_service_acorn(
+            replace(original_settings, service_acorn_migrate=True),
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: (_ for _ in ()).throw(
+                AssertionError("must not generate")
+            ),
+        )
+    )
+
+    assert recovered.recovered is True
+    assert recovered.migrated is False
+    assert recovered.acorn.create_calls == []
+    assert len(FakeServiceAcorn.instances) == 2
+
+
+def test_service_acorn_migration_falls_back_for_funded_wallet(tmp_path) -> None:
+    original_settings = service_settings(tmp_path)
+    asyncio.run(
+        start_service_acorn(
+            original_settings,
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: ("old seed phrase", "nsec1oldservice"),
+        )
+    )
+    original_state = (tmp_path / "service-acorn.json").read_text(encoding="utf-8")
+    FakeServiceAcorn.next_balance = 21
+
+    recovered = asyncio.run(
+        start_service_acorn(
+            replace(
+                original_settings,
+                service_acorn_migrate=True,
+                service_acorn_home_relay="wss://spurline.example.com",
+            ),
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: (_ for _ in ()).throw(
+                AssertionError("must not generate")
+            ),
+        )
+    )
+
+    assert recovered.migrated is False
+    assert recovered.acorn.kwargs["nsec"] == "nsec1oldservice"
+    assert recovered.acorn.get_balance() == 21
+    assert (tmp_path / "service-acorn.json").read_text(encoding="utf-8") == original_state
+    assert FakeServiceAcorn.instances[-1].burn_calls == []
+
+
+def test_service_acorn_migration_falls_back_when_replacement_fails(tmp_path) -> None:
+    original_settings = service_settings(tmp_path)
+    asyncio.run(
+        start_service_acorn(
+            original_settings,
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: ("old seed phrase", "nsec1oldservice"),
+        )
+    )
+    original_state = (tmp_path / "service-acorn.json").read_text(encoding="utf-8")
+
+    recovered = asyncio.run(
+        start_service_acorn(
+            replace(
+                original_settings,
+                service_acorn_migrate=True,
+                service_acorn_home_mint="https://mint-new.example.com",
+            ),
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: (_ for _ in ()).throw(
+                RuntimeError("replacement key generation failed")
+            ),
+        )
+    )
+
+    assert recovered.migrated is False
+    assert recovered.acorn.kwargs["nsec"] == "nsec1oldservice"
+    assert (tmp_path / "service-acorn.json").read_text(encoding="utf-8") == original_state
+
+
+def test_service_acorn_migration_falls_back_for_invalid_target(tmp_path) -> None:
+    original_settings = service_settings(tmp_path)
+    asyncio.run(
+        start_service_acorn(
+            original_settings,
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: ("old seed phrase", "nsec1oldservice"),
+        )
+    )
+
+    recovered = asyncio.run(
+        start_service_acorn(
+            replace(
+                original_settings,
+                service_acorn_migrate=True,
+                service_acorn_home_relay="https://not-a-relay.example.com",
+            ),
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: (_ for _ in ()).throw(
+                AssertionError("must not generate")
+            ),
+        )
+    )
+
+    assert recovered.migrated is False
+    assert recovered.acorn.kwargs["nsec"] == "nsec1oldservice"
+    assert recovered.acorn.kwargs["home_relay"] == "wss://relay.example.com"
+
+
+def test_service_acorn_migration_falls_back_when_old_burn_fails(tmp_path) -> None:
+    original_settings = service_settings(tmp_path)
+    asyncio.run(
+        start_service_acorn(
+            original_settings,
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: ("old seed phrase", "nsec1oldservice"),
+        )
+    )
+    original_state = (tmp_path / "service-acorn.json").read_text(encoding="utf-8")
+    FakeServiceAcorn.fail_burn = True
+
+    recovered = asyncio.run(
+        start_service_acorn(
+            replace(
+                original_settings,
+                service_acorn_migrate=True,
+                service_acorn_home_relay="wss://spurline.example.com",
+            ),
+            acorn_factory=FakeServiceAcorn,
+            key_generator=lambda: ("new seed phrase", "nsec1newservice"),
+        )
+    )
+
+    assert recovered.migrated is False
+    assert recovered.acorn.kwargs["nsec"] == "nsec1oldservice"
+    assert (tmp_path / "service-acorn.json").read_text(encoding="utf-8") == original_state
+
+
 def test_funded_service_acorn_sweeps_before_burn(tmp_path) -> None:
     settings = service_settings(
         tmp_path,

@@ -148,6 +148,7 @@ class ServiceAcornSettings:
     service_acorn_poll_seconds: float = 0.5
     allowed_ws_relays: tuple[str, ...] = ()
     service_acorn_enabled: bool = False
+    service_acorn_migrate: bool = False
     service_acorn_home_relay: str = "wss://relay.getsafebox.app"
     service_acorn_home_mint: str = "https://mint.getsafebox.app"
     service_acorn_state_file: str = "data/service-acorn.json"
@@ -219,6 +220,10 @@ class ServiceAcornSettings:
             service_acorn_poll_seconds=poll_seconds,
             allowed_ws_relays=_allowed_ws_relays_from_env(),
             service_acorn_enabled=_env_bool("SAFEBOX_SERVICE_ACORN_ENABLED", False),
+            service_acorn_migrate=_env_bool(
+                "SAFEBOX_SERVICE_ACORN_MIGRATE",
+                False,
+            ),
             service_acorn_home_relay=os.getenv(
                 "SAFEBOX_SERVICE_ACORN_HOME_RELAY",
                 "wss://relay.getsafebox.app",
@@ -277,6 +282,7 @@ class Settings:
     lnurl_comment_allowed: int = 256
     nip57_require_description_hash: bool = False
     service_acorn_enabled: bool = False
+    service_acorn_migrate: bool = False
     service_acorn_home_relay: str = "wss://relay.getsafebox.app"
     service_acorn_home_mint: str = "https://mint.getsafebox.app"
     service_acorn_state_file: str = "data/service-acorn.json"
@@ -506,6 +512,10 @@ class Settings:
             ),
             service_acorn_enabled=_env_bool(
                 "SAFEBOX_SERVICE_ACORN_ENABLED",
+                False,
+            ),
+            service_acorn_migrate=_env_bool(
+                "SAFEBOX_SERVICE_ACORN_MIGRATE",
                 False,
             ),
             service_acorn_home_relay=os.getenv(
