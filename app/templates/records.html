@@ -6,6 +6,9 @@
 {% if catalog_rebuilt %}
 <p class="success" role="status">Record list refreshed from authoritative relay records.</p>
 {% endif %}
+{% if catalog_status in ["missing", "invalid"] %}
+<p class="advisory-message" role="status">The record catalog is {{ catalog_status }}. Use Refresh Record List below to rebuild it from authoritative relay records.</p>
+{% endif %}
 <nav class="record-view-switcher" aria-label="Record view">
   <a class="nav-button{% if record_view == 'list' %} active{% endif %}" href="{{ list_view_url }}"{% if record_view == 'list' %} aria-current="page"{% endif %}>List</a>
   <a class="nav-button{% if record_view == 'folders' %} active{% endif %}" href="{{ folder_view_url }}"{% if record_view == 'folders' %} aria-current="page"{% endif %}>Folders</a>

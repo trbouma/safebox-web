@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 import logging
+from time import monotonic
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -131,6 +132,7 @@ async def get_loaded_acorn(
 ) -> Acorn:
     """Load relay-backed state into a request-scoped Acorn instance."""
 
+    started = monotonic()
     try:
         await asyncio.wait_for(
             acorn.load_data(), timeout=settings.wallet_load_timeout_seconds
@@ -145,6 +147,11 @@ async def get_loaded_acorn(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Unable to load the Acorn wallet from its bootstrap relay",
         ) from exc
+    finally:
+        logger.info(
+            "acorn state load scope=funds duration_ms=%s",
+            int((monotonic() - started) * 1000),
+        )
     return acorn
 
 
@@ -178,8 +185,8 @@ def get_receive_acorn(acorn: LoadedAcornDependency) -> Acorn:
 ReceiveAcornDependency = Annotated[Acorn, Depends(get_receive_acorn)]
 
 
-def get_record_acorn(acorn: LoadedAcornDependency) -> Acorn:
-    """Make the private-record mutation boundary explicit."""
+def get_record_acorn(acorn: AcornDependency) -> Acorn:
+    """Provide record operations without loading funds or proof state."""
 
     return acorn
 

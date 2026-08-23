@@ -1318,34 +1318,39 @@ async def _record_index_entries(
     *,
     catalog_timeout: float,
     rebuild_timeout: float,
-) -> list[dict]:
-    """Load the relay-backed record catalog, rebuilding it once if absent."""
+) -> tuple[list[dict], str]:
+    """Load the relay-backed catalog without an implicit historical rebuild."""
+
+    started = monotonic()
+
+    def completed(entries: list[dict], status: str) -> tuple[list[dict], str]:
+        logger.info(
+            "record catalog load status=%s records=%s duration_ms=%s",
+            status,
+            len(entries),
+            int((monotonic() - started) * 1000),
+        )
+        return entries, status
 
     catalog_reader = getattr(acorn, "get_record_catalog", None)
     if callable(catalog_reader):
-        rebuilder = getattr(acorn, "rebuild_record_catalog", None)
         try:
             catalog = await asyncio.wait_for(
                 catalog_reader(),
                 timeout=catalog_timeout,
             )
-        except RuntimeError:
-            if not callable(rebuilder):
-                raise
-            catalog = await asyncio.wait_for(
-                rebuilder(),
-                timeout=rebuild_timeout,
+        except RuntimeError as exc:
+            logger.warning(
+                "record catalog load status=invalid error_type=%s",
+                type(exc).__name__,
             )
+            return completed([], "invalid")
         if catalog is None:
-            if callable(rebuilder):
-                catalog = await asyncio.wait_for(
-                    rebuilder(),
-                    timeout=rebuild_timeout,
-                )
+            return completed([], "missing")
         if isinstance(catalog, dict):
             records = catalog.get("records")
             if isinstance(records, list):
-                return [
+                entries = [
                     {
                         "label": str(entry.get("label") or "").strip(),
                         "modified_at": int(entry.get("modified_at") or 0),
@@ -1354,6 +1359,8 @@ async def _record_index_entries(
                     if isinstance(entry, dict)
                     and str(entry.get("label") or "").strip()
                 ]
+                return completed(entries, "available")
+        return completed([], "invalid")
 
     # Compatibility fallback for Acorn versions predating the catalog.
     records_reader = getattr(acorn, "get_user_records", None)
@@ -1388,23 +1395,25 @@ async def _record_index_entries(
                     newest_by_label.get(label, 0),
                     modified_at,
                 )
-            return [
+            entries = [
                 {"label": label, "modified_at": modified_at}
                 for label, modified_at in sorted(
                     newest_by_label.items(),
                     key=lambda item: (-item[1], item[0].casefold(), item[0]),
                 )
             ]
+            return completed(entries, "legacy")
 
     labels = await asyncio.wait_for(
         acorn.get_user_record_labels(),
         timeout=rebuild_timeout,
     )
     unique_labels = {str(label).strip() for label in labels if str(label).strip()}
-    return [
+    entries = [
         {"label": label, "modified_at": 0}
         for label in sorted(unique_labels, key=lambda item: (item.casefold(), item))
     ]
+    return completed(entries, "legacy")
 
 
 def _history_has_receive_credit(
@@ -6806,11 +6815,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return import_error("The form token is invalid or expired. Scan again.", 403)
         try:
             record_label = _validate_record_label(label)
-            existing_labels = await asyncio.wait_for(
-                acorn.get_user_record_labels(),
+            record_already_exists = await asyncio.wait_for(
+                acorn.record_exists(record_label),
                 timeout=settings.wallet_load_timeout_seconds,
             )
-            if record_label in {str(item) for item in existing_labels}:
+            if record_already_exists:
                 return import_error(
                     "A record with that label already exists. Scan again and choose another label.",
                     409,
@@ -6883,7 +6892,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=400,
             )
         try:
-            record_entries = await _record_index_entries(
+            record_entries, catalog_status = await _record_index_entries(
                 acorn,
                 catalog_timeout=settings.record_catalog_timeout_seconds,
                 rebuild_timeout=settings.wallet_load_timeout_seconds,
@@ -6983,6 +6992,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 next_url=None,
                 csrf_token=CsrfProtector(settings).issue(),
                 catalog_rebuilt=request.query_params.get("catalog") == "rebuilt",
+                catalog_status=catalog_status,
             )
 
         total_records = len(record_entries)
@@ -7025,6 +7035,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             csrf_token=CsrfProtector(settings).issue(),
             catalog_rebuilt=request.query_params.get("catalog") == "rebuilt",
+            catalog_status=catalog_status,
         )
 
     @app.post("/records/rebuild")
@@ -7064,7 +7075,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return RedirectResponse("/records?catalog=rebuilt", status_code=303)
 
     @app.get("/blob/upload", response_class=HTMLResponse)
-    async def blob_upload_form(request: Request, acorn: LoadedAcornDependency):
+    async def blob_upload_form(request: Request, acorn: RecordAcornDependency):
         """Keep old bookmarks working while presenting one record workflow."""
         return RedirectResponse("/record/edit", status_code=303)
 
@@ -7212,7 +7223,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def download_record_blob(
         request: Request,
         label: str,
-        acorn: LoadedAcornDependency,
+        acorn: RecordAcornDependency,
         inline: bool = False,
     ):
         settings = request.app.state.settings
@@ -7283,7 +7294,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/record/edit", response_class=HTMLResponse)
     async def edit_record_form(
         request: Request,
-        acorn: LoadedAcornDependency,
+        acorn: RecordAcornDependency,
         label: str | None = None,
     ) -> str:
         settings = request.app.state.settings
@@ -7518,8 +7529,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return delete_error(str(exc), 400)
 
         try:
-            user_labels = await asyncio.wait_for(
-                acorn.get_user_record_labels(),
+            record_is_present = await asyncio.wait_for(
+                acorn.record_exists(record_label),
                 timeout=settings.wallet_load_timeout_seconds,
             )
         except TimeoutError:
@@ -7536,7 +7547,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Safebox could not confirm that this is a user record. Nothing was deleted.",
                 502,
             )
-        if record_label not in {str(each) for each in user_labels}:
+        if not record_is_present:
             return delete_error("The requested user record was not found.", 404)
 
         try:
@@ -7583,7 +7594,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def record(
         request: Request,
         label: str,
-        acorn: LoadedAcornDependency,
+        acorn: RecordAcornDependency,
         saved: bool = False,
         openetr: bool = False,
     ):

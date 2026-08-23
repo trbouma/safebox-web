@@ -421,6 +421,9 @@ class FakeLoadedAcorn:
     async def get_user_record_labels(self) -> list[str]:
         return ["Field Notes", "Travel/2026", "A & B"]
 
+    async def record_exists(self, label: str) -> bool:
+        return label in await self.get_user_record_labels()
+
     async def get_record_safebox(self, record_name: str):
         class Record:
             type = "generic"
@@ -682,6 +685,9 @@ class FakeBlobAcorn(FakeLoadedAcorn):
 
     async def get_user_record_labels(self) -> list[str]:
         return sorted(self.existing_labels)
+
+    async def record_exists(self, label: str) -> bool:
+        return label in self.existing_labels
 
     async def get_record_blobdata(self, record_name: str):
         self.blob_reads.append(record_name)
@@ -1683,7 +1689,7 @@ def test_secondary_pages_have_consistent_top_level_navigation() -> None:
 
 def test_record_page_navigation_links_home_and_parent_records() -> None:
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeBlobAcorn(
+    app.dependency_overrides[get_record_acorn] = lambda: FakeBlobAcorn(
         existing_labels={"Private Notes"}
     )
     response = TestClient(app, base_url="https://safebox.example").get(
@@ -2617,6 +2623,15 @@ def test_loaded_acorn_dependency_loads_request_scoped_state() -> None:
 
     assert result is acorn
     assert acorn.loaded is True
+
+
+def test_record_acorn_dependency_does_not_load_funds_state() -> None:
+    acorn = FakeLoadedAcorn()
+
+    result = get_record_acorn(acorn)
+
+    assert result is acorn
+    assert acorn.loaded is False
 
 
 def test_wallet_page_shows_snapshot_but_defers_verification_and_transfer_checks(tmp_path) -> None:
@@ -5831,7 +5846,7 @@ def test_record_index_uses_relay_catalog_without_loading_wallet_or_records() -> 
     acorn.get_user_records.assert_not_awaited()
 
 
-def test_record_index_rebuilds_missing_relay_catalog_once() -> None:
+def test_record_index_does_not_rebuild_missing_catalog_during_page_load() -> None:
     class MissingCatalogAcorn(FakeLoadedAcorn):
         def __init__(self):
             super().__init__()
@@ -5856,8 +5871,9 @@ def test_record_index_rebuilds_missing_relay_catalog_once() -> None:
         response = client.get("/records")
 
     assert response.status_code == 200
-    assert "Recovered Catalog" in response.text
-    assert acorn.rebuild_calls == 1
+    assert "record catalog is missing" in response.text
+    assert "Recovered Catalog" not in response.text
+    assert acorn.rebuild_calls == 0
     assert acorn.loaded is False
 
 
@@ -6346,7 +6362,7 @@ def test_record_transfer_import_action_stores_then_deletes_transfer() -> None:
 
 def test_legacy_blob_upload_page_redirects_to_unified_record_form() -> None:
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeBlobAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: FakeBlobAcorn()
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get("/blob/upload", follow_redirects=False)
@@ -6358,7 +6374,7 @@ def test_legacy_blob_upload_page_redirects_to_unified_record_form() -> None:
 def test_blob_upload_passes_plaintext_to_acorn_encryption_boundary() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -6396,7 +6412,7 @@ def test_blob_upload_passes_plaintext_to_acorn_encryption_boundary() -> None:
 def test_blob_upload_follow_redirect_renders_saved_record() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -6421,7 +6437,7 @@ def test_blob_upload_follow_redirect_renders_saved_record() -> None:
 def test_pkpass_blob_upload_records_wallet_pass_media_type() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
     pkpass_data = (
         PKPASS_FIXTURE.read_bytes()
@@ -6451,7 +6467,7 @@ def test_pkpass_blob_upload_records_wallet_pass_media_type() -> None:
 def test_pkpass_blob_upload_follow_redirect_renders_preview() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
     pkpass_data = (
         PKPASS_FIXTURE.read_bytes()
@@ -6569,7 +6585,7 @@ def test_effective_mime_resolver_identifies_mdoc_filename() -> None:
 def test_mdoc_upload_follow_redirect_records_effective_mime() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
     mdl_data = MDL_FIXTURE.read_bytes()
 
@@ -6681,7 +6697,7 @@ def test_mdoc_preview_decodes_synthetic_eudi_pid_fixture() -> None:
 def test_eudi_pid_upload_renders_semantic_preview() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -6715,7 +6731,7 @@ def test_eudi_pid_upload_renders_semantic_preview() -> None:
 def test_blob_upload_records_verifiable_credential_effective_mime() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
     credential_data = W3C_DEGREE_FIXTURE.read_bytes()
 
@@ -6739,7 +6755,7 @@ def test_blob_upload_records_verifiable_credential_effective_mime() -> None:
 def test_verifiable_credential_upload_follow_redirect_renders_record() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
     credential_data = W3C_DEGREE_FIXTURE.read_bytes()
 
@@ -6792,7 +6808,7 @@ def test_record_detail_shows_determined_original_record_type() -> None:
             "size": 123,
         },
     )
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get(
@@ -6822,7 +6838,7 @@ def test_verifiable_credential_blob_download_uses_json_extension() -> None:
             "size": len(credential_data),
         },
     )
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get("/record/blob", params={"label": "W3C Degree"})
@@ -6850,7 +6866,7 @@ def test_mdoc_blob_download_uses_mdoc_extension() -> None:
             "size": len(mdl_data),
         },
     )
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get("/record/blob", params={"label": "Example mDL"})
@@ -6867,7 +6883,7 @@ def test_mdoc_blob_download_uses_mdoc_extension() -> None:
 def test_blob_upload_rejects_existing_label_without_orphaning_blob() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn(existing_labels={"Private Notes"})
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -6890,7 +6906,7 @@ def test_blob_upload_fails_closed_when_existing_record_cannot_be_read() -> None:
     acorn = FakeBlobAcorn(
         record_lookup_error=ValueError("Could not decrypt private record")
     )
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -6912,7 +6928,7 @@ def test_blob_upload_enforces_configured_size_limit() -> None:
     settings = replace(TEST_SETTINGS, max_blob_bytes=4)
     app = create_app(settings)
     acorn = FakeBlobAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -6933,7 +6949,7 @@ def test_blob_upload_enforces_configured_size_limit() -> None:
 def test_blob_record_download_returns_decrypted_attachment() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn(existing_labels={"Private Notes"})
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     detail = client.get("/record", params={"label": "Private Notes"})
@@ -6975,7 +6991,7 @@ def test_pkpass_blob_download_uses_wallet_pass_headers_from_metadata() -> None:
             "size": len(pkpass_data),
         },
     )
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     detail = client.get("/record", params={"label": "Example Pass"})
@@ -7047,7 +7063,7 @@ def test_pkpass_preview_renders_aztec_boarding_pass_barcode() -> None:
             "size": len(pkpass_data),
         },
     )
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     detail = client.get("/record", params={"label": "Boarding Pass"})
@@ -7071,7 +7087,7 @@ def test_record_offers_control_history_button_without_querying(monkeypatch) -> N
 
     monkeypatch.setattr(main_module, "query_openetr_history", fake_query)
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeBlobAcorn(
+    app.dependency_overrides[get_record_acorn] = lambda: FakeBlobAcorn(
         existing_labels={"Receipt"}
     )
     response = TestClient(app, base_url="https://safebox.example").get(
@@ -7125,7 +7141,7 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
         openetr_query_limit=25,
     )
     app = create_app(settings)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeBlobAcorn(
+    app.dependency_overrides[get_record_acorn] = lambda: FakeBlobAcorn(
         existing_labels={"Receipt"}, orig_sha256=digest
     )
     response = TestClient(app, base_url="https://safebox.example").get(
@@ -7156,7 +7172,7 @@ def test_image_blob_uses_native_authenticated_inline_preview() -> None:
         downloaded_data=b"png bytes",
         blob_type="image/png",
     )
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     detail = client.get("/record", params={"label": "Photo"})
@@ -7182,7 +7198,7 @@ def test_pdf_blob_uses_pdfjs_progressive_viewer_with_download_fallback() -> None
         downloaded_data=b"%PDF test",
         blob_type="application/pdf",
     )
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get("/record", params={"label": "Report"})
@@ -7204,7 +7220,7 @@ def test_blob_fingerprint_is_hidden_when_plaintext_digest_is_invalid() -> None:
         existing_labels={"Legacy blob"},
         orig_sha256="not-a-sha256",
     )
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get("/record", params={"label": "Legacy blob"})
@@ -7216,7 +7232,7 @@ def test_blob_fingerprint_is_hidden_when_plaintext_digest_is_invalid() -> None:
 def test_blob_record_delete_form_requires_explicit_confirmation() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeBlobAcorn(existing_labels={"Report"})
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     detail = client.get("/record", params={"label": "Report"})
@@ -7245,7 +7261,7 @@ def test_blob_record_delete_removes_record_and_requests_blob_cleanup() -> None:
         },
         "index_error": None,
     }
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -7278,7 +7294,7 @@ def test_blob_record_delete_reports_partial_blob_cleanup() -> None:
         "blob_cleanup": {"requested": True, "deleted": False},
         "index_error": None,
     }
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -7303,7 +7319,7 @@ def test_unsafe_blob_type_cannot_be_forced_inline() -> None:
         downloaded_data=b"<script>alert(1)</script>",
         blob_type="text/html",
     )
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     detail = client.get("/record", params={"label": "Markup"})
@@ -7319,7 +7335,7 @@ def test_unsafe_blob_type_cannot_be_forced_inline() -> None:
 
 def test_record_detail_renders_escaped_payload() -> None:
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: FakeLoadedAcorn()
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get("/record", params={"label": "Field Notes"})
@@ -7333,7 +7349,7 @@ def test_record_detail_renders_escaped_payload() -> None:
 
 def test_record_edit_form_loads_and_escapes_existing_payload() -> None:
     app = create_app(TEST_SETTINGS)
-    app.dependency_overrides[get_loaded_acorn] = lambda: FakeLoadedAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: FakeLoadedAcorn()
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.get("/record/edit", params={"label": "Field Notes"})
@@ -7354,7 +7370,7 @@ def test_record_edit_form_loads_and_escapes_existing_payload() -> None:
 def test_record_save_encrypts_publishes_and_verifies() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -7387,7 +7403,7 @@ def test_record_save_encrypts_publishes_and_verifies() -> None:
 def test_record_save_can_include_an_encrypted_file_attachment() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -7420,7 +7436,7 @@ def test_record_save_can_include_an_encrypted_file_attachment() -> None:
 def test_record_save_allows_a_file_only_private_record() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -7443,7 +7459,7 @@ def test_record_save_allows_a_file_only_private_record() -> None:
 def test_record_save_requires_confirmation_without_mutating() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
@@ -7463,7 +7479,7 @@ def test_record_save_requires_confirmation_without_mutating() -> None:
 def test_record_save_preserves_structured_json_payload() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn()
-    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(

@@ -216,14 +216,17 @@ The **Manage Records** representation uses Acorn's encrypted relay-backed
 record catalog. A normal page request reads one non-authoritative catalog event
 without calling `load_data()` or loading proof state. Pagination and folder
 navigation operate on that server-rendered catalog representation. Opening a
-record still performs a direct authoritative lookup for that record.
+record still performs a direct authoritative lookup for that record. Viewing,
+editing, sharing, presenting, downloading, saving, importing, and deleting
+records all use the records-only Acorn dependency and do not load funds state.
 
-For an older wallet with no catalog, Acorn rebuilds it once from authoritative
-record events. The user can explicitly choose **Refresh Record List** to repeat
-that rebuild if the catalog appears stale. Safebox Web does not persist a copy
-in its database, cookie, or browser storage. Catalog reads have a separate
-bounded timeout so an unavailable relay does not turn record navigation into an
-unbounded wallet load.
+For an older wallet with no catalog, the ordinary page remains bounded and
+reports that the catalog is missing. It does not automatically scan and decrypt
+the complete record history. The user explicitly chooses **Refresh Record
+List** to build or refresh the catalog from authoritative record events.
+Safebox Web does not persist a copy in its database, cookie, or browser storage.
+Catalog reads have a separate bounded timeout so an unavailable relay does not
+turn record navigation into an unbounded wallet load.
 
 The current `v2` cookie envelope uses AES-256-GCM with a fresh random nonce and
 a purpose-specific key derived from the server-held application key using
