@@ -2698,7 +2698,7 @@ def test_transaction_page_warns_when_relay_total_exceeds_mint_confirmed_balance(
     assert "Relay-visible proof total: <strong>33,926 sats" in response.text
     assert "Confirmed cash balance: <strong>52 sats" in response.text
     assert "33,874 sats that are not confirmed" in response.text
-    assert "Do not make a payment" in response.text
+    assert "Do not make a transfer" in response.text
 
 
 def test_clear_page_shows_pending_clear_transfers_separately(tmp_path) -> None:
@@ -2722,7 +2722,7 @@ def test_clear_page_shows_pending_clear_transfers_separately(tmp_path) -> None:
     assert "Clear Balances" in response.text
     assert "1 pending transfer across 1 Clear balance." in response.text
     assert "25 pending in 1 transfer" in response.text
-    assert "Pending cash payments: 25 sats" not in response.text
+    assert "Pending Cash transfers: 25 sats" not in response.text
 
 
 def test_clear_page_defers_new_transfer_scan_until_requested(tmp_path) -> None:
@@ -3093,7 +3093,7 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
 
     assert wallet_page.status_code == 200
     assert "alice@safebox.example" in wallet_page.text
-    assert '<section class="wallet-address" aria-label="Lightning payment address">' in wallet_page.text
+    assert '<section class="wallet-address" aria-label="Transfer address">' in wallet_page.text
     assert 'class="wallet-address-value"' not in wallet_page.text
     assert '<div class="wallet-address-actions">' in wallet_page.text
     assert '<a href="/scan/lightning">Scan</a>' in wallet_page.text
@@ -3105,11 +3105,11 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
     assert '<span class="wallet-address-summary-value">alice@safebox.example</span>' in wallet_page.text
     assert wallet_page.text.index('href="/scan/lightning">Scan') < wallet_page.text.index("wallet-address-disclosure")
     assert 'class="wallet-address-qr"' in wallet_page.text
-    assert 'aria-label="Lightning payment QR code"' in wallet_page.text
+    assert 'aria-label="Balance transfer QR code"' in wallet_page.text
     assert 'data-address-copy="alice@safebox.example"' in wallet_page.text
-    assert "Copy payment address" in wallet_page.text
+    assert "Copy transfer address" in wallet_page.text
     assert '<a class="nav-button" href="/handle">Change Address</a>' in wallet_page.text
-    assert wallet_page.text.index("Copy payment address") < wallet_page.text.index(
+    assert wallet_page.text.index("Copy transfer address") < wallet_page.text.index(
         '<a class="nav-button" href="/handle">Change Address</a>'
     )
     address_disclosure = re.search(
@@ -3119,7 +3119,7 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
     )
     assert address_disclosure is not None
     assert "Change Address" in address_disclosure.group(0)
-    assert "Scan for Lightning Payment." in wallet_page.text
+    assert "Scan for Balance Transfer." in wallet_page.text
     expected_lnurl = main_module.encode_lnurl(
         "https://safebox.example/.well-known/lnurlp/alice"
     )
@@ -3333,7 +3333,7 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert '<details class="transaction-advisories">' in response.text
     assert "<summary>Advisories</summary>" in response.text
     assert response.text.index('aria-label="Cash transaction history"') < response.text.index(
-        "Pending cash payments are added to the confirmed balance"
+        "Pending Cash transfers are added to the confirmed balance"
     )
     assert response.text.index("Force Finalization") > response.text.index(
         "<summary>Advisories</summary>"
@@ -3431,7 +3431,7 @@ def test_cash_transactions_do_not_include_clear_transfers(tmp_path) -> None:
     assert "Cash Balance" in balance_pane
     assert "Clear Balances" not in response.text
     assert "cmu-test" not in response.text
-    assert "Pending cash payments: 25 sats" not in response.text
+    assert "Pending Cash transfers: 25 sats" not in response.text
 
 
 def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
@@ -3963,7 +3963,7 @@ def test_transaction_page_shows_persisted_payment_awaiting_confirmation(tmp_path
         response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
-    assert "Pending cash payments: 5 sats in 1 payment." in response.text
+    assert "Pending Cash transfers: 5 sats in 1 transfer." in response.text
     assert "100 <span>sats</span>" in response.text
 
 
@@ -3979,7 +3979,7 @@ def test_transaction_page_previews_unprocessed_incoming_payments_without_receivi
         response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
-    assert "Pending cash payments: 7 sats in 2 payments." in response.text
+    assert "Pending Cash transfers: 7 sats in 2 transfers." in response.text
     assert "100 <span>sats</span>" in response.text
     assert acorn.preview_calls == 1
     assert acorn.receive_calls == 0
@@ -4021,10 +4021,10 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
         response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
-    assert "Pending cash payments: 12 sats in 3 payments." in response.text
+    assert "Pending Cash transfers: 12 sats in 3 transfers." in response.text
     assert "100 <span>sats</span>" in response.text
-    assert "Pending Cash Payments" in response.text
-    assert "These cash payments have arrived for this Acorn" in response.text
+    assert "Pending Cash Transfers" in response.text
+    assert "These Cash transfers have arrived for this Acorn" in response.text
     assert "Awaiting mint confirmation" in response.text
     assert "Received on relay; finalization pending" in response.text
     assert "+5 sats" in response.text
@@ -4069,7 +4069,7 @@ def test_pending_transaction_list_deduplicates_staged_event(tmp_path) -> None:
         response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
-    assert "Pending cash payments: 9 sats in 1 payment." in response.text
+    assert "Pending Cash transfers: 9 sats in 1 transfer." in response.text
     assert response.text.count("+9 sats") == 1
     assert "Awaiting mint confirmation" in response.text
 
@@ -4137,7 +4137,7 @@ def test_transaction_finalization_runs_in_background(tmp_path) -> None:
     assert background_thread_names
     assert background_thread_names[0].startswith("safebox-wallet-job")
     assert "Cash transaction finalization completed." in page.text
-    assert "Finalized 50 sats from 3 payments." in page.text
+    assert "Finalized 50 sats from 3 transfers." in page.text
 
 
 def test_transaction_history_can_receive_incoming_ecash() -> None:
@@ -4990,16 +4990,16 @@ def test_receive_funds_form_displays_home_mint_and_amount_field() -> None:
     assert "https://mint.example.com" in response.text
     assert 'name="amount"' in response.text
     assert (
-        "Create a payment request for the funds you want to receive."
+        "Create a transfer request for the balance you want to receive."
         in response.text
     )
     assert (
         'name="payment_method" type="radio" value="lightning" checked'
         in response.text
     )
-    assert "Creating a payment request. Please wait." in response.text
+    assert "Creating a transfer request. Please wait." in response.text
     assert "Creating request…" in response.text
-    assert "Create Payment Request" in response.text
+    assert "Create Transfer Request" in response.text
     assert "Clear Mint Unit" in response.text
 
 
@@ -5019,7 +5019,7 @@ def test_receive_funds_rejects_unavailable_payment_method() -> None:
     )
 
     assert response.status_code == 400
-    assert "payment-request method is not available yet" in response.text
+    assert "transfer-request method is not available yet" in response.text
     assert acorn.deposit_calls == []
 
 
@@ -5068,7 +5068,7 @@ def test_receive_funds_creates_lightning_request_without_polling() -> None:
     assert '<div class="invoice-qr"><svg' in response.text
     assert 'action="/receive-funds/check"' in response.text
     assert "Checking and finalizing the received funds. Please wait" in response.text
-    assert "Checking payment…" in response.text
+    assert "Checking transfer…" in response.text
     assert acorn.deposit_calls == [21]
     assert acorn.quote_checks == []
 
@@ -5138,7 +5138,7 @@ def test_unpaid_deposit_keeps_same_invoice_available_for_recheck() -> None:
     )
 
     assert response.status_code == 409
-    assert "has not confirmed payment yet" in response.text
+    assert "has not confirmed settlement yet" in response.text
     assert "lnbc21n1pytestinvoice" in response.text
     assert 'action="/receive-funds/check"' in response.text
     assert acorn.history_entries == []
@@ -5622,7 +5622,7 @@ def test_continuity_payment_sends_only_to_safebox_without_mint_check(
     )
 
     assert response.status_code == 200
-    assert "Continuity Payment sent" in response.text
+    assert "Continuity Transfer sent" in response.text
     assert "mint was not contacted" in response.text
     assert acorn.payments == []
     assert acorn.ecash_transfers == [
@@ -5676,7 +5676,7 @@ def test_continuity_payment_rejects_external_lightning_address(
 
     assert response.status_code == 422
     assert "only be sent to another Safebox address" in response.text
-    assert "No Lightning payment was attempted" in response.text
+    assert "No Lightning transfer was attempted" in response.text
     assert 'value="continuity"' in response.text
     assert acorn.payments == []
     assert acorn.ecash_transfers == []

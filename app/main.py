@@ -558,7 +558,7 @@ def _balance_status_html(
             relay_html
             + '<p class="error"><strong>Confirmed balance not verified.</strong> '
             + escape(verification_error or "Mint verification was unavailable.")
-            + " Do not rely on the relay-visible total for a payment.</p>"
+            + " Do not rely on the relay-visible total for a transfer.</p>"
         )
 
     confirmed = verification.get("mint_confirmed_unspent", {})
@@ -577,7 +577,7 @@ def _balance_status_html(
         )
         if difference:
             warning += f"The relay total includes {difference:,} sats that are not confirmed. "
-        warning += "Do not make a payment until the proof state has been reviewed.</p>"
+        warning += "Do not make a transfer until the proof state has been reviewed.</p>"
         return relay_html + confirmed_html + warning
     return relay_html + confirmed_html
 
@@ -4393,7 +4393,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         if payment_method != "lightning":
             return receive_error(
-                "That payment-request method is not available yet.",
+                "That transfer-request method is not available yet.",
                 400,
             )
         try:
@@ -4411,7 +4411,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except TimeoutError:
             logger.warning("deposit quote request timed out mint=%s", acorn.home_mint)
             return receive_error(
-                "The home mint did not return a payment request before the request "
+                "The home mint did not return a transfer request before the request "
                 "timed out.",
                 504,
             )
@@ -4468,9 +4468,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             return HTMLResponse(
                 _page(
-                    "Payment request expired",
+                    "Transfer request expired",
                     f'<p class="error">{escape(str(exc))}.</p>'
-                    '<p><a href="/receive-funds">Create a new payment request</a></p>',
+                    '<p><a href="/receive-funds">Create a new transfer request</a></p>',
                 ),
                 status_code=400,
             )
@@ -4499,7 +4499,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     state,
                     deposit_token,
                     form_token.issue(),
-                    "Payment confirmation timed out. Do not create or complete "
+                    "Transfer confirmation timed out. Do not create or complete "
                     "another request; wait and check this request again.",
                 ),
                 status_code=504,
@@ -4515,7 +4515,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     state,
                     deposit_token,
                     form_token.issue(),
-                    "Safebox could not confirm the payment. Do not create or "
+                    "Safebox could not confirm the transfer. Do not create or "
                     "complete another request; wait and check this request again.",
                 ),
                 status_code=502,
@@ -4527,7 +4527,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     state,
                     deposit_token,
                     form_token.issue(),
-                    "The mint has not confirmed payment yet. If you paid recently, "
+                    "The mint has not confirmed settlement yet. If the invoice was paid recently, "
                     "wait briefly and check this invoice again.",
                 ),
                 status_code=409,
@@ -4783,7 +4783,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         acorn: PaymentAcornDependency,
         csrf_token: str = Form(...),
         invoice_state: str = Form(...),
-        comment: str = Form("Paid from Safebox Web"),
+        comment: str = Form("Transferred from Safebox Web"),
         confirmed: str | None = Form(None),
     ) -> HTMLResponse:
         settings = request.app.state.settings
@@ -4827,7 +4827,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 status_code=400,
             )
-        payment_comment = str(comment).strip() or "Paid from Safebox Web"
+        payment_comment = str(comment).strip() or "Transferred from Safebox Web"
         if len(payment_comment) > 200:
             return HTMLResponse(
                 _page(
@@ -5211,7 +5211,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "Clear transfer status unresolved",
                         "<p>The Clear transfer timed out before Safebox received a "
                         "final result. Do not retry it blindly. Review Clear "
-                        "Transactions before attempting another payment.</p>"
+                        "Transactions before attempting another transfer.</p>"
                         '<p><a href="/clear">Review Clear Transactions</a></p>',
                     ),
                     status_code=504,
@@ -5277,8 +5277,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if payment_mode == "continuity" and direct_recipient is None:
             return payment_error(
-                "Continuity Payments can only be sent to another Safebox address. "
-                "No Lightning payment was attempted.",
+                "Continuity Transfers can only be sent to another Safebox address. "
+                "No Lightning transfer was attempted.",
                 422,
             )
         if direct_recipient is not None:
@@ -5361,7 +5361,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             event_id = str(delivery.get("event_id") or delivery.get("event") or "")
             if payment_mode == "continuity":
                 message = (
-                    "Provisional Continuity Payment sent. The mint was not "
+                    "Provisional Continuity Transfer sent. The mint was not "
                     "contacted; the recipient must reconcile the proofs later."
                 )
             else:
@@ -5371,7 +5371,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return render_template(
                 "payment_result.html",
                 title=(
-                    "Continuity Payment sent"
+                    "Continuity Transfer sent"
                     if payment_mode == "continuity"
                     else "Balance transferred"
                 ),
@@ -6067,7 +6067,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     _page(
                         "Proofs repaired",
                         "<p>Safebox repaired stale proofs before accepting "
-                        "incoming payments. Finalize pending transactions again "
+                        "incoming transfers. Finalize pending transactions again "
                         "to complete the operation.</p>"
                         '<p><a href="/transactions">Return to transaction history</a></p>',
                     ),

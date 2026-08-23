@@ -2,7 +2,7 @@
 {% block content %}
 <p class="continuity-mode">Connected Mode</p>
 {% if lightning_lnurl %}
-<section class="wallet-address" aria-label="Lightning payment address">
+<section class="wallet-address" aria-label="Transfer address">
   <div class="wallet-address-actions">
     <a href="/scan/lightning">Scan</a>
     <details class="wallet-address-disclosure">
@@ -17,16 +17,16 @@
         <span class="wallet-address-summary-value">{{ nip05_address | lower }}</span>
       </summary>
       <div class="wallet-address-panel">
-        <div class="wallet-address-qr" aria-label="Lightning payment QR code">
+        <div class="wallet-address-qr" aria-label="Balance transfer QR code">
         {{ address_qr | safe }}
         </div>
-        <p>Scan for Lightning Payment.</p>
+        <p>Scan for Balance Transfer.</p>
         <p class="breakable"><code>{{ nip05_address | lower }}</code></p>
         <button type="button"
                 data-address-copy="{{ nip05_address | lower }}"
                 data-address-copy-status="wallet-address-copy-status"
                 aria-label="Copy {{ nip05_address | lower }}">
-          Copy payment address
+          Copy transfer address
         </button>
         <p id="wallet-address-copy-status" class="wallet-address-copy-status muted"
            role="status" aria-live="polite" hidden></p>

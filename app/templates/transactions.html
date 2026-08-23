@@ -16,13 +16,13 @@
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
   {% endif %}
   <p class="wallet-balance-state">{% if wallet_balance_verified %}Confirmed cash balance.{% else %}Balance requires verification—review the advisory below.{% endif %}</p>
-  {% if pending_amount %}<p class="wallet-balance-state">Pending cash payments: {{ "{:,}".format(pending_amount) }} sats in {{ "{:,}".format(pending_count) }} payment{% if pending_count != 1 %}s{% endif %}.</p>{% endif %}
+  {% if pending_amount %}<p class="wallet-balance-state">Pending Cash transfers: {{ "{:,}".format(pending_amount) }} sats in {{ "{:,}".format(pending_count) }} transfer{% if pending_count != 1 %}s{% endif %}.</p>{% endif %}
 </a>
 {% endif %}
 {% if pending_transactions %}
 <section class="pending-transaction-list" aria-label="Pending cash transaction arrivals">
-  <h2>Pending Cash Payments</h2>
-  <p class="pending-transaction-intro">These cash payments have arrived for this Acorn but remain pending until mint confirmation completes.</p>
+  <h2>Pending Cash Transfers</h2>
+  <p class="pending-transaction-intro">These Cash transfers have arrived for this Acorn but remain pending until mint confirmation completes.</p>
   {% for pending in pending_transactions %}
   <article class="transaction-card pending">
     <header class="transaction-header">
@@ -49,7 +49,7 @@
   <p>You can leave this page and return later. Current phase: {{ finalization_job.phase | lower }}.</p>
   {% elif finalization_job and finalization_job.status == "COMPLETE" %}
   <p role="status"><strong>Cash transaction finalization completed.</strong>
-    {% if finalization_job.confirmed_count %}Finalized {{ "{:,}".format(finalization_job.confirmed_amount) }} sats from {{ "{:,}".format(finalization_job.confirmed_count) }} payment{% if finalization_job.confirmed_count != 1 %}s{% endif %}.{% endif %}
+    {% if finalization_job.confirmed_count %}Finalized {{ "{:,}".format(finalization_job.confirmed_amount) }} sats from {{ "{:,}".format(finalization_job.confirmed_count) }} transfer{% if finalization_job.confirmed_count != 1 %}s{% endif %}.{% endif %}
   </p>
   {% elif finalization_job and finalization_job.status in ("PARTIAL", "FAILED", "INTERRUPTED") %}
   <p role="status"><strong>Cash transaction finalization requires another check.</strong>
@@ -90,7 +90,7 @@
   <summary>Advisories</summary>
   <div class="transaction-advisories-content">
     {{ balance_status | safe }}
-    <p>Pending cash payments are added to the confirmed balance and journal when
+    <p>Pending Cash transfers are added to the confirmed balance and journal when
     their proofs can be finalized with the mint.</p>
     {{ retention_notice | safe }}
     <section class="force-finalization" aria-labelledby="force-finalization-heading">
