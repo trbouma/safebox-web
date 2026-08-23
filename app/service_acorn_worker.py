@@ -132,6 +132,15 @@ async def run_worker(
                         nip57_require_description_hash=(
                             settings.nip57_require_description_hash
                         ),
+                        delivery_retry_attempts=(
+                            settings.service_acorn_delivery_retry_attempts
+                        ),
+                        delivery_retry_base_seconds=(
+                            settings.service_acorn_delivery_retry_base_seconds
+                        ),
+                        delivery_retry_max_seconds=(
+                            settings.service_acorn_delivery_retry_max_seconds
+                        ),
                     )
                 except Exception:
                     logger.exception("service Acorn provider-payment cycle failed")

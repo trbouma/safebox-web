@@ -14,6 +14,7 @@ import uuid
 
 import bolt11
 import httpx
+from acorn import RetryablePreSwapError
 from monstr.client.client import ClientPool
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
@@ -329,6 +330,9 @@ async def process_provider_payments_once(
     *,
     gift_wrap_retention_seconds: int | None = None,
     nip57_require_description_hash: bool = False,
+    delivery_retry_attempts: int = 4,
+    delivery_retry_base_seconds: float = 2.0,
+    delivery_retry_max_seconds: float = 60.0,
 ) -> bool:
     """Process at most one item from each safe payment transition."""
 
@@ -438,7 +442,14 @@ async def process_provider_payments_once(
         # Mark before external publication. An interrupted/ambiguous publish is
         # deliberately not retried automatically because that could duplicate
         # the recipient payment.
-        update_provider_payment(engine, settled.payment_id, status="DELIVERING")
+        delivery_attempt = int(settled.delivery_attempts) + 1
+        update_provider_payment(
+            engine,
+            settled.payment_id,
+            status="DELIVERING",
+            delivery_attempts=delivery_attempt,
+            next_check_at=None,
+        )
         try:
             expiration = (
                 int(time()) + gift_wrap_retention_seconds
@@ -468,6 +479,7 @@ async def process_provider_payments_once(
                     or None
                 ),
                 error=None,
+                next_check_at=None,
             )
             logger.info(
                 "provider ecash delivered payment_id=%s event_id=%s relay=%s expiration=%s",
@@ -476,6 +488,54 @@ async def process_provider_payments_once(
                 settled.recipient_relay,
                 expiration,
             )
+        except RetryablePreSwapError as exc:
+            detail = str(exc).strip() or repr(exc)
+            if delivery_attempt < max(1, int(delivery_retry_attempts)):
+                retry_delay = min(
+                    float(delivery_retry_max_seconds),
+                    float(delivery_retry_base_seconds)
+                    * (2 ** max(0, delivery_attempt - 1)),
+                )
+                update_provider_payment(
+                    engine,
+                    settled.payment_id,
+                    status="SETTLED",
+                    error=(
+                        f"Retryable pre-swap delivery failure: {type(exc).__name__}: "
+                        f"{detail}"
+                    )[:500],
+                    next_check_at=utc_now() + timedelta(seconds=retry_delay),
+                )
+                logger.warning(
+                    "provider ecash delivery scheduled for safe retry "
+                    "payment_id=%s attempt=%s max_attempts=%s delay_seconds=%.1f "
+                    "error_type=%s error=%r",
+                    settled.payment_id,
+                    delivery_attempt,
+                    delivery_retry_attempts,
+                    retry_delay,
+                    type(exc).__name__,
+                    exc,
+                )
+            else:
+                update_provider_payment(
+                    engine,
+                    settled.payment_id,
+                    status="DELIVERY_FAILED",
+                    error=(
+                        "Safe delivery retries exhausted: "
+                        f"{type(exc).__name__}: {detail}"
+                    )[:500],
+                    next_check_at=None,
+                )
+                logger.error(
+                    "provider ecash safe delivery retries exhausted "
+                    "payment_id=%s attempts=%s error_type=%s error=%r",
+                    settled.payment_id,
+                    delivery_attempt,
+                    type(exc).__name__,
+                    exc,
+                )
         except Exception as exc:
             detail = str(exc).strip() or repr(exc)
             logger.exception(
@@ -492,6 +552,7 @@ async def process_provider_payments_once(
                     f"Delivery outcome requires review: {type(exc).__name__}: "
                     f"{detail}"
                 )[:500],
+                next_check_at=None,
             )
         changed = True
 

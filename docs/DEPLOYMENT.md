@@ -141,6 +141,9 @@ SAFEBOX_SERVICE_ACORN_HOME_RELAY=wss://relay.getsafebox.app
 SAFEBOX_SERVICE_ACORN_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_SERVICE_ACORN_STATE_FILE=data/service-acorn.json
 SAFEBOX_SERVICE_ACORN_POLL_SECONDS=0.5
+SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_ATTEMPTS=4
+SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_BASE_SECONDS=2
+SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_MAX_SECONDS=60
 SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800
 SAFEBOX_NIP57_REQUIRE_DESCRIPTION_HASH=false
 ```
@@ -151,6 +154,12 @@ deliberate, drained-wallet replacement. A failed migration falls back to the
 persisted service Acorn unless that existing wallet is itself unavailable. The
 guarded startup flow and its operational prerequisites are documented in
 [Standalone Service Acorn Worker](SERVICE-ACORN-LIFECYCLE.md#migrating-the-service-acorn).
+
+The delivery retry settings apply only when Acorn proves that a transient
+failure occurred before a mint swap was submitted. The defaults make four
+total delivery attempts with bounded exponential backoff. An uncertain mint
+swap or relay publication remains held for operator review and is never
+automatically repeated.
 
 Secure `wss://` relay URLs need no allowlist entry. To deliberately use one or
 more non-TLS relays on localhost, a private network, or a protected VPN, list

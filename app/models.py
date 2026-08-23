@@ -55,6 +55,7 @@ class ProviderPayment(SQLModel, table=True):
     delivery_event_id: Optional[str] = Field(default=None, nullable=True)
     error: Optional[str] = Field(default=None, nullable=True)
     attempts: int = Field(default=0, nullable=False)
+    delivery_attempts: int = Field(default=0, nullable=False)
     created_at: datetime = Field(default_factory=utc_now, nullable=False)
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
     next_check_at: Optional[datetime] = Field(default=None, nullable=True, index=True)

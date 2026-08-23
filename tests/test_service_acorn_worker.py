@@ -106,6 +106,9 @@ def test_worker_settings_do_not_require_web_cookie_key(tmp_path, monkeypatch) ->
 
     assert settings.service_acorn_enabled is True
     assert settings.service_acorn_gift_wrap_retention_seconds == 7 * 24 * 60 * 60
+    assert settings.service_acorn_delivery_retry_attempts == 4
+    assert settings.service_acorn_delivery_retry_base_seconds == 2
+    assert settings.service_acorn_delivery_retry_max_seconds == 60
     assert settings.nip57_require_description_hash is False
     assert settings.currency_rates_enabled is False
 
@@ -182,6 +185,31 @@ def test_worker_can_require_strict_nip57_description_hash(
     settings = ServiceAcornSettings.from_env()
 
     assert settings.nip57_require_description_hash is True
+
+
+def test_worker_delivery_retry_settings_load_from_environment(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SAFEBOX_SERVICE_ACORN_ENABLED", "true")
+    monkeypatch.setenv("SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_ATTEMPTS", "5")
+    monkeypatch.setenv("SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_BASE_SECONDS", "3")
+    monkeypatch.setenv("SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_MAX_SECONDS", "30")
+
+    settings = ServiceAcornSettings.from_env()
+
+    assert settings.service_acorn_delivery_retry_attempts == 5
+    assert settings.service_acorn_delivery_retry_base_seconds == 3
+    assert settings.service_acorn_delivery_retry_max_seconds == 30
+
+
+def test_worker_rejects_delivery_retry_max_below_base(tmp_path) -> None:
+    with pytest.raises(ValueError, match="must be at least"):
+        worker_settings(
+            tmp_path,
+            service_acorn_delivery_retry_base_seconds=10,
+            service_acorn_delivery_retry_max_seconds=5,
+        )
 
 
 def test_worker_gift_wrap_retention_can_be_disabled(tmp_path, monkeypatch) -> None:

@@ -64,8 +64,10 @@ development and light pilot traffic.
 - Database uniqueness constraints arbitrate concurrent handle claims.
 - Provider wallet mutations remain serialized because only one worker owns the
   service Acorn.
-- An ambiguous ecash publication stops at `DELIVERY_FAILED`; it is not blindly
-  retried and therefore does not intentionally create a duplicate payment.
+- A failure proven to occur before mint swap submission is retried by the
+  singleton worker with durable, bounded backoff. An ambiguous ecash swap or
+  publication stops at `DELIVERY_FAILED`; it is not blindly retried and
+  therefore does not intentionally create a duplicate payment.
 
 ## Attached-Acorn background finalization
 

@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from bech32 import bech32_decode, convertbits
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
+from acorn import RetryablePreSwapError
 from monstr.encrypt import Keys
 from monstr.event.event import Event
 from sqlmodel import Session, select
@@ -17,7 +18,7 @@ from app.config import Settings
 from app.database import create_database_engine, run_migrations
 import app.lnurl_pay as lnurl_module
 from app.main import create_app
-from app.models import ClaimedHandle, ProviderPayment, ProviderZap
+from app.models import ClaimedHandle, ProviderPayment, ProviderZap, utc_now
 from app.nip57 import build_zap_receipt, validate_zap_request
 from app.provider_payments import (
     enqueue_provider_payment,
@@ -327,10 +328,12 @@ class FakeProviderAcorn:
         self,
         *,
         fail_delivery: bool = False,
+        retryable_delivery_failures: int = 0,
         quote_paid: bool = True,
         quote_error: Exception | None = None,
     ) -> None:
         self.fail_delivery = fail_delivery
+        self.retryable_delivery_failures = retryable_delivery_failures
         self.quote_paid = quote_paid
         self.quote_error = quote_error
         self.deposit_calls: list[dict] = []
@@ -349,6 +352,9 @@ class FakeProviderAcorn:
 
     async def send_ecash_transfer(self, **kwargs):
         self.delivery_calls.append(kwargs)
+        if self.retryable_delivery_failures > 0:
+            self.retryable_delivery_failures -= 1
+            raise RetryablePreSwapError("mint connection failed before swap")
         if self.fail_delivery:
             raise RuntimeError("ambiguous relay publish")
         return {"event_id": "event-1"}
@@ -419,6 +425,56 @@ def test_ambiguous_delivery_is_not_automatically_retried(tmp_path) -> None:
     )
     asyncio.run(process_provider_payments_once(engine, acorn))
     assert len(acorn.delivery_calls) == 1
+    engine.dispose()
+
+
+def test_retryable_pre_swap_delivery_is_requeued_then_delivered(tmp_path) -> None:
+    engine, payment_id = queued_payment(tmp_path)
+    acorn = FakeProviderAcorn(retryable_delivery_failures=1)
+
+    asyncio.run(
+        process_provider_payments_once(
+            engine,
+            acorn,
+            delivery_retry_attempts=4,
+            delivery_retry_base_seconds=1,
+        )
+    )
+    payment = get_provider_payment(engine, payment_id)
+    assert payment.status == "SETTLED"
+    assert payment.delivery_attempts == 1
+    assert payment.next_check_at is not None
+    assert "Retryable pre-swap delivery failure" in payment.error
+
+    update_provider_payment(engine, payment_id, next_check_at=utc_now())
+    asyncio.run(process_provider_payments_once(engine, acorn))
+
+    payment = get_provider_payment(engine, payment_id)
+    assert payment.status == "DELIVERED"
+    assert payment.delivery_attempts == 2
+    assert payment.delivery_event_id == "event-1"
+    assert payment.error is None
+    assert len(acorn.delivery_calls) == 2
+    engine.dispose()
+
+
+def test_retryable_pre_swap_delivery_stops_after_limit(tmp_path) -> None:
+    engine, payment_id = queued_payment(tmp_path)
+    acorn = FakeProviderAcorn(retryable_delivery_failures=1)
+
+    asyncio.run(
+        process_provider_payments_once(
+            engine,
+            acorn,
+            delivery_retry_attempts=1,
+        )
+    )
+
+    payment = get_provider_payment(engine, payment_id)
+    assert payment.status == "DELIVERY_FAILED"
+    assert payment.delivery_attempts == 1
+    assert payment.next_check_at is None
+    assert "Safe delivery retries exhausted" in payment.error
     engine.dispose()
 
 

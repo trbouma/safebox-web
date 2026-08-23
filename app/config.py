@@ -146,6 +146,9 @@ class ServiceAcornSettings:
     payment_timeout_seconds: float = 90.0
     database_url: str = "sqlite:///data/database.db"
     service_acorn_poll_seconds: float = 0.5
+    service_acorn_delivery_retry_attempts: int = 4
+    service_acorn_delivery_retry_base_seconds: float = 2.0
+    service_acorn_delivery_retry_max_seconds: float = 60.0
     allowed_ws_relays: tuple[str, ...] = ()
     service_acorn_enabled: bool = False
     service_acorn_migrate: bool = False
@@ -170,6 +173,22 @@ class ServiceAcornSettings:
             raise ValueError("SAFEBOX_PAYMENT_TIMEOUT_SECONDS must be positive")
         if self.service_acorn_poll_seconds <= 0:
             raise ValueError("SAFEBOX_SERVICE_ACORN_POLL_SECONDS must be positive")
+        if not 1 <= self.service_acorn_delivery_retry_attempts <= 10:
+            raise ValueError(
+                "SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_ATTEMPTS must be between 1 and 10"
+            )
+        if self.service_acorn_delivery_retry_base_seconds <= 0:
+            raise ValueError(
+                "SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_BASE_SECONDS must be positive"
+            )
+        if (
+            self.service_acorn_delivery_retry_max_seconds
+            < self.service_acorn_delivery_retry_base_seconds
+        ):
+            raise ValueError(
+                "SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_MAX_SECONDS must be at least "
+                "SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_BASE_SECONDS"
+            )
         if self.currency_rate_interval_seconds <= 0:
             raise ValueError("SAFEBOX_CURRENCY_RATE_INTERVAL_SECONDS must be positive")
         if self.currency_rates_enabled and not self.currency_rate_source_url.strip():
@@ -196,6 +215,15 @@ class ServiceAcornSettings:
             load_timeout = float(os.getenv("SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS", "20"))
             payment_timeout = float(os.getenv("SAFEBOX_PAYMENT_TIMEOUT_SECONDS", "90"))
             poll_seconds = float(os.getenv("SAFEBOX_SERVICE_ACORN_POLL_SECONDS", "0.5"))
+            delivery_retry_attempts = int(
+                os.getenv("SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_ATTEMPTS", "4")
+            )
+            delivery_retry_base = float(
+                os.getenv("SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_BASE_SECONDS", "2")
+            )
+            delivery_retry_max = float(
+                os.getenv("SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_MAX_SECONDS", "60")
+            )
             rate_interval = float(
                 os.getenv(
                     "SAFEBOX_CURRENCY_RATE_INTERVAL_SECONDS",
@@ -218,6 +246,9 @@ class ServiceAcornSettings:
                 "SAFEBOX_DATABASE_URL", "sqlite:///data/database.db"
             ).strip(),
             service_acorn_poll_seconds=poll_seconds,
+            service_acorn_delivery_retry_attempts=delivery_retry_attempts,
+            service_acorn_delivery_retry_base_seconds=delivery_retry_base,
+            service_acorn_delivery_retry_max_seconds=delivery_retry_max,
             allowed_ws_relays=_allowed_ws_relays_from_env(),
             service_acorn_enabled=_env_bool("SAFEBOX_SERVICE_ACORN_ENABLED", False),
             service_acorn_migrate=_env_bool(

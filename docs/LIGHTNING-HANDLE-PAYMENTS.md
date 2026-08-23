@@ -216,11 +216,17 @@ The zap-specific decision and production experience are recorded in the
 [NIP-57 Zap Callback Design Note](NIP57-ZAP-CALLBACK-DESIGN-NOTE.md) and
 [NIP-57 Zap Integration: Lessons Learned](NIP57-ZAP-LESSONS-LEARNED.md).
 
-Invoice creation failures become `FAILED`. A delivery exception becomes
-`DELIVERY_FAILED` and is not retried automatically. This is intentional: after
-an ambiguous relay publication, blindly issuing another ecash transfer could
-pay the recipient twice. Operator reconciliation and an idempotent delivery
-protocol are still required.
+Invoice creation failures become `FAILED`. Acorn distinguishes a connection or
+persistence failure proven to have occurred before mint swap submission from
+an outcome that became uncertain during the swap or relay publication. A safe
+pre-swap failure returns to `SETTLED` and the singleton worker retries it with
+bounded exponential backoff. The durable `delivery_attempts` counter is
+separate from invoice-settlement polling.
+
+An ambiguous swap or relay-publication exception becomes `DELIVERY_FAILED` and
+is not retried automatically. This is intentional: blindly issuing another
+ecash transfer could pay the recipient twice. Operator reconciliation and an
+idempotent delivery protocol are still required.
 
 `RECEIPT_FAILED` is deliberately distinct from `DELIVERY_FAILED`. The former
 means ecash was already delivered but the public NIP-57 receipt could not be

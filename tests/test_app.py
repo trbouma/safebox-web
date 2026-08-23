@@ -2913,7 +2913,7 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "clear_acceptance_job",
         "web_worker_heartbeat",
     }.issubset(tables)
-    assert revision == ("20260822_0007",)
+    assert revision == ("20260823_0008",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -2932,6 +2932,7 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "delivery_event_id",
         "error",
         "attempts",
+        "delivery_attempts",
         "created_at",
         "updated_at",
         "next_check_at",
