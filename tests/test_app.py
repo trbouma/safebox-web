@@ -3590,12 +3590,17 @@ def test_user_can_accept_clear_transfer_into_spendable_balance(tmp_path) -> None
             if job and job["status"] == "COMPLETE":
                 break
             time.sleep(0.01)
+        status_page = client.get(response.headers["location"])
         result = client.get("/clear")
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/clear?acceptance=started"
+    assert response.headers["location"] == "/clear/acceptance-status"
     assert job is not None
     assert job["status"] == "COMPLETE"
+    assert status_page.status_code == 200
+    assert "Clear transfer acceptance completed." in status_page.text
+    assert "Confirmed 25 cmu-test." in status_page.text
+    assert 'href="/clear">Open Clear Transactions</a>' in status_page.text
     assert acorn.loaded is True
     assert acorn.accepted_clear_receipts == [event_id]
     assert "Clear transfer acceptance completed." in result.text
@@ -3649,7 +3654,7 @@ def test_clear_acceptance_response_does_not_wait_for_wallet_load(tmp_path) -> No
         )
 
         assert response.status_code == 303
-        assert response.headers["location"] == "/clear?acceptance=started"
+        assert response.headers["location"] == "/clear/acceptance-status"
         assert load_started.wait(0.5) is True
         running = get_clear_acceptance_job(
             app.state.database_engine,
@@ -3658,6 +3663,11 @@ def test_clear_acceptance_response_does_not_wait_for_wallet_load(tmp_path) -> No
         assert running is not None
         assert running["status"] == "RUNNING"
         assert running["phase"] == "LOADING"
+        status_page = client.get(response.headers["location"])
+        assert status_page.status_code == 200
+        assert "Clear transfer acceptance is running in the background." in status_page.text
+        assert "Current phase: loading." in status_page.text
+        assert "Check Status" in status_page.text
 
         allow_load_to_finish.set()
         deadline = time.monotonic() + 2
@@ -3734,7 +3744,7 @@ def test_user_can_check_then_accept_relay_clear_transfer(tmp_path) -> None:
         result = client.get("/clear")
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/clear?acceptance=started"
+    assert response.headers["location"] == "/clear/acceptance-status"
     assert job is not None
     assert job["status"] == "COMPLETE"
     assert acorn.loaded is True

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+{% if job.status == "RUNNING" %}
+<section class="incoming-funds" aria-label="Clear transfer acceptance status">
+  <p role="status"><strong>Clear transfer acceptance is running in the background.</strong></p>
+  <p>Current phase: {{ job.phase | lower | replace("_", " ") }}.</p>
+  <p>You can leave this page and return later. The transfer remains represented
+  by its relay-backed receipt while acceptance continues.</p>
+  <a class="nav-button" href="/clear/acceptance-status">Check Status</a>
+</section>
+{% elif job.status == "COMPLETE" %}
+<section class="incoming-funds" aria-label="Clear transfer acceptance status">
+  <p role="status"><strong>Clear transfer acceptance completed.</strong></p>
+  {% if job.amount %}<p>Confirmed {{ "{:,}".format(job.amount) }} {{ job.unit or "units" }}.</p>{% endif %}
+  <a class="nav-button" href="/clear">Open Clear Transactions</a>
+</section>
+{% else %}
+<section class="incoming-funds" aria-label="Clear transfer acceptance status">
+  <p role="status"><strong>Clear transfer acceptance needs attention.</strong></p>
+  {% if job.error %}<p class="error">{{ job.error }}</p>{% endif %}
+  <p>The relay-backed receipt and any published progress remain available.</p>
+  <a class="nav-button" href="/clear">Review Clear Transactions</a>
+</section>
+{% endif %}
+{% endblock %}

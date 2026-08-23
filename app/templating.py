@@ -23,6 +23,7 @@ _PARENT_NAVIGATION = {
     "balances.html": ("/wallet", "Back to Wallet"),
     "blob_upload.html": ("/records", "Back to Records"),
     "clear_transactions.html": ("/balances", "Back to Balances"),
+    "clear_acceptance_status.html": ("/balances", "Back to Balances"),
     "control_history.html": (None, "Back to Record"),
     "receive_funds.html": ("/balances", "Back to Balances"),
     "receive_funds_request.html": ("/receive-funds", "Back to Receive Funds"),

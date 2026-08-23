@@ -2832,6 +2832,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def security_boundary(request: Request, call_next):
+        request_started = monotonic()
         if not is_allowed_transport(request):
             return JSONResponse(
                 status_code=400,
@@ -2860,6 +2861,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 return JSONResponse(status_code=403, content={"detail": "Origin rejected"})
 
         response = await call_next(request)
+        duration_ms = (monotonic() - request_started) * 1000
+        response.headers["Server-Timing"] = f"app;dur={duration_ms:.1f}"
+        if request.url.path != "/health":
+            logger.info(
+                "request completed method=%s path=%s status=%s duration_ms=%s",
+                request.method,
+                request.url.path,
+                response.status_code,
+                int(duration_ms),
+            )
         response.headers["Cache-Control"] = "no-store"
         content_security_policy = (
             "default-src 'self'; script-src 'self'; style-src 'self'; "
@@ -5800,12 +5811,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     request.app.state.clear_acceptance_tasks.pop(npub, None)
 
             task.add_done_callback(remove_completed_task)
-            state = "started"
-        else:
-            state = "running"
         return RedirectResponse(
-            f"/clear?acceptance={state}",
+            "/clear/acceptance-status",
             status_code=303,
+        )
+
+    @app.get("/clear/acceptance-status", response_class=HTMLResponse)
+    async def clear_acceptance_status(
+        request: Request,
+        acorn: AcornDependency,
+    ) -> HTMLResponse:
+        """Render background acceptance progress without loading relay state."""
+
+        job = get_clear_acceptance_job(
+            request.app.state.database_engine,
+            acorn.pubkey_bech32,
+        )
+        if job is None:
+            return RedirectResponse("/clear", status_code=303)
+        return HTMLResponse(
+            render_template(
+                "clear_acceptance_status.html",
+                title="Accept Clear Transfer",
+                job=job,
+            )
         )
 
     @app.post("/clear/receipts/delete", response_class=HTMLResponse)
@@ -5904,7 +5933,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if clear_job and clear_job.get("status") == "RUNNING":
             return RedirectResponse(
-                "/clear?acceptance=running",
+                "/clear/acceptance-status",
                 status_code=303,
             )
         claimed, owner_token, _job = claim_finalization_job(

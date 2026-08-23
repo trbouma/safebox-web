@@ -150,9 +150,19 @@ request.
 
 The acceptance POST deliberately uses an unloaded, request-scoped Acorn. It
 validates the session and event identifier, claims the lease, starts the task,
-and redirects immediately. Relay-backed `load_data()` runs in the background
-under the job's `LOADING` phase. A slow bootstrap relay can therefore delay the
-job without producing a gateway timeout before the job has even started.
+and redirects immediately to a lightweight status page. That page reads only
+the non-secret coordination row; it does not load wallet state, query a relay,
+or contact a mint. The user explicitly checks status and opens the full Clear
+Transactions page after completion or when a failure needs review.
+
+Relay-backed `load_data()` runs in the background under the job's `LOADING`
+phase. A slow bootstrap relay can therefore delay the job without producing a
+gateway timeout before the job has even started. The worker logs duration for
+the loading, discovery, acceptance, and complete job stages. HTTP responses
+also include an application `Server-Timing` measurement and non-health requests
+write their application duration to the log. These measurements distinguish a
+slow request handler from relay, mint, proxy, and client latency without placing
+wallet secrets in diagnostic state.
 
 The coordination row stores the npub, event id, phase, timestamps, result
 amount, mint, CMU, error summary, and opaque lease token. It contains no nsec,

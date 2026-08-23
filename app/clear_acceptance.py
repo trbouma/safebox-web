@@ -6,6 +6,7 @@ import asyncio
 from datetime import timedelta
 import logging
 import secrets
+from time import monotonic
 from typing import Any, Callable
 
 from sqlalchemy import and_, exists, or_, select, update
@@ -191,6 +192,7 @@ async def run_clear_acceptance_job(
             if not renewed:
                 raise RuntimeError("Background Clear acceptance lease was lost")
 
+    job_started = monotonic()
     heartbeat = asyncio.create_task(
         maintain_lease(),
         name=f"clear-acceptance-heartbeat:{npub}",
@@ -210,9 +212,17 @@ async def run_clear_acceptance_job(
             owner_token,
             phase="LOADING",
         )
+        phase_started = monotonic()
         await asyncio.wait_for(
             acorn.load_data(),
             timeout=load_timeout_seconds,
+        )
+        logger.info(
+            "background Clear acceptance phase complete npub=%s "
+            "event_id=%s phase=LOADING duration_ms=%s",
+            npub,
+            event_id,
+            int((monotonic() - phase_started) * 1000),
         )
         update_clear_acceptance_job(
             engine,
@@ -220,6 +230,7 @@ async def run_clear_acceptance_job(
             owner_token,
             phase="ACCEPTING",
         )
+        phase_started = monotonic()
         try:
             result = await acorn.accept_pending_clear_receipt(event_id)
         except ValueError as exc:
@@ -235,13 +246,29 @@ async def run_clear_acceptance_job(
                 event_id=event_id,
                 advance_cursor=False,
             )
+            logger.info(
+                "background Clear acceptance discovery complete npub=%s "
+                "event_id=%s duration_ms=%s",
+                npub,
+                event_id,
+                int((monotonic() - phase_started) * 1000),
+            )
             update_clear_acceptance_job(
                 engine,
                 npub,
                 owner_token,
                 phase="ACCEPTING",
             )
+            phase_started = monotonic()
             result = await acorn.accept_pending_clear_receipt(event_id)
+
+        logger.info(
+            "background Clear acceptance phase complete npub=%s "
+            "event_id=%s phase=ACCEPTING duration_ms=%s",
+            npub,
+            event_id,
+            int((monotonic() - phase_started) * 1000),
+        )
 
         update_clear_acceptance_job(
             engine,
@@ -255,10 +282,12 @@ async def run_clear_acceptance_job(
             error=None,
         )
         logger.info(
-            "background Clear acceptance finished npub=%s event_id=%s amount=%s",
+            "background Clear acceptance finished npub=%s event_id=%s "
+            "amount=%s duration_ms=%s",
             npub,
             event_id,
             int((result or {}).get("amount") or 0),
+            int((monotonic() - job_started) * 1000),
         )
     except asyncio.CancelledError:
         update_clear_acceptance_job(
