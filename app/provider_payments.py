@@ -477,15 +477,21 @@ async def process_provider_payments_once(
                 expiration,
             )
         except Exception as exc:
+            detail = str(exc).strip() or repr(exc)
             logger.exception(
-                "provider ecash delivery requires review payment_id=%s",
+                "provider ecash delivery requires review payment_id=%s error_type=%s error=%r",
                 settled.payment_id,
+                type(exc).__name__,
+                exc,
             )
             update_provider_payment(
                 engine,
                 settled.payment_id,
                 status="DELIVERY_FAILED",
-                error=f"Delivery outcome requires review: {type(exc).__name__}",
+                error=(
+                    f"Delivery outcome requires review: {type(exc).__name__}: "
+                    f"{detail}"
+                )[:500],
             )
         changed = True
 

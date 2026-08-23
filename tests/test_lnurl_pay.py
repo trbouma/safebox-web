@@ -412,7 +412,11 @@ def test_ambiguous_delivery_is_not_automatically_retried(tmp_path) -> None:
     acorn = FakeProviderAcorn(fail_delivery=True)
 
     asyncio.run(process_provider_payments_once(engine, acorn))
-    assert get_provider_payment(engine, payment_id).status == "DELIVERY_FAILED"
+    payment = get_provider_payment(engine, payment_id)
+    assert payment.status == "DELIVERY_FAILED"
+    assert payment.error == (
+        "Delivery outcome requires review: RuntimeError: ambiguous relay publish"
+    )
     asyncio.run(process_provider_payments_once(engine, acorn))
     assert len(acorn.delivery_calls) == 1
     engine.dispose()
