@@ -5888,6 +5888,26 @@ def test_record_index_uses_relay_catalog_without_loading_wallet_or_records() -> 
     acorn.get_user_records.assert_not_awaited()
 
 
+def test_record_index_timeout_preserves_records_and_offers_retry() -> None:
+    class SlowCatalogAcorn(FakeLoadedAcorn):
+        async def get_record_catalog(self):
+            await asyncio.sleep(0.05)
+            return {"records": []}
+
+    settings = replace(TEST_SETTINGS, record_catalog_timeout_seconds=0.01)
+    app = create_app(settings)
+    app.dependency_overrides[get_acorn] = lambda: SlowCatalogAcorn()
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/records")
+
+    assert response.status_code == 504
+    assert "record list did not arrive" in response.text
+    assert "Your records were not changed" in response.text
+    assert 'href="/records">Try Again</a>' in response.text
+    assert 'href="/wallet">Home</a>' in response.text
+
+
 def test_record_index_does_not_rebuild_missing_catalog_during_page_load() -> None:
     class MissingCatalogAcorn(FakeLoadedAcorn):
         def __init__(self):
@@ -5913,7 +5933,7 @@ def test_record_index_does_not_rebuild_missing_catalog_during_page_load() -> Non
         response = client.get("/records")
 
     assert response.status_code == 200
-    assert "record catalog is missing" in response.text
+    assert "This is normal for a new Acorn" in response.text
     assert "Recovered Catalog" not in response.text
     assert acorn.rebuild_calls == 0
     assert acorn.loaded is False
@@ -7400,6 +7420,7 @@ def test_record_edit_form_loads_and_escapes_existing_payload() -> None:
     assert "Update Record" in response.text
     assert 'value="Field Notes"' in response.text
     assert 'value="Field Notes" readonly' in response.text
+    assert 'name="updating" value="yes"' in response.text
     assert '<option value="json" selected>JSON</option>' in response.text
     assert "&lt;script&gt;alert" in response.text
     assert "<script>alert" not in response.text
@@ -7436,10 +7457,32 @@ def test_record_save_encrypts_publishes_and_verifies() -> None:
             "record_kind": 37375,
             "blob_data": None,
             "blob_type": None,
-            "preserve_existing_blob": True,
+            "preserve_existing_blob": False,
             "return_result": True,
         }
     ]
+
+
+def test_record_update_preserves_an_existing_attachment() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/record/save",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "label": "Field Notes",
+            "payload": "Updated contents",
+            "updating": "yes",
+            "confirmed": "yes",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert acorn.record_put_calls[0]["preserve_existing_blob"] is True
 
 
 def test_record_save_can_include_an_encrypted_file_attachment() -> None:
@@ -7469,7 +7512,7 @@ def test_record_save_can_include_an_encrypted_file_attachment() -> None:
             "record_kind": 37375,
             "blob_data": b"private pdf",
             "blob_type": "application/pdf",
-            "preserve_existing_blob": True,
+            "preserve_existing_blob": False,
             "return_result": True,
         }
     ]

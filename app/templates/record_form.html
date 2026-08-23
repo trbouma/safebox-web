@@ -8,6 +8,7 @@ Safebox does not retain a server-side copy.</p>
       data-progress-message="Protecting, storing, and verifying the record. Please wait."
       data-progress-button="Saving record…">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% if updating %}<input type="hidden" name="updating" value="yes">{% endif %}
   <label for="label">Record label</label>
   <input id="label" name="label" type="text" maxlength="200" required
          value="{{ label }}"{% if updating %} readonly{% endif %}>

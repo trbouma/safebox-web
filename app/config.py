@@ -294,7 +294,7 @@ class Settings:
     session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
     wallet_load_timeout_seconds: float = 20.0
     wallet_home_snapshot_timeout_seconds: float = 3.0
-    record_catalog_timeout_seconds: float = 3.0
+    record_catalog_timeout_seconds: float = 10.0
     payment_timeout_seconds: float = 90.0
     allowed_ws_relays: tuple[str, ...] = ()
     default_bootstrap_relay: str = "wss://relay.getsafebox.app"
@@ -454,7 +454,7 @@ class Settings:
             ) from exc
         try:
             record_catalog_timeout = float(
-                os.getenv("SAFEBOX_RECORD_CATALOG_TIMEOUT_SECONDS", "3")
+                os.getenv("SAFEBOX_RECORD_CATALOG_TIMEOUT_SECONDS", "10")
             )
         except ValueError as exc:
             raise RuntimeError(

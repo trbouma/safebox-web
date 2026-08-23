@@ -213,6 +213,69 @@ URL in a browser only after this test passes.
 
 ## Troubleshooting
 
+### Intermittent upstream TCP timeouts
+
+An important deployment failure can look like an Acorn, relay, mint, record,
+or web-performance problem even though the request never reaches Safebox Web.
+In the observed deployment, Docker initially published the application port on
+the host's specific Tailscale address:
+
+```env
+SAFEBOX_BIND_ADDRESS=100.70.55.66
+```
+
+The reverse proxy could sometimes connect to port `8100` and sometimes timed
+out before establishing TCP. During a successful request, `/health` completed
+inside Safebox Web in about one millisecond; during a failed request there was
+no application log entry because Uvicorn never received it. Binding the Docker
+published port to all host interfaces removed the intermittent path failure:
+
+```env
+SAFEBOX_BIND_ADDRESS=0.0.0.0
+SAFEBOX_PORT=8100
+```
+
+After recreating the container, ten consecutive requests over Tailscale all
+returned `200` in approximately 15–20 milliseconds. In a deployment where the
+application host and upstream port are reachable only through a trusted VPN,
+this is a practical configuration. If the host also has an untrusted reachable
+interface, restrict port `8100` with the host firewall or a Tailscale ACL.
+
+Do not diagnose relay or application latency until the private upstream is
+stable. From the reverse-proxy host, test the transport independently:
+
+```sh
+tailscale ping 100.64.0.20
+nc -vz -w 3 100.64.0.20 8100
+
+for i in {1..10}; do
+  curl --connect-timeout 3 --max-time 5 \
+    -sS -o /dev/null \
+    -H 'Host: acorn.example.com' \
+    -H 'X-Forwarded-Proto: https' \
+    -w 'code=%{http_code} connect=%{time_connect}s total=%{time_total}s\n' \
+    http://100.64.0.20:8100/health
+  sleep 2
+done
+```
+
+Interpret the result by layer:
+
+- `code=000` with a connect timeout means the request did not reach the web
+  application; investigate the bind address, Docker port publishing, host
+  firewall, and Tailscale path.
+- `400` with the HTTPS-required response means TCP and the application are
+  reachable, but forwarded-header trust is not configured correctly.
+- `200` with a low `Server-Timing: app` duration proves that the private
+  transport and application health route are working.
+- a fast private test but slow public test points to the public reverse proxy,
+  DNS, or TLS path.
+
+This incident prompted useful timeout, record-catalog, and state-domain
+hardening. Those improvements remain valuable, but they did not cause or cure
+the underlying TCP failure. Keeping transport diagnosis separate prevents an
+infrastructure outage from being mistaken for a wallet-state or relay problem.
+
 ### Public request reports that HTTPS is required
 
 The application received the upstream request as plain HTTP. Confirm that:

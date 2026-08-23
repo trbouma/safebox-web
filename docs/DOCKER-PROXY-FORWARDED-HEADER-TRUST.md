@@ -60,10 +60,17 @@ In the deployment that exposed this issue:
 The corresponding `.env` settings are:
 
 ```env
-SAFEBOX_BIND_ADDRESS=100.70.55.66
+SAFEBOX_BIND_ADDRESS=0.0.0.0
 SAFEBOX_PORT=8100
 FORWARDED_ALLOW_IPS=100.101.156.95,172.20.0.1
 ```
+
+An early version of this deployment bound the published port directly to the
+host's Tailscale address. Intermittent TCP connection timeouts disappeared
+after changing the bind address to `0.0.0.0` and recreating the container. For
+a host whose application port is reachable only through the trusted VPN, this
+is the recommended operational setting. On a host with other reachable
+interfaces, pair it with a firewall or Tailscale ACL restricting port `8100`.
 
 The Uvicorn command in `docker-compose.yaml` should pass the trust setting
 explicitly:
@@ -176,8 +183,8 @@ Trusting a Docker gateway is broader than trusting the remote proxy address.
 Every connection that Docker presents through that gateway can potentially
 claim forwarded transport metadata. Compensating controls therefore matter:
 
-- bind the published port to the host's Tailscale address rather than
-  `0.0.0.0`;
+- keep the published port reachable only through the trusted VPN, or use a
+  host firewall when `0.0.0.0` also covers an untrusted interface;
 - use a Tailscale ACL or host firewall to allow the upstream port only from the
   designated reverse proxy;
 - retain the exact proxy and gateway allowlist; never use
@@ -198,5 +205,11 @@ Forwarded-header trust follows the immediate network peer, not the conceptual
 operator of the reverse proxy. Container networking can obscure that peer and
 silently cause a correctly supplied `X-Forwarded-Proto` header to be ignored.
 The reliable procedure is to inspect the running command, identify the Docker
-gateway, restrict the published interface, and test the private upstream before
-testing the public hostname.
+gateway, restrict the published port's reachability where necessary, and test
+the private upstream before testing the public hostname.
+
+Application-level symptoms can also be misleading. A TCP connect timeout has
+no Acorn, relay, mint, or FastAPI cause because none of those layers received
+the request. Confirm repeated private `/health` connections before changing
+wallet loading, record lookup, or relay verification behavior in response to
+an apparent page timeout.

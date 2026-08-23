@@ -6920,11 +6920,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 rebuild_timeout=settings.wallet_load_timeout_seconds,
             )
         except TimeoutError:
+            logger.warning(
+                "record catalog load status=timeout relay=%s timeout_seconds=%s",
+                acorn.home_relay,
+                settings.record_catalog_timeout_seconds,
+            )
             return HTMLResponse(
                 _page(
                     "Manage Records",
-                    '<p class="error">Timed out while loading record labels.</p>'
-                    '<p><a class="nav-button" href="/wallet">Return to wallet</a></p>',
+                    '<p class="error">The record list did not arrive from the '
+                    'bootstrap relay in time.</p>'
+                    '<p>Your records were not changed. The relay may be temporarily '
+                    'slow or unavailable.</p>'
+                    '<p><a class="nav-button" href="/records">Try Again</a></p>'
+                    '<p><a class="nav-button" href="/wallet">Home</a></p>',
                 ),
                 status_code=504,
             )
@@ -7401,6 +7410,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: str = Form(...),
         payload_format: str = Form("text"),
         confirmed: str | None = Form(None),
+        updating: str | None = Form(None),
         attachment: UploadFile | None = File(None),
     ):
         settings = request.app.state.settings
@@ -7408,6 +7418,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         record_label = str(label).strip()
         record_payload = str(payload)
         selected_format = str(payload_format).strip().lower()
+        is_update = updating == "yes"
         attachment_data: bytes | None = None
         attachment_selected = bool(attachment and attachment.filename)
 
@@ -7419,6 +7430,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     label=record_label,
                     payload=record_payload,
                     payload_format=selected_format,
+                    updating=is_update,
                     error=message,
                 ),
                 status_code=status_code,
@@ -7479,7 +7491,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     record_kind=37375,
                     blob_data=attachment_data,
                     blob_type=attachment_mime,
-                    preserve_existing_blob=True,
+                    preserve_existing_blob=is_update,
                     return_result=True,
                 ),
                 timeout=(

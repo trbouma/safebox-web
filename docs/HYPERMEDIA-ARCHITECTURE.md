@@ -104,6 +104,52 @@ explicit user request. Cash status checks remain read-only. The Clear check
 stages discovered receipts, while proof finalization and Clear acceptance
 remain separate POST actions.
 
+### Why the loading boundary changed
+
+Early Safebox Web routes commonly depended on a fully loaded Acorn because
+`load_data()` was the convenient general initialization path. That assumption
+became costly as Acorn added canonical relay readback, safer proof-state
+classification, fee-aware mint operations, incoming-transfer journals, Clear
+state, and wallet-scoped concurrency controls. Those checks are appropriate for
+funds verification and mutation, but ordinary representations inherited their
+latency when they requested more state than they used.
+
+The clearest incident involved deferred recovery. The mnemonic was already
+inside the encrypted HTTP-only session cookie, yet opening the recovery page
+loaded the complete proof set first. A slow relay or occupied wallet path could
+therefore hold a web worker until the reverse proxy returned a timeout. Recovery
+display now uses the cookie-held mnemonic and locally reconstructed component
+identity without loading proofs or contacting a mint. New sessions also carry
+the selected home mint so the safekeeping message remains accurate. Relay-backed
+cleanup still occurs only after the user confirms that backup is complete.
+
+The application rule is now explicit:
+
+> Each route requests the narrowest Acorn state domain needed to render or
+> perform that resource's action.
+
+In practice:
+
+- key and cookie-held recovery representations use a constructed, unloaded
+  Acorn;
+- the wallet landing page uses balance snapshots;
+- record navigation uses the record catalog and exact-record lookups;
+- status pages read non-secret job coordination without reconstructing a
+  wallet;
+- explicit verification may load proofs and contact a mint; and
+- funds mutations retain full loading, locking, outcome classification, and
+  canonical persistence.
+
+This is failure isolation as well as optimization. A slow mint must not block
+record navigation, and a large proof history must not prevent a user from
+viewing recovery material already under session control. Safebox Web does not
+solve the problem by creating a local wallet journal: snapshots and catalogs
+remain encrypted relay-backed read models, while the application database
+contains only service and coordination state.
+
+The kernel rationale and incremental API direction are documented in
+[Acorn Load Boundaries and Relay-Backed Read Models](https://github.com/trbouma/safebox-acorn/blob/main/docs/LOAD-BOUNDARIES-AND-READ-MODELS.md).
+
 ## Template boundary
 
 The template directory is deliberately a presentation layer rather than a
@@ -220,12 +266,16 @@ record still performs a direct authoritative lookup for that record. Viewing,
 editing, sharing, presenting, downloading, saving, importing, and deleting
 records all use the records-only Acorn dependency and do not load funds state.
 
-For an older wallet with no catalog, the ordinary page remains bounded and
-reports that the catalog is missing. It does not automatically scan and decrypt
-the complete record history. The user explicitly chooses **Refresh Record
-List** to build or refresh the catalog from authoritative record events.
+For a new wallet with no catalog, the ordinary page presents an empty initial
+state and explains that this is expected. For an older wallet with uncatalogued
+records, it does not automatically scan and decrypt the complete record history
+during page rendering. The user explicitly chooses **Refresh Record List** to
+build or refresh the catalog from authoritative record events. A successful
+first record write asks Acorn to build the initial catalog on a bounded,
+best-effort basis; the encrypted record event remains authoritative if that
+derived-index update is unavailable.
 Safebox Web does not persist a copy in its database, cookie, or browser storage.
-Catalog reads have a separate bounded timeout so an unavailable relay does not
+Catalog reads have a separate bounded timeout (10 seconds by default) so an unavailable relay does not
 turn record navigation into an unbounded wallet load.
 
 The current `v2` cookie envelope uses AES-256-GCM with a fresh random nonce and

@@ -201,6 +201,18 @@ Cash and Clear transaction completion refresh the snapshot through the Acorn
 kernel. This keeps the result portable across web workers and devices rather
 than creating a process-local cache with inconsistent values.
 
+Snapshot-first loading is one part of a broader state-domain separation. The
+same reasoning now applies to recovery material, record catalogs, exact-record
+reads, stored history, explicit verification, and mutations. The change was
+prompted by live timeouts after reliability hardening made a complete
+`load_data()` operation necessarily more expensive. Safebox Web must not let an
+unrelated page consume a worker with proof reconstruction merely because a
+fully loaded Acorn is convenient to inject.
+
+The target boundaries and their relay-backed source-of-truth constraints are
+defined in
+[Acorn Load Boundaries and Relay-Backed Read Models](https://github.com/trbouma/safebox-acorn/blob/main/docs/LOAD-BOUNDARIES-AND-READ-MODELS.md).
+
 ## Known concurrency gaps
 
 ### Duplicate LNURL callbacks

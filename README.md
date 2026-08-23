@@ -11,6 +11,11 @@ The browser interface follows a documented
 Application and wallet logic remains in FastAPI and Acorn; browser JavaScript
 is limited to progressive presentation behavior and narrowly scoped device
 input such as QR acquisition.
+That architecture now also applies explicit resource-scoped loading: recovery,
+snapshots, record navigation, verification, and mutation request only the Acorn
+state they require. The rationale and incidents prompting this separation are
+captured in the hypermedia note and in Acorn's
+[Load Boundaries and Relay-Backed Read Models](https://github.com/trbouma/safebox-acorn/blob/main/docs/LOAD-BOUNDARIES-AND-READ-MODELS.md).
 
 Informational fiat estimates use a database-backed cache refreshed by the
 singleton worker; web requests do not contact the external rate provider. See
@@ -764,6 +769,10 @@ proxy is still required for browser access through Docker.
 For a tested deployment where Nginx and Safebox Web run on separate Tailscale
 machines, including the negative and positive transport checks, see
 [Tailscale Reverse-Proxy Deployment](docs/TAILSCALE-REVERSE-PROXY-DEPLOYMENT.md).
+That guide also records an intermittent timeout incident caused by publishing
+the Docker port on a specific Tailscale address. For a VPN-contained upstream,
+`SAFEBOX_BIND_ADDRESS=0.0.0.0` proved more reliable; repeated private TCP and
+`/health` checks should pass before application or relay latency is diagnosed.
 
 Future handle-specific `did:web` hosting, including its wildcard DNS, TLS,
 isolated Nginx route, handle constraints, staged rollout, and rollback plan, is
