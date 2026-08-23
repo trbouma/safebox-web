@@ -3912,19 +3912,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: DatabaseSessionDependency,
     ) -> str:
         settings = request.app.state.settings
+        finalization_job = get_finalization_job(
+            request.app.state.database_engine,
+            acorn.pubkey_bech32,
+        )
+        finalization_running = bool(
+            finalization_job
+            and finalization_job.get("status") == "RUNNING"
+        )
         balance_snapshot = None
+        snapshot_read_failed = False
         try:
             balance_snapshot = await _read_balance_snapshot(
                 acorn,
-                settings.wallet_load_timeout_seconds,
+                settings.wallet_home_snapshot_timeout_seconds,
             )
         except Exception as exc:
+            snapshot_read_failed = True
             logger.warning(
                 "wallet balance snapshot unavailable error_type=%s",
                 type(exc).__name__,
             )
 
-        if balance_snapshot is None:
+        # A missing snapshot on an otherwise idle wallet is bootstrapped once
+        # from authoritative relay state. A slow/failed snapshot read, or a
+        # snapshot temporarily absent during finalization, must not turn the
+        # landing page into another long-running wallet operation.
+        if (
+            balance_snapshot is None
+            and not snapshot_read_failed
+            and not finalization_running
+        ):
             try:
                 await asyncio.wait_for(
                     acorn.load_data(),
@@ -4016,20 +4034,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             session_credentials is not None
             and session_credentials.deferred_acorn_mnemonic
         )
-        cash_snapshot = balance_snapshot.get("cash") or {}
-        wallet_balance = int(cash_snapshot.get("amount") or 0)
+        cash_snapshot = (
+            balance_snapshot.get("cash") or {}
+            if isinstance(balance_snapshot, dict)
+            else {}
+        )
+        wallet_balance_available = isinstance(balance_snapshot, dict)
+        wallet_balance = (
+            int(cash_snapshot.get("amount") or 0)
+            if wallet_balance_available
+            else None
+        )
         fiat_estimate = None
-        if settings.currency_rates_enabled:
+        if settings.currency_rates_enabled and wallet_balance is not None:
             fiat_estimate = currency_balance_estimate(
                 session,
                 sats=wallet_balance,
                 currency_code=settings.default_display_currency,
                 stale_seconds=settings.currency_rate_stale_seconds,
             )
-        clear_balances = balance_snapshot.get("clear") or []
+        clear_balances = (
+            balance_snapshot.get("clear") or []
+            if isinstance(balance_snapshot, dict)
+            else []
+        )
         clear_summary = await _resolve_clear_aliases(
             _clear_balance_summary([], clear_balances),
-            timeout=settings.wallet_load_timeout_seconds,
+            timeout=min(settings.wallet_home_snapshot_timeout_seconds, 1.0),
             configured_mints=settings.clear_mints,
             cache=request.app.state.clear_mint_metadata_cache,
         )
@@ -4058,6 +4089,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             silent_payment_qr=silent_payment_qr,
             retention_notice=_ecash_retention_notice(settings),
             wallet_balance=wallet_balance,
+            wallet_balance_available=wallet_balance_available,
+            wallet_balance_updating=finalization_running,
             fiat_estimate=fiat_estimate,
             clear_summary=clear_summary,
             onboard_invite_path="/invite",

@@ -65,7 +65,7 @@ from app.dependencies import (
     get_session_credentials,
 )
 from app.main import create_app
-from app.funds_finalization import get_finalization_job
+from app.funds_finalization import claim_finalization_job, get_finalization_job
 from app.clear_acceptance import get_clear_acceptance_job
 from app.security import (
     CsrfProtector,
@@ -2678,6 +2678,33 @@ def test_wallet_bootstraps_missing_balance_snapshot_from_authoritative_state(tmp
         clear_balances=acorn.clear_balances,
         verify=False,
     )
+
+
+def test_wallet_renders_without_full_load_when_snapshot_is_unavailable_during_finalization(
+    tmp_path,
+) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        wallet_home_snapshot_timeout_seconds=0.01,
+    )
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn(balance=777)
+    acorn.get_balance_snapshot = AsyncMock(side_effect=TimeoutError)
+    app.dependency_overrides[get_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        claimed, _owner_token, _job = claim_finalization_job(
+            app.state.database_engine,
+            acorn.pubkey_bech32,
+            worker_id=app.state.worker_id,
+        )
+        assert claimed is True
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "Updating…" in response.text
+    assert "Funds finalization is running in the background." in response.text
+    assert acorn.loaded is False
 
 
 def test_wallet_displays_cached_currency_estimate_without_mint_verification(tmp_path) -> None:
