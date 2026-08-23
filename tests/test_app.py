@@ -1204,8 +1204,42 @@ def test_quick_onboarding_error_stays_on_streamlined_page() -> None:
     assert "Welcome to Safebox" in response.text
     assert "form token is invalid or expired" in response.text
     assert 'action="/onboard/INVITEME"' in response.text
-    assert 'name="home_relay"' not in response.text
-    assert 'name="home_mint"' not in response.text
+    assert 'name="home_relay"' in response.text
+    assert 'name="home_mint"' in response.text
+    assert TEST_SETTINGS.default_bootstrap_relay in response.text
+    assert TEST_SETTINGS.default_home_mint in response.text
+
+
+def test_quick_onboarding_accepts_custom_home_relay_and_mint(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+    monkeypatch.setattr(
+        main_module,
+        "generate_seed_phrase_and_nsec",
+        lambda strength=128: (TEST_MNEMONIC, TEST_NSEC),
+    )
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/onboard/INVITEME",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "home_relay": "relay.known.example",
+                "home_mint": "mint.known.example/",
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    created = FakeCreatedAcorn.instances[0]
+    assert created.kwargs["home_relay"] == "wss://relay.known.example"
+    assert created.kwargs["relays"] == ["wss://relay.known.example"]
+    assert created.kwargs["mints"] == ["https://mint.known.example"]
 
 
 def test_quick_onboarding_passes_selected_24_word_mnemonic_strength(

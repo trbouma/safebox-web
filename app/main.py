@@ -3154,8 +3154,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         title="Welcome to Safebox",
                         csrf_token=form_token.issue(),
                         onboard_path=_onboard_path(settings),
-                        default_relay=settings.default_bootstrap_relay,
-                        default_mint=settings.default_home_mint,
+                        default_relay=(
+                            str(home_relay).strip()
+                            or settings.default_bootstrap_relay
+                        ),
+                        default_mint=(
+                            str(home_mint).strip()
+                            or settings.default_home_mint
+                        ),
                         mnemonic_words=mnemonic_words,
                         error=message,
                     ),
@@ -3377,6 +3383,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         csrf_token: str = Form(...),
         mnemonic_words: str = Form("24"),
+        home_relay: str = Form(""),
+        home_mint: str = Form(""),
     ):
         """Accept legacy onboarding posts through the configured invite code."""
 
@@ -3386,6 +3394,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             invite_code=settings.onboard_invite_code,
             csrf_token=csrf_token,
             mnemonic_words=mnemonic_words,
+            home_relay=home_relay,
+            home_mint=home_mint,
         )
 
     @app.post("/onboard/{invite_code}", response_class=HTMLResponse)
@@ -3394,6 +3404,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         invite_code: str,
         csrf_token: str = Form(...),
         mnemonic_words: str = Form("24"),
+        home_relay: str = Form(""),
+        home_mint: str = Form(""),
     ):
         """Create an Acorn using server-selected onboarding defaults."""
 
@@ -3402,11 +3414,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if canonical_invite_code is None:
             return HTMLResponse("Invite code not found.", status_code=404)
         request.state.streamlined_onboarding = True
+        selected_relay = (
+            str(home_relay).strip() or settings.default_bootstrap_relay
+        )
+        selected_mint = str(home_mint).strip() or settings.default_home_mint
         return await create_acorn(
             request=request,
             csrf_token=csrf_token,
-            home_relay=settings.default_bootstrap_relay,
-            home_mint=settings.default_home_mint,
+            home_relay=selected_relay,
+            home_mint=selected_mint,
             mnemonic_words=mnemonic_words,
             use_external_entropy=None,
             entropy_hex="",

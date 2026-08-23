@@ -12,6 +12,19 @@ as its relay state and default handle have been verified.</p>
       <option value="24"{% if mnemonic_words | default('24') == '24' %} selected{% endif %}>24 words</option>
       <option value="12"{% if mnemonic_words | default('24') == '12' %} selected{% endif %}>12 words</option>
     </select>
+    <details>
+      <summary>Use a different relay or mint</summary>
+      <p>Leave these defaults unchanged for ordinary onboarding, or specify
+      infrastructure you want this Acorn to use.</p>
+      <label for="onboard-home-relay">Home relay</label>
+      <input id="onboard-home-relay" name="home_relay" type="text"
+             value="{{ default_relay }}" required spellcheck="false"
+             autocapitalize="none">
+      <label for="onboard-home-mint">Home mint</label>
+      <input id="onboard-home-mint" name="home_mint" type="text"
+             value="{{ default_mint }}" required spellcheck="false"
+             autocapitalize="none">
+    </details>
     <p>By selecting <strong>Create My Acorn</strong>, I agree to create a new
     Acorn and complete its recovery backup later.</p>
     <button type="submit" data-progress-label="Creating your Acorn…">Create My Acorn</button>
@@ -20,8 +33,9 @@ as its relay state and default handle have been verified.</p>
 </section>
 
 <aside class="onboard-advisory">
-  <p>Safebox uses the selected 12- or 24-word recovery mnemonic, defers the backup ceremony, and
-  assigns a public handle derived from the Acorn public key. The mnemonic is
+  <p>Safebox uses the selected 12- or 24-word recovery mnemonic and selected
+  home relay and mint, defers the backup ceremony, and assigns a public handle
+  derived from the Acorn public key. The mnemonic is
   temporarily held in this browser's encrypted session. Complete the recovery
   backup before the session expires or is cleared. The handle can be changed
   or removed later, and Protected Records can be enabled when needed.</p>
