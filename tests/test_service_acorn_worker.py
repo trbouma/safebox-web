@@ -90,6 +90,94 @@ def test_retire_recovers_then_sweeps_and_burns(tmp_path, monkeypatch) -> None:
     assert not state_path.exists()
 
 
+def test_fund_worker_deposits_and_persists_operating_reserve(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    state_path = tmp_path / "service-acorn.json"
+    state_path.write_text("recovery", encoding="utf-8")
+    calls: list[tuple] = []
+
+    class FakeQr:
+        def add_data(self, invoice):
+            calls.append(("qr-data", invoice))
+
+        def make(self, *, fit):
+            calls.append(("qr-make", fit))
+
+        def print_ascii(self):
+            calls.append(("qr-print",))
+
+    class FundingAcorn:
+        home_mint = "https://mint.example.com"
+
+        def deposit(self, amount, mint):
+            calls.append(("deposit", amount, mint))
+            return SimpleNamespace(quote="quote-123", invoice="lnbc123")
+
+        async def check_quote(self, *, quote, amount, mint):
+            calls.append(("check", quote, amount, mint))
+            return True, "lnbc123"
+
+        async def add_tx_history(self, **kwargs):
+            calls.append(("history", kwargs))
+
+        def get_balance(self):
+            return 121
+
+    runtime = SimpleNamespace(acorn=FundingAcorn(), state_path=state_path)
+
+    async def fake_start(settings):
+        calls.append(("start", settings))
+        return runtime
+
+    monkeypatch.setattr(worker_module, "start_service_acorn", fake_start)
+    monkeypatch.setattr(worker_module.qrcode, "QRCode", FakeQr)
+    settings = worker_settings(tmp_path)
+
+    result = asyncio.run(worker_module.fund_worker(settings, 21))
+
+    assert result == {
+        "status": "CONFIRMED",
+        "amount": 21,
+        "balance": 121,
+        "mint": "https://mint.example.com",
+    }
+    assert ("deposit", 21, "https://mint.example.com") in calls
+    assert ("check", "quote-123", 21, "https://mint.example.com") in calls
+    assert (
+        "history",
+        {
+            "tx_type": "C",
+            "amount": 21,
+            "comment": "service Acorn operating reserve deposit",
+        },
+    ) in calls
+    assert ("qr-data", "lnbc123") in calls
+    assert "Waiting for payment confirmation" in capsys.readouterr().out
+
+
+def test_fund_worker_rejects_non_positive_amount(tmp_path) -> None:
+    with pytest.raises(ValueError, match="greater than zero"):
+        asyncio.run(worker_module.fund_worker(worker_settings(tmp_path), 0))
+
+
+def test_fund_worker_requires_existing_recovery_state(tmp_path) -> None:
+    with pytest.raises(RuntimeError, match="Start the worker once"):
+        asyncio.run(worker_module.fund_worker(worker_settings(tmp_path), 21))
+
+
+def test_worker_parser_accepts_fund_command_and_mint_override() -> None:
+    args = worker_module._parser().parse_args(
+        ["fund", "100", "--mint", "https://mint.example.com"]
+    )
+
+    assert args.command == "fund"
+    assert args.amount == 100
+    assert args.mint == "https://mint.example.com"
+
+
 def test_worker_requires_explicit_enablement(tmp_path) -> None:
     settings = worker_settings(tmp_path, service_acorn_enabled=False)
     with pytest.raises(RuntimeError, match="SAFEBOX_SERVICE_ACORN_ENABLED=true"):

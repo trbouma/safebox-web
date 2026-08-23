@@ -306,6 +306,22 @@ Follow only the provider worker:
 docker compose logs --follow service-acorn-worker
 ```
 
+Fund the service Acorn's mint-fee operating reserve while the singleton worker
+is stopped:
+
+```sh
+docker compose stop service-acorn-worker
+docker compose run --rm service-acorn-worker \
+  python -m app.service_acorn_worker fund 100
+docker compose up -d service-acorn-worker
+```
+
+Do not run the funding command concurrently with the normal worker. The
+command uses the configured recovery state file and home mint without exposing
+the service private key. See
+[Service Acorn Lifecycle](SERVICE-ACORN-LIFECYCLE.md#funding-the-operating-reserve)
+for fee behavior, timeout recovery, and reserve ownership.
+
 Stop both roles:
 
 ```sh

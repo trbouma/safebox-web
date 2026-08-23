@@ -9,6 +9,7 @@ import signal
 from typing import Sequence
 
 from acorn import Acorn
+import qrcode
 
 from app.config import ServiceAcornSettings
 from app.currency_rates import refresh_currency_rates
@@ -181,17 +182,103 @@ async def retire_worker(settings: ServiceAcornSettings) -> dict:
     return await stop_service_acorn(runtime, settings)
 
 
+async def fund_worker(
+    settings: ServiceAcornSettings,
+    amount: int,
+    *,
+    mint: str | None = None,
+    poll_interval_seconds: float = 3.0,
+) -> dict:
+    """Fund the persisted service Acorn without exposing its private key."""
+
+    _require_enabled(settings)
+    if amount <= 0:
+        raise ValueError("Service Acorn funding amount must be greater than zero")
+    if not service_acorn_state_path(settings).is_file():
+        raise RuntimeError(
+            "No service Acorn recovery state exists. Start the worker once "
+            "before funding it."
+        )
+
+    runtime = await start_service_acorn(settings)
+    effective_mint = mint or runtime.acorn.home_mint
+    quote = await asyncio.to_thread(
+        runtime.acorn.deposit,
+        amount,
+        effective_mint,
+    )
+
+    print(f"Service Acorn funding amount: {amount} sats", flush=True)
+    print(f"Mint: {effective_mint}", flush=True)
+    print(f"Quote: {quote.quote}", flush=True)
+    print(f"Invoice:\n{quote.invoice}\n", flush=True)
+    qr = qrcode.QRCode()
+    qr.add_data(quote.invoice)
+    qr.make(fit=True)
+    qr.print_ascii()
+    print(
+        "Waiting for payment confirmation. Keep this command running...",
+        flush=True,
+    )
+
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + settings.payment_timeout_seconds
+    while True:
+        paid, _ = await runtime.acorn.check_quote(
+            quote=quote.quote,
+            amount=amount,
+            mint=effective_mint,
+        )
+        if paid:
+            await runtime.acorn.add_tx_history(
+                tx_type="C",
+                amount=amount,
+                comment="service Acorn operating reserve deposit",
+            )
+            balance = int(runtime.acorn.get_balance())
+            logger.info(
+                "service Acorn funding confirmed amount=%s balance=%s mint=%s",
+                amount,
+                balance,
+                effective_mint,
+            )
+            return {
+                "status": "CONFIRMED",
+                "amount": amount,
+                "balance": balance,
+                "mint": effective_mint,
+            }
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            raise RuntimeError(
+                "Service Acorn funding was not confirmed before timeout. "
+                f"Preserve quote {quote.quote} and inspect the wallet before "
+                "requesting another invoice."
+            )
+        await asyncio.sleep(min(poll_interval_seconds, remaining))
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="safebox-service-acorn",
-        description="Run or explicitly retire the singleton Safebox service Acorn.",
+        description=(
+            "Run, fund, or explicitly retire the singleton Safebox service Acorn."
+        ),
     )
-    parser.add_argument(
-        "command",
-        choices=("run", "retire"),
-        nargs="?",
-        default="run",
+    commands = parser.add_subparsers(dest="command")
+    commands.add_parser("run", help="run the singleton provider worker")
+    commands.add_parser("retire", help="sweep and burn the service Acorn")
+    fund_parser = commands.add_parser(
+        "fund",
+        help="deposit an operating reserve into the service Acorn",
     )
+    fund_parser.add_argument("amount", type=int, help="reserve amount in sats")
+    fund_parser.add_argument(
+        "--mint",
+        default=None,
+        help="optional mint override; defaults to the service Acorn home mint",
+    )
+    parser.set_defaults(command="run")
     return parser
 
 
@@ -205,6 +292,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "retire":
             asyncio.run(retire_worker(settings))
+        elif args.command == "fund":
+            result = asyncio.run(fund_worker(settings, args.amount, mint=args.mint))
+            print(
+                "Service Acorn funding confirmed: "
+                f"{result['amount']} sats deposited; "
+                f"balance={result['balance']} sats",
+                flush=True,
+            )
         else:
             asyncio.run(run_worker(settings))
     except KeyboardInterrupt:

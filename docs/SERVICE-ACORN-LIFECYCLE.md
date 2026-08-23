@@ -60,6 +60,39 @@ Both Compose services use the same image with different commands. See the
 [Deployment Runbook](DEPLOYMENT.md) for the complete build, startup, logging,
 restart, volume, and retirement procedure.
 
+## Funding the operating reserve
+
+A mint may charge an input fee whenever the service Acorn swaps proofs to
+create a recipient token. A newly created service Acorn that receives exactly
+100 sats therefore may not be able to issue a full 100-sat token unless it
+already holds a small operating reserve in the same mint and keyset. The
+provider operator should fund that reserve before accepting production
+payments.
+
+Funding is an exclusive maintenance operation. Stop the normal singleton
+worker, run the funding command, pay the displayed invoice, and keep the
+command running until it reports confirmation:
+
+```sh
+docker compose stop service-acorn-worker
+docker compose run --rm service-acorn-worker \
+  python -m app.service_acorn_worker fund 100
+docker compose up -d service-acorn-worker
+```
+
+The command recovers the configured service Acorn from its owner-only state
+file, requests an invoice from its home mint, displays the invoice and a
+terminal QR code, waits for settlement, mints and persists the proofs through
+Acorn, and records the reserve deposit in transaction history. It never prints
+or copies the service `nsec`. Use `--mint https://mint.example` only when an
+explicit mint override is required.
+
+If confirmation times out, preserve the printed quote and inspect the service
+wallet before requesting another invoice. A paid quote whose relay writeback
+was delayed must be reconciled rather than paid twice. The reserve is operator
+working capital, not recipient funds, and should be monitored as mint fees
+consume it.
+
 On its first start the worker:
 
 1. generates a fresh seed phrase and `nsec` in memory;
