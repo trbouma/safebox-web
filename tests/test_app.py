@@ -3374,7 +3374,7 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "outgoing_payment_job",
         "web_worker_heartbeat",
     }.issubset(tables)
-    assert revision == ("20260824_0009",)
+    assert revision == ("20260824_0010",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -3457,6 +3457,8 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "payment_kind",
         "recipient",
         "amount",
+        "tendered_amount",
+        "tendered_currency",
         "status",
         "phase",
         "total_fees",
@@ -5615,6 +5617,106 @@ def test_confirmed_scanned_invoice_runs_as_background_job(monkeypatch, tmp_path)
     assert acorn.invoice_payments == [
         {"invoice": invoice, "comment": "pytest invoice"}
     ]
+
+
+def test_async_invoice_captures_preferred_currency_tender(monkeypatch, tmp_path) -> None:
+    invoice = "lnbc100u1pytestinvoice"
+    decoded = {
+        "invoice": invoice,
+        "amount": 10_000,
+        "description": "Coffee",
+        "expiry": "2026-08-06 23:59:00",
+        "payment_hash": "ab" * 32,
+    }
+    monkeypatch.setattr(main_module, "_decode_lightning_invoice", lambda value: decoded)
+    settings = replace(
+        database_settings(tmp_path),
+        currency_rates_enabled=True,
+    )
+
+    class TenderAcorn(FakeLoadedAcorn):
+        async def pay_multi_invoice(
+            self,
+            lninvoice: str,
+            comment: str,
+            tendered_amount: float | None = None,
+            tendered_currency: str = "SAT",
+        ):
+            self.invoice_payments.append(
+                {
+                    "invoice": lninvoice,
+                    "comment": comment,
+                    "tendered_amount": tendered_amount,
+                    "tendered_currency": tendered_currency,
+                }
+            )
+            return (
+                "Paid 10000 sats successfully!",
+                FakePaymentFees(1, mint_fees=1, lightning_fee_reserve=0),
+                "hash",
+                "preimage",
+                None,
+            )
+
+    app = create_app(settings)
+    acorn = TenderAcorn(balance=20_000)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    state_token = InvoicePaymentCipher(settings).encode(
+        InvoicePaymentState(invoice=invoice, amount=10_000)
+    )
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+        currency="CAD",
+    )
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        from app.models import CurrencyRate
+
+        with Session(app.state.database_engine) as session:
+            session.add(
+                CurrencyRate(
+                    currency_code="CAD",
+                    fiat_per_btc=140_000.0,
+                    currency_symbol="$",
+                    currency_description="Canadian dollar",
+                    source="https://rates.example/ticker",
+                    fetched_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                )
+            )
+            session.commit()
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            SessionCipher(settings).encode(credentials),
+            domain="safebox.example",
+            path="/",
+        )
+        client.post(
+            "/pay/invoice",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "invoice_state": state_token,
+                "comment": "local tender test",
+                "confirmed": "yes",
+            },
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_outgoing_payment_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
+
+    assert job is not None
+    assert job["tendered_amount"] == 14.0
+    assert job["tendered_currency"] == "CAD"
+    assert acorn.invoice_payments[-1]["tendered_amount"] == 14.0
+    assert acorn.invoice_payments[-1]["tendered_currency"] == "CAD"
 
 
 def test_receive_funds_form_displays_home_mint_and_amount_field() -> None:

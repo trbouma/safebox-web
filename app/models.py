@@ -179,6 +179,8 @@ class OutgoingPaymentJob(SQLModel, table=True):
     payment_kind: str = Field(nullable=False)
     recipient: str = Field(nullable=False)
     amount: int = Field(nullable=False)
+    tendered_amount: Optional[float] = Field(default=None, nullable=True)
+    tendered_currency: str = Field(default="SAT", nullable=False)
     status: str = Field(default="RUNNING", nullable=False, index=True)
     phase: str = Field(default="STARTING", nullable=False)
     total_fees: Optional[int] = Field(default=None, nullable=True)

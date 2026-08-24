@@ -194,6 +194,51 @@ def _session_display_preferences(
     return currency, language
 
 
+def _transaction_tender_snapshot(
+    request: Request,
+    sats: int,
+) -> tuple[float | None, str]:
+    """Capture a fresh preferred-currency value for immutable journal history."""
+
+    settings = request.app.state.settings
+    credentials = _optional_session_credentials(request, settings)
+    preferred_currency, _preferred_language = _session_display_preferences(
+        credentials,
+        settings,
+    )
+    if not settings.currency_rates_enabled:
+        return None, "SAT"
+    with Session(request.app.state.database_engine) as session:
+        estimate = currency_balance_estimate(
+            session,
+            sats=int(sats),
+            currency_code=preferred_currency,
+            stale_seconds=settings.currency_rate_stale_seconds,
+        )
+    if estimate is None or estimate.get("stale"):
+        return None, "SAT"
+    return round(float(estimate["amount"]), 2), preferred_currency
+
+
+def _supported_tender_kwargs(
+    method,
+    tendered_amount: float | None,
+    tendered_currency: str,
+) -> dict:
+    """Allow rolling deployment with an older Acorn component."""
+
+    try:
+        parameters = inspect.signature(method).parameters
+    except (TypeError, ValueError):
+        return {}
+    if "tendered_amount" not in parameters or "tendered_currency" not in parameters:
+        return {}
+    return {
+        "tendered_amount": tendered_amount,
+        "tendered_currency": tendered_currency,
+    }
+
+
 def _humanize_retention(seconds: int) -> str:
     """Present a configured retention period in an intuitive exact unit."""
 
@@ -2995,6 +3040,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         comment: str,
     ) -> RedirectResponse:
         npub = acorn.pubkey_bech32
+        tendered_amount, tendered_currency = _transaction_tender_snapshot(
+            request,
+            amount,
+        )
         cash_job = get_finalization_job(request.app.state.database_engine, npub)
         if cash_job and cash_job.get("status") == "RUNNING":
             return RedirectResponse("/transactions?finalization=running", status_code=303)
@@ -3007,6 +3056,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payment_kind=payment_kind,
             recipient=display_recipient,
             amount=amount,
+            tendered_amount=tendered_amount,
+            tendered_currency=tendered_currency,
             worker_id=request.app.state.worker_id,
         )
         if claimed:
@@ -3021,6 +3072,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     recipient=recipient,
                     amount=amount,
                     comment=comment,
+                    tendered_amount=tendered_amount,
+                    tendered_currency=tendered_currency,
                     load_timeout_seconds=(
                         request.app.state.settings.wallet_load_timeout_seconds
                     ),
@@ -5729,6 +5782,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 422,
             )
         if direct_recipient is not None:
+            tendered_amount, tendered_currency = _transaction_tender_snapshot(
+                request,
+                payment_amount,
+            )
             try:
                 delivery = await asyncio.wait_for(
                     acorn.send_ecash_transfer(
@@ -5736,6 +5793,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         recipient=direct_recipient["npub"],
                         relay=direct_recipient["relay"],
                         comment=payment_comment,
+                        **_supported_tender_kwargs(
+                            acorn.send_ecash_transfer,
+                            tendered_amount,
+                            tendered_currency,
+                        ),
                         **(
                             {"payment_mode": "continuity"}
                             if payment_mode == "continuity"

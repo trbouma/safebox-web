@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
+import inspect
 import logging
 import secrets
 from typing import Any, Callable
@@ -85,6 +86,25 @@ def _payment_error_code(
     return "payment_failed"
 
 
+def _tender_kwargs(
+    payment_method: Callable[..., Any],
+    tendered_amount: float | None,
+    tendered_currency: str,
+) -> dict[str, Any]:
+    """Pass tender metadata only to Acorn versions that support it."""
+
+    try:
+        parameters = inspect.signature(payment_method).parameters
+    except (TypeError, ValueError):
+        return {}
+    if "tendered_amount" not in parameters or "tendered_currency" not in parameters:
+        return {}
+    return {
+        "tendered_amount": tendered_amount,
+        "tendered_currency": str(tendered_currency or "SAT"),
+    }
+
+
 def _job_values(job: OutgoingPaymentJob | None) -> dict[str, Any] | None:
     if job is None:
         return None
@@ -92,6 +112,7 @@ def _job_values(job: OutgoingPaymentJob | None) -> dict[str, Any] | None:
         column: getattr(job, column)
         for column in (
             "npub", "status", "phase", "payment_kind", "recipient", "amount",
+            "tendered_amount", "tendered_currency",
             "total_fees", "mint_fees", "lightning_fee",
             "lightning_fee_reserve", "lightning_fee_return", "message", "error",
             "started_at", "updated_at", "lease_expires_at", "owner_worker_id",
@@ -128,6 +149,8 @@ def claim_outgoing_payment_job(
     payment_kind: str,
     recipient: str,
     amount: int,
+    tendered_amount: float | None = None,
+    tendered_currency: str = "SAT",
     worker_id: str | None = None,
 ) -> tuple[bool, str, dict[str, Any]]:
     now = utc_now()
@@ -140,6 +163,8 @@ def claim_outgoing_payment_job(
         payment_kind=payment_kind,
         recipient=recipient,
         amount=int(amount),
+        tendered_amount=tendered_amount,
+        tendered_currency=str(tendered_currency or "SAT"),
         status="RUNNING",
         phase="STARTING",
         total_fees=None,
@@ -223,6 +248,8 @@ async def run_outgoing_payment_job(
     recipient: str,
     amount: int,
     comment: str,
+    tendered_amount: float | None = None,
+    tendered_currency: str = "SAT",
 ) -> None:
     async def maintain_lease() -> None:
         while True:
@@ -242,12 +269,22 @@ async def run_outgoing_payment_job(
             message, fees, *_details = await acorn.pay_multi_invoice(
                 lninvoice=recipient,
                 comment=comment,
+                **_tender_kwargs(
+                    acorn.pay_multi_invoice,
+                    tendered_amount,
+                    tendered_currency,
+                ),
             )
         else:
             message, fees = await acorn.pay_multi(
                 amount=int(amount),
                 lnaddress=recipient,
                 comment=comment,
+                **_tender_kwargs(
+                    acorn.pay_multi,
+                    tendered_amount,
+                    tendered_currency,
+                ),
             )
         update_outgoing_payment_job(
             engine,
@@ -297,6 +334,8 @@ async def run_outgoing_payment_job(
                     tx_type="X",
                     amount=int(amount),
                     comment=str(comment or "").strip(),
+                    tendered_amount=tendered_amount,
+                    tendered_currency=tendered_currency,
                     fees=total_fees,
                     error_code=error_code,
                 )
@@ -335,6 +374,8 @@ def run_outgoing_payment_job_in_thread(
     recipient: str,
     amount: int,
     comment: str,
+    tendered_amount: float | None,
+    tendered_currency: str,
     load_timeout_seconds: float,
 ) -> None:
     async def execute() -> None:
@@ -344,6 +385,8 @@ def run_outgoing_payment_job_in_thread(
             engine=engine, acorn=acorn, npub=npub, owner_token=owner_token,
             payment_kind=payment_kind, recipient=recipient, amount=amount,
             comment=comment,
+            tendered_amount=tendered_amount,
+            tendered_currency=tendered_currency,
         )
 
     try:
