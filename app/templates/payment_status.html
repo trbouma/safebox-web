@@ -14,15 +14,18 @@
 {% if job.lightning_fee_return %}<p>Lightning Fee Returned: <strong>{{ "{:,}".format(job.lightning_fee_return) }} sats</strong></p>{% endif %}
 <p>Transfer Address: <code>{{ job.recipient }}</code></p>
 {% if job.message %}<p>{{ job.message }}</p>{% endif %}
+{% elif job.error and job.error.startswith("Not a valid Lightning address") %}
+<p class="error"><strong>{{ _("Not a valid Lightning address.") }}</strong></p>
+<p>{{ _("Check the address and try again.") }}</p>
 {% else %}
-<p class="error"><strong>The transfer needs review.</strong></p>
-<p>Do not retry blindly. Review transaction history and reconcile pending payments first.</p>
+<p class="error"><strong>{{ _("The transfer needs review.") }}</strong></p>
+<p>{{ _("Do not retry blindly. Review transaction history and reconcile pending payments first.") }}</p>
 {% if job.total_fees %}
 <p>Known Fees Consumed: <strong>{{ "{:,}".format(job.total_fees) }} sats</strong></p>
 {% if job.mint_fees is not none %}<p>Mint Fees: <strong>{{ "{:,}".format(job.mint_fees) }} sats</strong></p>{% endif %}
 {% if job.lightning_fee is not none %}<p>Lightning Fee: <strong>{{ "{:,}".format(job.lightning_fee) }} sats</strong></p>{% endif %}
 {% endif %}
-{% if job.error %}<p><strong>Reason:</strong> {{ job.error }}</p>{% endif %}
+{% if job.error %}<p><strong>{{ _("Reason") }}:</strong> {{ job.error }}</p>{% endif %}
 {% endif %}
 <nav class="page-navigation" aria-label="Page navigation">
   {% if job.status == "RUNNING" %}

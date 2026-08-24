@@ -725,6 +725,21 @@ def _transaction_history_view(entries: list[dict]) -> list[dict]:
         comment = comment.replace("ecash transfer received", "funds transfer received")
         comment = comment.replace("Ecash transfer received", "Funds transfer received")
         comment = comment.replace("Incoming ecash", "Incoming funds")
+        error_code = str(entry.get("error_code") or "").strip().lower()
+        error_message = {
+            "invalid_lightning_address": "Not a valid Lightning address.",
+            "payment_failed": "The transfer could not be completed.",
+            "payment_outcome_uncertain": (
+                "The transfer outcome is uncertain. Review pending payments before retrying."
+            ),
+            "mint_unavailable": "The mint is temporarily unavailable. Try again later.",
+            "stale_proofs": (
+                "The wallet proof state needs attention before another transfer."
+            ),
+            "insufficient_balance": (
+                "The available balance is not sufficient for this transfer."
+            ),
+        }.get(error_code)
         cards.append(
             {
                 "direction": direction,
@@ -736,6 +751,8 @@ def _transaction_history_view(entries: list[dict]) -> list[dict]:
                 "balance": balance,
                 "tender": tender,
                 "comment": comment,
+                "error_code": error_code,
+                "error_message": error_message,
             }
         )
     return cards
@@ -5827,17 +5844,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         acorn: AcornDependency,
     ) -> HTMLResponse:
+        settings = request.app.state.settings
         job = get_outgoing_payment_job(
             request.app.state.database_engine,
             acorn.pubkey_bech32,
         )
         if job is None:
             return RedirectResponse("/pay", status_code=303)
+        _preferred_currency, preferred_language = _session_display_preferences(
+            _optional_session_credentials(request, settings),
+            settings,
+        )
         return HTMLResponse(
             render_template(
                 "payment_status.html",
                 title="Balance Transfer",
                 job=job,
+                preferred_language=preferred_language,
             )
         )
 

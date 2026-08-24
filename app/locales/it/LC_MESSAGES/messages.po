@@ -87,3 +87,33 @@ msgstr "Saldo"
 
 msgid "Note"
 msgstr "Nota"
+
+msgid "Not a valid Lightning address."
+msgstr "L’indirizzo Lightning non è valido."
+
+msgid "Check the address and try again."
+msgstr "Controlla l’indirizzo e riprova."
+
+msgid "The transfer needs review."
+msgstr "Il trasferimento deve essere verificato."
+
+msgid "Do not retry blindly. Review transaction history and reconcile pending payments first."
+msgstr "Non riprovare senza verificare. Controlla prima la cronologia delle transazioni e riconcilia i pagamenti in sospeso."
+
+msgid "Reason"
+msgstr "Motivo"
+
+msgid "The transfer could not be completed."
+msgstr "Non è stato possibile completare il trasferimento."
+
+msgid "The transfer outcome is uncertain. Review pending payments before retrying."
+msgstr "L’esito del trasferimento è incerto. Controlla i pagamenti in sospeso prima di riprovare."
+
+msgid "The mint is temporarily unavailable. Try again later."
+msgstr "La mint non è temporaneamente disponibile. Riprova più tardi."
+
+msgid "The wallet proof state needs attention before another transfer."
+msgstr "Lo stato delle prove del portafoglio richiede attenzione prima di un altro trasferimento."
+
+msgid "The available balance is not sufficient for this transfer."
+msgstr "Il saldo disponibile non è sufficiente per questo trasferimento."

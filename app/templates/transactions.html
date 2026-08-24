@@ -79,6 +79,7 @@
       <div><dt>{{ _("Fees") }}</dt><dd>{{ entry.fees }} sats</dd></div>
       <div><dt>{{ _("Balance") }}</dt><dd>{{ entry.balance }} sats</dd></div>
     </dl>
+    {% if entry.error_message %}<p class="transaction-note"><strong>{{ _("Reason") }}:</strong> {{ _(entry.error_message) }}</p>{% endif %}
     {% if entry.comment %}<p class="transaction-note"><strong>{{ _("Note") }}:</strong> {{ entry.comment }}</p>{% endif %}
   </article>
   {% endfor %}

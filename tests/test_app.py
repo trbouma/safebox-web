@@ -3937,6 +3937,13 @@ def test_transaction_history_localizes_presented_transaction_types(tmp_path) -> 
         transaction_history=[
             {"tx_type": "C", "amount": 21, "fees": 0},
             {"tx_type": "D", "amount": 5, "fees": 1},
+            {
+                "tx_type": "X",
+                "amount": 0,
+                "fees": 0,
+                "error_code": "invalid_lightning_address",
+                "comment": "typed by the user",
+            },
         ]
     )
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
@@ -3959,6 +3966,8 @@ def test_transaction_history_localizes_presented_transaction_types(tmp_path) -> 
     assert '<span class="transaction-kind">Débit</span>' in response.text
     assert "<dt>Frais</dt>" in response.text
     assert "<dt>Solde</dt>" in response.text
+    assert "Adresse Lightning non valide." in response.text
+    assert "typed by the user" in response.text
 
 
 def test_transaction_history_displays_cached_currency_estimate(tmp_path) -> None:
@@ -6101,7 +6110,85 @@ def test_lightning_payment_failure_is_recorded_for_review(monkeypatch, tmp_path)
     assert len(acorn.payments) == 1
     assert acorn.history_entries[-1]["tx_type"] == "X"
     assert acorn.history_entries[-1]["fees"] == 2
-    assert "Funds transfer failed" in acorn.history_entries[-1]["comment"]
+    assert acorn.history_entries[-1]["comment"] == "lightning please"
+    assert acorn.history_entries[-1]["error_code"] == "payment_failed"
+
+
+def test_invalid_lightning_address_hides_component_exception(monkeypatch, tmp_path) -> None:
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            raise main_module.httpx.HTTPError("not found")
+
+    class InvalidAddressAcorn(FakeLoadedAcorn):
+        async def pay_multi(self, amount: int, lnaddress: str, comment: str):
+            raise RuntimeError(
+                "Payment was not submitted to the mint: "
+                "not enough values to unpack (expected 3, got 2)"
+            )
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(database_settings(tmp_path))
+    acorn = InvalidAddressAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            SessionCipher(app.state.settings).encode(
+                SessionCredentials(
+                    nsec=TEST_NSEC,
+                    bootstrap_relay="wss://relay.example.com",
+                    language="fr",
+                )
+            ),
+            domain="safebox.example",
+            path="/",
+        )
+        client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "lightning_address": "ordinary@example.com",
+                "amount": "21",
+                "comment": "invalid address test",
+                "confirmed": "yes",
+            },
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_outgoing_payment_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "FAILED":
+                break
+            time.sleep(0.01)
+        response = client.get("/pay/status")
+
+    assert response.status_code == 200
+    assert "Adresse Lightning non valide" in response.text
+    assert "Vérifiez l’adresse et réessayez" in response.text
+    assert "Not a valid Lightning address" not in response.text
+    assert "not enough values to unpack" not in response.text
+    assert "RuntimeError" not in response.text
+    assert "transfer needs review" not in response.text
+    assert job is not None
+    assert job["error"] == (
+        "Not a valid Lightning address. Check the address and try again."
+    )
+    assert "not enough values to unpack" not in acorn.history_entries[-1]["comment"]
+    assert acorn.history_entries[-1]["comment"] == "invalid address test"
+    assert acorn.history_entries[-1]["error_code"] == "invalid_lightning_address"
 
 
 def test_lightning_payment_stale_proofs_stops_for_review(monkeypatch, tmp_path) -> None:

@@ -87,3 +87,33 @@ msgstr "Guthaben"
 
 msgid "Note"
 msgstr "Notiz"
+
+msgid "Not a valid Lightning address."
+msgstr "Keine gültige Lightning-Adresse."
+
+msgid "Check the address and try again."
+msgstr "Überprüfen Sie die Adresse und versuchen Sie es erneut."
+
+msgid "The transfer needs review."
+msgstr "Die Übertragung muss überprüft werden."
+
+msgid "Do not retry blindly. Review transaction history and reconcile pending payments first."
+msgstr "Versuchen Sie es nicht ungeprüft erneut. Prüfen Sie zuerst den Transaktionsverlauf und klären Sie ausstehende Zahlungen."
+
+msgid "Reason"
+msgstr "Grund"
+
+msgid "The transfer could not be completed."
+msgstr "Die Übertragung konnte nicht abgeschlossen werden."
+
+msgid "The transfer outcome is uncertain. Review pending payments before retrying."
+msgstr "Das Ergebnis der Übertragung ist ungewiss. Prüfen Sie ausstehende Zahlungen, bevor Sie es erneut versuchen."
+
+msgid "The mint is temporarily unavailable. Try again later."
+msgstr "Die Mint ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut."
+
+msgid "The wallet proof state needs attention before another transfer."
+msgstr "Der Nachweisstatus der Wallet muss vor einer weiteren Übertragung geprüft werden."
+
+msgid "The available balance is not sufficient for this transfer."
+msgstr "Das verfügbare Guthaben reicht für diese Übertragung nicht aus."

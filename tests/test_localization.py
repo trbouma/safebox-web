@@ -118,3 +118,23 @@ def test_transaction_directions_are_localized(
 
     assert translations.gettext("Credit") == credit
     assert translations.gettext("Debit") == debit
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    (
+        ("fr", "Adresse Lightning non valide."),
+        ("es", "No es una dirección Lightning válida."),
+        ("pt", "Não é um endereço Lightning válido."),
+        ("de", "Keine gültige Lightning-Adresse."),
+        ("it", "L’indirizzo Lightning non è valido."),
+    ),
+)
+def test_invalid_lightning_address_error_is_localized(
+    language: str,
+    expected: str,
+) -> None:
+    assert (
+        translations_for(language).gettext("Not a valid Lightning address.")
+        == expected
+    )

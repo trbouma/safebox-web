@@ -21,6 +21,69 @@ logger = logging.getLogger("safebox_web.outgoing_payment")
 JOB_LEASE_SECONDS = 15 * 60
 JOB_HEARTBEAT_SECONDS = 30
 
+INVALID_LIGHTNING_ADDRESS_MESSAGE = (
+    "Not a valid Lightning address. Check the address and try again."
+)
+
+
+def _public_payment_error(exc: Exception, payment_kind: str) -> str:
+    """Hide component and protocol internals from payment status pages."""
+
+    detail = str(exc).strip() or type(exc).__name__
+    normalized = detail.lower()
+    invalid_address_markers = (
+        "not a valid lightning address",
+        "invalid lightning address",
+        "lightning address does not exist",
+        "lighting address does not exist",
+        "not enough values to unpack",
+    )
+    if payment_kind == "address" and any(
+        marker in normalized for marker in invalid_address_markers
+    ):
+        return INVALID_LIGHTNING_ADDRESS_MESSAGE
+    return f"{type(exc).__name__}: {detail}"
+
+
+def _payment_error_code(
+    exc: Exception,
+    payment_kind: str,
+    *,
+    outcome_uncertain: bool,
+) -> str:
+    """Return a stable journal code without persisting exception prose."""
+
+    detail = str(exc).strip().lower()
+    if payment_kind == "address" and any(
+        marker in detail
+        for marker in (
+            "not a valid lightning address",
+            "invalid lightning address",
+            "lightning address does not exist",
+            "lighting address does not exist",
+            "not enough values to unpack",
+        )
+    ):
+        return "invalid_lightning_address"
+    if outcome_uncertain:
+        return "payment_outcome_uncertain"
+    if "stale proof" in detail or "already spent" in detail:
+        return "stale_proofs"
+    if "insufficient balance" in detail or "exceeds the available balance" in detail:
+        return "insufficient_balance"
+    if any(
+        marker in detail
+        for marker in (
+            "mint is unavailable",
+            "mint unavailable",
+            "connecttimeout",
+            "connection refused",
+            "mint endpoint unreachable",
+        )
+    ):
+        return "mint_unavailable"
+    return "payment_failed"
+
 
 def _job_values(job: OutgoingPaymentJob | None) -> dict[str, Any] | None:
     if job is None:
@@ -214,33 +277,28 @@ async def run_outgoing_payment_job(
         lightning_fee_reserve = getattr(fees, "lightning_fee_reserve", None)
         lightning_fee_return = getattr(fees, "lightning_fee_return", None)
         error_text = str(exc).strip() or type(exc).__name__
+        public_error = _public_payment_error(exc, payment_kind)
         outcome_uncertain = (
             "unknown" in type(exc).__name__.lower()
             or "finalization" in type(exc).__name__.lower()
             or "unresolved" in error_text.lower()
             or "do not retry" in error_text.lower()
         )
+        error_code = _payment_error_code(
+            exc,
+            payment_kind,
+            outcome_uncertain=outcome_uncertain,
+        )
         history_recorded = bool(getattr(exc, "history_recorded", False))
         history_error = None
         if not history_recorded:
-            history_comment = (
-                "Funds transfer requires review"
-                if outcome_uncertain
-                else "Funds transfer failed"
-            )
-            if comment:
-                history_comment += f": {comment}"
-            history_comment += f". {error_text}"
-            if total_fees:
-                history_comment += (
-                    f" Known fees consumed before the failure: {total_fees} sats."
-                )
             try:
                 await acorn.add_tx_history(
                     tx_type="X",
                     amount=int(amount),
-                    comment=history_comment,
+                    comment=str(comment or "").strip(),
                     fees=total_fees,
+                    error_code=error_code,
                 )
             except Exception as history_exc:
                 history_error = type(history_exc).__name__
@@ -249,7 +307,7 @@ async def run_outgoing_payment_job(
                     npub,
                 )
         if history_error:
-            error_text += (
+            public_error += (
                 " Transaction history could not be updated; review the "
                 f"relay-backed payment journal ({history_error})."
             )
@@ -260,7 +318,7 @@ async def run_outgoing_payment_job(
             lightning_fee=lightning_fee,
             lightning_fee_reserve=lightning_fee_reserve,
             lightning_fee_return=lightning_fee_return,
-            error=f"{type(exc).__name__}: {error_text}",
+            error=public_error,
         )
     finally:
         heartbeat.cancel()
