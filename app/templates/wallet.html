@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <p class="continuity-mode">{{ _("Connected Mode") }}</p>
-{% if preferences_updated %}<p role="status"><strong>Display preferences updated.</strong></p>{% endif %}
+{% if preferences_updated %}<p role="status"><strong>{{ _("Display preferences updated.") }}</strong></p>{% endif %}
 {% if lightning_lnurl %}
 <section class="wallet-address" aria-label="Transfer address">
   <div class="wallet-address-actions">

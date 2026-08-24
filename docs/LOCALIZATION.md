@@ -16,12 +16,13 @@ Disconnect pane's recovery warning and acknowledgement are also translated as
 complete messages. Other informational, recovery, security, payment, and error
 text remains English until it receives contextual review.
 
-The Inuktitut catalog contains only six provisional demonstration messages:
+The Inuktitut catalog contains only seven provisional demonstration messages:
 Safebox is Connected (`Safebox ᐊᑕᔪᖅ`), Home (`ᐱᒋᐊᕐᕕᒃ`),
 Preferences/options (`ᓇᓖᕌᕈᑏᑦ`), and Advisories/notices
 (`ᖃᐅᔨᒃᑲᐃᔾᔪᑏᑦ`), plus Manage Balances
 (`ᐊᒥᐊᒃᑯᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ`) and Manage Records
-(`ᑎᑎᖅᑲᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ`). The balance wording uses the attested financial
+(`ᑎᑎᖅᑲᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ`), and the display-preferences confirmation
+(`ᓇᓖᕌᕈᑏᑦ ᓄᑖᙳᖅᑎᑕᐅᔪᑦ.`). The balance wording uses the attested financial
 term `ᐊᒥᐊᒃᑯᑦ` for a remainder or balance; the records wording uses
 `ᑎᑎᖅᑲᑦ` for documents or records. Public Inuktitut-language sites and
 Canadian language resources informed these candidates, but a fluent speaker

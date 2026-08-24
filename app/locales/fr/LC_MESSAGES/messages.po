@@ -31,6 +31,9 @@ msgstr "Préférences"
 msgid "Advisories"
 msgstr "Avis"
 
+msgid "Display preferences updated."
+msgstr "Préférences d’affichage mises à jour."
+
 msgid "Disconnect"
 msgstr "Déconnecter"
 

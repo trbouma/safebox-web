@@ -35,6 +35,28 @@ def test_unsupported_languages_fall_back_to_english() -> None:
     assert translations_for("iu").gettext("Manage Records") == (
         "ᑎᑎᖅᑲᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ"
     )
+    assert translations_for("iu").gettext("Display preferences updated.") == (
+        "ᓇᓖᕌᕈᑏᑦ ᓄᑖᙳᖅᑎᑕᐅᔪᑦ."
+    )
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    (
+        ("en", "Display preferences updated."),
+        ("fr", "Préférences d’affichage mises à jour."),
+        ("es", "Preferencias de visualización actualizadas."),
+        ("pt", "Preferências de exibição atualizadas."),
+        ("de", "Anzeigeeinstellungen aktualisiert."),
+        ("it", "Preferenze di visualizzazione aggiornate."),
+        ("iu", "ᓇᓖᕌᕈᑏᑦ ᓄᑖᙳᖅᑎᑕᐅᔪᑦ."),
+    ),
+)
+def test_display_preferences_confirmation_is_localized(
+    language: str,
+    expected: str,
+) -> None:
+    assert translations_for(language).gettext("Display preferences updated.") == expected
 
 
 def test_template_renderer_injects_request_localization_without_shared_mutation() -> None:

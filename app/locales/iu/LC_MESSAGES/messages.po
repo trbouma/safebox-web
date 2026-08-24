@@ -27,3 +27,6 @@ msgstr "ᐊᒥᐊᒃᑯᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ"
 
 msgid "Manage Records"
 msgstr "ᑎᑎᖅᑲᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ"
+
+msgid "Display preferences updated."
+msgstr "ᓇᓖᕌᕈᑏᑦ ᓄᑖᙳᖅᑎᑕᐅᔪᑦ."
