@@ -93,6 +93,11 @@ This implementation intentionally provides:
 - QR-mediated record presentation for temporary viewing of a record, its
   Original Record, and Control History without an import action, with
   recipient **Done** and presenter **Stop Presenting** cleanup;
+- an explicit verification escalation model: routine presentation verification
+  uses a temporary view and durable QR evidence, while deep verification lets
+  an authorized verifier receive the exact record and apply its own native,
+  cryptographic, recognition, and policy checks without implying a control
+  transfer;
 - an on-demand, server-rendered OpenETR origin and control-history projection
   for Original Records;
 - receiver-created payment requests, currently finalized through Lightning
@@ -108,6 +113,11 @@ This implementation intentionally provides:
   ecash delivery;
 - a connected-wallet key-information page and redacted session API; and
 - explicit Acorn disconnection.
+
+The public site describes this escalation path as
+[Graduated Disclosure](website/graduated-disclosure.md), with the canonical
+policy model maintained by
+[OpenETR](https://trbouma.github.io/openetr/policy-briefs/graduated-disclosure/).
 
 It does **not** maintain user accounts, write attached-Acorn configuration, or
 store server-side user sessions. The wallet landing page loads lightweight,

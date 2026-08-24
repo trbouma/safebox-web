@@ -30,6 +30,56 @@ recovery. OpenETR remains responsible for object digests, origin and control
 events, graph traversal, structural verification, and verifier-policy output.
 Safebox Web presents the workflows and mediates the trusted execution boundary.
 
+## Presentation verification and deep verification
+
+The product should distinguish two verification levels explicitly.
+
+**Presentation verification** lets a holder display a record and present a QR
+code to a verifier. The verifier receives a temporary, read-only presentation
+of the record and its Control History, without an import action. The durable
+OpenETR link can be followed independently. This is the preferred path for
+routine inspection because it minimizes disclosure, retention, and workflow
+overhead.
+
+**Deep verification** lets the verifier receive the exact record into its own
+safekeeping and verification environment. The verifier can then calculate the
+digest locally, run native format validation, compare the artifact with signed
+OpenETR evidence, consult recognition inputs, retain evidence where authorized,
+and apply its own policy. This is appropriate when the consequence of relying
+on the record justifies possession and deeper analysis.
+
+The distinction is about verification depth, not legal effect:
+
+| Property | Presentation verification | Deep verification |
+| --- | --- | --- |
+| Exact artifact retained by verifier | No | Yes |
+| Human-readable record inspection | Yes | Yes |
+| Control History available | Yes | Yes |
+| Independent digest calculation | Optional through durable verifier | Yes, locally |
+| Native-format or domain validation | Limited | Yes |
+| Verifier applies its own recognition and policy | Yes | Yes, with the complete artifact |
+| Transfers control or ownership | No | No |
+
+Receiving a record copy must never be interpreted as an OpenETR control
+transfer. Control changes require their own authorized, signed control events.
+Likewise, presentation proves only what the displayed artifact and queried
+evidence support; it does not create a universal recognition claim.
+
+The two levels form an escalation path:
+
+```text
+present -> inspect -> follow durable evidence
+                    |
+                    +-> consequence warrants deeper review
+                        -> receive exact record
+                        -> verify independently
+```
+
+The canonical policy discussion is the OpenETR
+[Graduated Disclosure brief](https://trbouma.github.io/openetr/policy-briefs/graduated-disclosure/).
+The corresponding Safebox user-facing explanation is
+[Graduated Disclosure in Safebox Web](../website/graduated-disclosure.md).
+
 ## Product rationale: control graph, social graph, and funds
 
 Safebox is intended to operate at the conjunction of three portable

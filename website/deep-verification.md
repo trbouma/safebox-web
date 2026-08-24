@@ -51,6 +51,44 @@ Those are different questions:
 
 Safebox is designed so those questions stay legible.
 
+## Two levels of verification
+
+Safebox supports two complementary ways to verify a record. The appropriate
+level depends on the consequence of the decision being made.
+
+| Level | What the verifier receives | Best suited to |
+| --- | --- | --- |
+| **Presentation verification** | A temporary view of the record, its human-readable details, and its Control History, with a QR path to durable evidence | Quick inspection, routine checks, and situations where the verifier does not need to retain the record |
+| **Deep verification** | The exact record bytes for the verifier's own local process, together with the digest anchor and available signed evidence | Higher-consequence decisions, independent tooling, archival comparison, native-format validation, or policy review |
+
+Presentation verification is the ordinary interaction. The holder opens the
+record and presents a QR code. A verifier can inspect the record and follow its
+durable evidence without importing it into another Safebox. When the
+presentation ends, its temporary transfer object can be removed; the durable
+OpenETR evidence remains independently queryable.
+
+Deep verification is an intentional escalation. The record is shared with the
+verifier so the verifier can retain the exact artifact, calculate its digest,
+apply native format checks, query signed origin and control events, consult
+recognition sources, and apply its own policy. Receiving a copy for
+verification does **not** by itself transfer ownership or control. Any control
+transfer must be represented by the appropriate separately signed events.
+
+```text
+routine decision
+    -> present record and QR
+    -> inspect record and Control History
+
+higher-consequence decision
+    -> receive exact record
+    -> verify bytes, native proof, signed evidence, recognition, and policy
+```
+
+This makes verification proportional to risk. Safebox does not force every
+interaction into either blind trust or a heavyweight credential exchange.
+
+[Explore the Graduated Disclosure model](graduated-disclosure.md){ .md-button }
+
 ## The Uniform Digest Anchor
 
 When Acorn stores an Original Record, it preserves the exact artifact bytes and
