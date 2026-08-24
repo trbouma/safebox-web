@@ -2940,7 +2940,10 @@ def test_wallet_uses_currency_selected_in_encrypted_session(tmp_path) -> None:
     assert response.status_code == 200
     assert 'class="wallet-balance-amount">≈ $100.00 <span>CAD</span>' in response.text
     assert "Display preferences: <strong>CAD</strong>" in response.text
-    assert '<a href="/preferences">change preferences</a>' in response.text
+    assert '<a href="/preferences">Preferences</a>' in response.text
+    assert response.text.index("<summary>Advisories</summary>") < response.text.index(
+        '<a href="/preferences">Preferences</a>'
+    )
 
 
 def test_wallet_clear_snapshot_uses_friendly_cached_mint_metadata(tmp_path) -> None:

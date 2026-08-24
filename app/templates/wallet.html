@@ -129,8 +129,7 @@
       <p>Component public key: <code>{{ npub }}</code></p>
       <p>Bootstrap relay: <code>{{ home_relay }}</code></p>
       <p>Display preferences: <strong>{{ preferred_currency }}</strong> ·
-        <strong>{{ preferred_language }}</strong> —
-        <a href="/preferences">change preferences</a>.
+        <strong>{{ preferred_language }}</strong>.
       </p>
       {% if record_protection_available %}
       <p>Protected record mnemonic backup:
@@ -157,4 +156,7 @@
     {% endif %}
   </div>
 </details>
+<nav class="wallet-actions" aria-label="Display preferences">
+  <a href="/preferences">Preferences</a>
+</nav>
 {% endblock %}
