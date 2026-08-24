@@ -123,18 +123,13 @@ from app.security import (
 
 
 from app.templating import render_template
+from app.localization import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
 
 
 logger = logging.getLogger("safebox_web.security")
 BITCOIN_TXID_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
 RECORDS_PAGE_SIZE = 10
-SUPPORTED_SESSION_LANGUAGES = {
-    "en": "English",
-    "fr": "Français",
-    "es": "Español",
-    "pt": "Português",
-    "de": "Deutsch",
-}
+SUPPORTED_SESSION_LANGUAGES = SUPPORTED_LANGUAGES
 
 
 def _optional_session_credentials(
@@ -164,7 +159,7 @@ def _session_display_preferences(
         credentials.language
         if credentials is not None
         and credentials.language in SUPPORTED_SESSION_LANGUAGES
-        else "en"
+        else DEFAULT_LANGUAGE
     )
     return currency, language
 

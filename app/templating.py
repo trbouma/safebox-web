@@ -5,6 +5,8 @@ from typing import Any
 
 from fastapi.templating import Jinja2Templates
 
+from app.localization import DEFAULT_LANGUAGE, supported_language, translations_for
+
 
 TEMPLATE_DIRECTORY = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIRECTORY))
@@ -53,6 +55,15 @@ _PARENT_NAVIGATION = {
 def render_template(template_name: str, **context: Any) -> str:
     """Render a complete HTML representation without introducing browser state."""
 
+    language = supported_language(
+        context.get("language")
+        or context.get("preferred_language")
+        or DEFAULT_LANGUAGE
+    )
+    translations = translations_for(language)
+    context["language"] = language
+    context.setdefault("_", translations.gettext)
+    context.setdefault("ngettext", translations.ngettext)
     context.setdefault("show_page_navigation", template_name not in _MAIN_TEMPLATES)
     context.setdefault("repeat_page_navigation", template_name in _LONG_LIST_TEMPLATES)
     context.setdefault("home_url", "/")

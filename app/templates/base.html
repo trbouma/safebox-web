@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="{{ language }}" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,7 +15,7 @@
 </head>
 <body>
   {% include "partials/relationship.html" %}
-  <p id="page-progress" class="page-progress" role="status" aria-live="polite" hidden>Opening…</p>
+  <p id="page-progress" class="page-progress" role="status" aria-live="polite" hidden>{{ _("Opening…") }}</p>
   <main>
     <h1{% if headline_class %} class="{{ headline_class }}"{% endif %}>{{ title }}</h1>
     {% if show_page_navigation %}

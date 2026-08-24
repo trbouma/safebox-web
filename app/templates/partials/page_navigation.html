@@ -1,5 +1,5 @@
 <nav class="page-navigation{% if navigation_position == 'bottom' %} page-navigation-bottom{% endif %}"
-     aria-label="{% if navigation_position == 'bottom' %}End of page navigation{% else %}Page navigation{% endif %}">
-  <a class="nav-button" href="{{ home_url }}">Home</a>
-  {% if page_back_url %}<a class="nav-button" href="{{ page_back_url }}">{{ page_back_label }}</a>{% endif %}
+     aria-label="{% if navigation_position == 'bottom' %}{{ _('End of page navigation') }}{% else %}{{ _('Page navigation') }}{% endif %}">
+  <a class="nav-button" href="{{ home_url }}">{{ _("Home") }}</a>
+  {% if page_back_url %}<a class="nav-button" href="{{ page_back_url }}">{{ _(page_back_label) }}</a>{% endif %}
 </nav>
