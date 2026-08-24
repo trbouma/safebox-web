@@ -53,6 +53,7 @@ cover/
 
 # Translations
 *.mo
+!app/locales/**/messages.mo
 *.pot
 
 # Django stuff:

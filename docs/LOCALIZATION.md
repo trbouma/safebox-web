@@ -7,7 +7,10 @@ and is supplied to the Jinja renderer for each representation.
 
 The initial supported preferences are English (`en`), French (`fr`), Spanish
 (`es`), Portuguese (`pt`), and German (`de`). English remains the source and
-fallback language while translation catalogs are developed.
+fallback language while translation catalogs are developed. The first
+localized message is the connected-wallet heading, `Safebox is Connected`, so
+the selected preference is immediately visible without implying that the rest
+of the interface has already been translated.
 
 ## Runtime boundary
 
@@ -48,10 +51,12 @@ poetry run pybabel update -i messages.pot -d app/locales
 poetry run pybabel compile -d app/locales
 ```
 
-Compiled `.mo` files must be present in the deployed image. Translation review
-should cover buttons, headings, validation messages, advisories, plural forms,
-and mobile layouts. User-authored records, handles, keys, event identifiers,
-relay addresses, mint addresses, and exact protocol errors are not translated.
+Compiled `.mo` files are committed beside their editable `.po` sources so the
+existing Docker build includes them without installing Babel in the runtime
+image. Translation review should cover buttons, headings, validation messages,
+advisories, plural forms, and mobile layouts. User-authored records, handles,
+keys, event identifiers, relay addresses, mint addresses, and exact protocol
+errors are not translated.
 
 Currency and language remain independent preferences. Locale-aware formatting
 of dates, numbers, and fiat estimates can be introduced separately without

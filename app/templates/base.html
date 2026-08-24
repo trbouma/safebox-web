@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#151915">
-  <title>{{ title }} · Safebox</title>
+  <title>{{ _(title) }} · Safebox</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
@@ -17,7 +17,7 @@
   {% include "partials/relationship.html" %}
   <p id="page-progress" class="page-progress" role="status" aria-live="polite" hidden>{{ _("Opening…") }}</p>
   <main>
-    <h1{% if headline_class %} class="{{ headline_class }}"{% endif %}>{{ title }}</h1>
+    <h1{% if headline_class %} class="{{ headline_class }}"{% endif %}>{{ _(title) }}</h1>
     {% if show_page_navigation %}
       {% set navigation_position = "top" %}
       {% include "partials/page_navigation.html" %}

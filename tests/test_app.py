@@ -1887,6 +1887,45 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert response.text.index("Disconnect") < response.text.index("Advisories")
 
 
+@pytest.mark.parametrize(
+    ("language", "translated_title"),
+    (
+        ("en", "Safebox is Connected"),
+        ("fr", "Safebox est connecté"),
+        ("es", "Safebox está conectado"),
+        ("pt", "Safebox está conectado"),
+        ("de", "Safebox ist verbunden"),
+    ),
+)
+def test_wallet_connected_heading_uses_session_language(
+    tmp_path,
+    language: str,
+    translated_title: str,
+) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    fake = FakeLoadedAcorn()
+    app.dependency_overrides[get_acorn] = lambda: fake
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+        language=language,
+    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            SessionCipher(settings).encode(credentials),
+            domain="safebox.example",
+            path="/",
+        )
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert f'<html lang="{language}" data-theme="dark">' in response.text
+    assert f'<title>{translated_title} · Safebox</title>' in response.text
+    assert f'<h1 class="wallet-headline">{translated_title}</h1>' in response.text
+
+
 def test_manage_balances_is_the_parent_for_balance_actions(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
