@@ -128,6 +128,19 @@ from app.localization import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
 
 logger = logging.getLogger("safebox_web.security")
 BITCOIN_TXID_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
+
+
+def _payment_fee_breakdown(fees: object) -> dict[str, int | None]:
+    """Extract Acorn's optional structured fee details without parsing text."""
+
+    mint_fees = getattr(fees, "mint_fees", None)
+    lightning_fee_reserve = getattr(fees, "lightning_fee_reserve", None)
+    if mint_fees is None or lightning_fee_reserve is None:
+        return {"mint_fees": None, "lightning_fee_reserve": None}
+    return {
+        "mint_fees": int(mint_fees),
+        "lightning_fee_reserve": int(lightning_fee_reserve),
+    }
 RECORDS_PAGE_SIZE = 10
 SUPPORTED_SESSION_LANGUAGES = SUPPORTED_LANGUAGES
 
@@ -5264,8 +5277,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             title="Invoice payment successful",
             amount=f"{state.amount:,}",
             fees=f"{int(fees):,}",
+            **_payment_fee_breakdown(fees),
             recipient="Lightning invoice",
-            message=str(message),
+            message=str(message).splitlines()[0],
         )
 
     @app.get("/pay", response_class=HTMLResponse)
@@ -5795,8 +5809,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             title="Balance transferred",
             amount=f"{payment_amount:,}",
             fees=f"{int(fees):,}",
+            **_payment_fee_breakdown(fees),
             recipient=recipient,
-            message=str(message),
+            message=str(message).splitlines()[0],
         )
 
     @app.get("/transactions", response_class=HTMLResponse)

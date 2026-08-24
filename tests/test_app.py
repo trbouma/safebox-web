@@ -144,6 +144,20 @@ def database_settings(tmp_path) -> Settings:
     )
 
 
+class FakePaymentFees(int):
+    def __new__(
+        cls,
+        total: int,
+        *,
+        mint_fees: int,
+        lightning_fee_reserve: int,
+    ):
+        instance = super().__new__(cls, total)
+        instance.mint_fees = mint_fees
+        instance.lightning_fee_reserve = lightning_fee_reserve
+        return instance
+
+
 class FakeLoadedAcorn:
     pubkey_bech32 = (
         "npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d"
@@ -511,7 +525,11 @@ class FakeLoadedAcorn:
             {"amount": amount, "lnaddress": lnaddress, "comment": comment}
         )
         self.balance -= amount + 1
-        return f"Payment of {amount} sats successful!", 1
+        return f"Payment of {amount} sats successful!", FakePaymentFees(
+            1,
+            mint_fees=1,
+            lightning_fee_reserve=0,
+        )
 
     async def send_ecash_transfer(
         self,
@@ -557,7 +575,13 @@ class FakeLoadedAcorn:
             {"invoice": lninvoice, "comment": comment}
         )
         self.balance -= 22
-        return "Paid 21 sats with fees 1 sats successful!", 1, "hash", "preimage", None
+        return (
+            "Paid 21 sats with fees 1 sats successful!",
+            FakePaymentFees(1, mint_fees=1, lightning_fee_reserve=0),
+            "hash",
+            "preimage",
+            None,
+        )
 
     def deposit(self, amount: int):
         self.deposit_calls.append(amount)
@@ -5498,6 +5522,9 @@ def test_confirmed_scanned_invoice_delegates_to_acorn(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert "Invoice payment successful" in response.text
+    assert "Total Fees: <strong>1 sats" in response.text
+    assert "Mint Fees: <strong>1 sats" in response.text
+    assert "Lightning Fee Reserve: <strong>0 sats" in response.text
     assert acorn.invoice_payments == [
         {"invoice": invoice, "comment": "pytest invoice"}
     ]
@@ -5690,7 +5717,9 @@ def test_confirmed_lightning_payment_delegates_to_acorn() -> None:
     assert response.status_code == 200
     assert "Balance transferred" in response.text
     assert "21 sats" in response.text
-    assert "Fee: <strong>1 sat" in response.text
+    assert "Total Fees: <strong>1 sats" in response.text
+    assert "Mint Fees: <strong>1 sats" in response.text
+    assert "Lightning Fee Reserve: <strong>0 sats" in response.text
     assert acorn.payments == [
         {
             "amount": 21,
@@ -5751,7 +5780,8 @@ def test_safebox_lightning_address_prefers_direct_ecash_transfer(
     assert response.status_code == 200
     assert "Balance transferred" in response.text
     assert "Direct Safebox funds transfer sent" in response.text
-    assert "Fee: <strong>0 sats" in response.text
+    assert "Total Fees: <strong>0 sats" in response.text
+    assert "Mint Fees:" not in response.text
     assert acorn.payments == []
     assert acorn.ecash_transfers == [
         {

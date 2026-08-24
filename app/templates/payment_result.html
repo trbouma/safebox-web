@@ -1,7 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <p>Transferred: <strong>{{ amount }} {{ unit | default("sats", true) }}</strong></p>
-<p>Fee: <strong>{{ fees }} {{ unit | default("sats", true) }}</strong></p>
+<p>Total Fees: <strong>{{ fees }} {{ unit | default("sats", true) }}</strong></p>
+{% if mint_fees is defined and mint_fees is not none %}
+<p>Mint Fees: <strong>{{ "{:,}".format(mint_fees) }} sats</strong></p>
+<p>Lightning Fee Reserve: <strong>{{ "{:,}".format(lightning_fee_reserve) }} sats</strong></p>
+<p class="advisory-note">The Lightning amount is the fee reserve reported by the mint. It may not be the final routing fee.</p>
+{% endif %}
 <p>Transfer Address: <code>{{ recipient }}</code></p>
 <p>{{ message }}</p>
 <p>Do not refresh this result page.</p>
