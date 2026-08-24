@@ -7,10 +7,11 @@ and is supplied to the Jinja renderer for each representation.
 
 The initial supported preferences are English (`en`), French (`fr`), Spanish
 (`es`), Portuguese (`pt`), and German (`de`). English remains the source and
-fallback language while translation catalogs are developed. The first
-localized message is the connected-wallet heading, `Safebox is Connected`, so
-the selected preference is immediately visible without implying that the rest
-of the interface has already been translated.
+fallback language while translation catalogs are developed. The initial
+localized surface is deliberately limited to the connected-wallet heading and
+short, stable controls: mode, balance headings, primary resource actions,
+Preferences, Advisories, and Disconnect. Informational, recovery, security,
+payment, and error text remains English until it receives contextual review.
 
 ## Runtime boundary
 

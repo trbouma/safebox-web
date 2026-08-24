@@ -1888,19 +1888,85 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
 
 
 @pytest.mark.parametrize(
-    ("language", "translated_title"),
+    ("language", "translated_title", "translated_labels"),
     (
-        ("en", "Safebox is Connected"),
-        ("fr", "Safebox est connecté"),
-        ("es", "Safebox está conectado"),
-        ("pt", "Safebox está conectado"),
-        ("de", "Safebox ist verbunden"),
+        (
+            "en",
+            "Safebox is Connected",
+            (
+                "Connected Mode",
+                "Cash Balance",
+                "Clear Balances",
+                "Manage Balances",
+                "Manage Records",
+                "Preferences",
+                "Advisories",
+                "Disconnect",
+            ),
+        ),
+        (
+            "fr",
+            "Safebox est connecté",
+            (
+                "Mode connecté",
+                "Solde Cash",
+                "Soldes Clear",
+                "Gérer les soldes",
+                "Gérer les documents",
+                "Préférences",
+                "Avis",
+                "Déconnecter",
+            ),
+        ),
+        (
+            "es",
+            "Safebox está conectado",
+            (
+                "Modo conectado",
+                "Saldo Cash",
+                "Saldos Clear",
+                "Gestionar saldos",
+                "Gestionar registros",
+                "Preferencias",
+                "Avisos",
+                "Desconectar",
+            ),
+        ),
+        (
+            "pt",
+            "Safebox está conectado",
+            (
+                "Modo conectado",
+                "Saldo Cash",
+                "Saldos Clear",
+                "Gerenciar saldos",
+                "Gerenciar registros",
+                "Preferências",
+                "Avisos",
+                "Desconectar",
+            ),
+        ),
+        (
+            "de",
+            "Safebox ist verbunden",
+            (
+                "Verbunden",
+                "Cash-Guthaben",
+                "Clear-Guthaben",
+                "Guthaben verwalten",
+                "Dokumente verwalten",
+                "Einstellungen",
+                "Hinweise",
+                "Trennen",
+            ),
+        ),
     ),
 )
 def test_wallet_connected_heading_uses_session_language(
     tmp_path,
     language: str,
     translated_title: str,
+    translated_labels: tuple[str, ...],
 ) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
@@ -1924,6 +1990,8 @@ def test_wallet_connected_heading_uses_session_language(
     assert f'<html lang="{language}" data-theme="dark">' in response.text
     assert f'<title>{translated_title} · Safebox</title>' in response.text
     assert f'<h1 class="wallet-headline">{translated_title}</h1>' in response.text
+    for translated_label in translated_labels:
+        assert translated_label in response.text
 
 
 def test_manage_balances_is_the_parent_for_balance_actions(tmp_path) -> None:

@@ -9,3 +9,27 @@ msgstr ""
 
 msgid "Safebox is Connected"
 msgstr "Safebox est connecté"
+
+msgid "Connected Mode"
+msgstr "Mode connecté"
+
+msgid "Cash Balance"
+msgstr "Solde Cash"
+
+msgid "Clear Balances"
+msgstr "Soldes Clear"
+
+msgid "Manage Balances"
+msgstr "Gérer les soldes"
+
+msgid "Manage Records"
+msgstr "Gérer les documents"
+
+msgid "Preferences"
+msgstr "Préférences"
+
+msgid "Advisories"
+msgstr "Avis"
+
+msgid "Disconnect"
+msgstr "Déconnecter"

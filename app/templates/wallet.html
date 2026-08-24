@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<p class="continuity-mode">Connected Mode</p>
+<p class="continuity-mode">{{ _("Connected Mode") }}</p>
 {% if preferences_updated %}<p role="status"><strong>Display preferences updated.</strong></p>{% endif %}
 {% if lightning_lnurl %}
 <section class="wallet-address" aria-label="Transfer address">
@@ -54,7 +54,7 @@
 </section>
 {% endif %}
 <a class="wallet-balance" href="/transactions" aria-labelledby="wallet-balance-heading">
-  <h2 id="wallet-balance-heading">Cash Balance</h2>
+  <h2 id="wallet-balance-heading">{{ _("Cash Balance") }}</h2>
   {% if not wallet_balance_available %}
   <p class="wallet-balance-amount">Updating…</p>
   <p class="wallet-balance-state">{% if wallet_balance_updating %}Funds finalization is running in the background.{% else %}The previously confirmed balance is temporarily unavailable.{% endif %}</p>
@@ -70,7 +70,7 @@
   {% endif %}
 </a>
 <a class="wallet-balance clear-balance" href="/clear" aria-labelledby="clear-balance-heading">
-  <h2 id="clear-balance-heading">Clear Balances</h2>
+  <h2 id="clear-balance-heading">{{ _("Clear Balances") }}</h2>
   {% if clear_summary.balance_count %}
   {% for balance in clear_summary.balances %}
   <p class="wallet-clear-balance"><strong>{{ balance.display_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance.display_unit }}. <span>{{ balance.unit }} · {{ balance.mint }}</span></p>
@@ -81,8 +81,8 @@
   <p class="wallet-balance-state">Previously confirmed balance. Click to receive and accept pending transactions.</p>
 </a>
 <nav class="wallet-actions" aria-label="Safebox resources">
-  <a href="/balances">Manage Balances</a>
-  <a href="/records">Manage Records</a>
+  <a href="/balances">{{ _("Manage Balances") }}</a>
+  <a href="/records">{{ _("Manage Records") }}</a>
 </nav>
 {% if silent_payment_address %}
 <details class="receive-payment-card silent-payment-card">
@@ -120,10 +120,10 @@
     <input name="confirmed" type="checkbox" value="yes" required>
     I have my recovery information and understand Safebox cannot restore it for me.
   </label>
-  <button type="submit">Disconnect</button>
+  <button type="submit">{{ _("Disconnect") }}</button>
 </form>
 <details class="general-advisories">
-  <summary>Advisories</summary>
+  <summary>{{ _("Advisories") }}</summary>
   <div class="general-advisories-content">
     <div class="wallet-details">
       <p>Component public key: <code>{{ npub }}</code></p>
@@ -157,6 +157,6 @@
   </div>
 </details>
 <nav class="wallet-actions" aria-label="Display preferences">
-  <a href="/preferences">Preferences</a>
+  <a href="/preferences">{{ _("Preferences") }}</a>
 </nav>
 {% endblock %}
