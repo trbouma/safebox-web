@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 import ipaddress
 import json
@@ -43,7 +43,7 @@ class SessionCredentials:
     record_protection_key: str | None = None
     record_protection_backup_confirmed: bool = False
     currency: str = "USD"
-    language: str = "EN"
+    language: str = "en"
     version: int = 1
 
 
@@ -197,9 +197,23 @@ class SessionCipher:
         ):
             raise ValueError("session cookie currency preference is invalid")
         if not isinstance(credentials.language, str) or not re.fullmatch(
-            r"[A-Z]{2,3}(?:-[A-Z0-9]{2,8})*", credentials.language
+            r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*", credentials.language
         ):
             raise ValueError("session cookie language preference is invalid")
+        language_parts = credentials.language.split("-")
+        canonical_language_parts = [language_parts[0].lower()]
+        for part in language_parts[1:]:
+            if len(part) == 4 and part.isalpha():
+                canonical_language_parts.append(part.title())
+            elif (len(part) == 2 and part.isalpha()) or (
+                len(part) == 3 and part.isdigit()
+            ):
+                canonical_language_parts.append(part.upper())
+            else:
+                canonical_language_parts.append(part.lower())
+        canonical_language = "-".join(canonical_language_parts)
+        if canonical_language != credentials.language:
+            credentials = replace(credentials, language=canonical_language)
         if (
             credentials.record_protection_backup_confirmed
             and credentials.record_protection_key is None

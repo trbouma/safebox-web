@@ -128,7 +128,13 @@ from app.templating import render_template
 logger = logging.getLogger("safebox_web.security")
 BITCOIN_TXID_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
 RECORDS_PAGE_SIZE = 10
-SUPPORTED_SESSION_LANGUAGES = ("EN",)
+SUPPORTED_SESSION_LANGUAGES = {
+    "en": "English",
+    "fr": "Français",
+    "es": "Español",
+    "pt": "Português",
+    "de": "Deutsch",
+}
 
 
 def _optional_session_credentials(
@@ -158,7 +164,7 @@ def _session_display_preferences(
         credentials.language
         if credentials is not None
         and credentials.language in SUPPORTED_SESSION_LANGUAGES
-        else "EN"
+        else "en"
     )
     return currency, language
 
@@ -3092,7 +3098,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     {"code": code, "description": descriptions.get(code)}
                     for code in settings.currency_rate_currencies
                 ],
-                language_options=SUPPORTED_SESSION_LANGUAGES,
+                language_options=[
+                    {"tag": tag, "label": label}
+                    for tag, label in SUPPORTED_SESSION_LANGUAGES.items()
+                ],
                 csrf_token=CsrfProtector(settings).issue(),
                 error=None,
             ),
@@ -3105,13 +3114,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         credentials: CredentialsDependency,
         csrf_token: str = Form(...),
         currency: str = Form(...),
-        language: str = Form("EN"),
+        language: str = Form("en"),
     ):
         """Replace the encrypted session with validated display preferences."""
 
         settings = request.app.state.settings
         normalized_currency = str(currency or "").strip().upper()
-        normalized_language = str(language or "").strip().upper()
+        normalized_language = str(language or "").strip().lower()
         current_currency, current_language = _session_display_preferences(
             credentials,
             settings,
@@ -3144,7 +3153,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         {"code": code, "description": None}
                         for code in settings.currency_rate_currencies
                     ],
-                    language_options=SUPPORTED_SESSION_LANGUAGES,
+                    language_options=[
+                        {"tag": tag, "label": label}
+                        for tag, label in SUPPORTED_SESSION_LANGUAGES.items()
+                    ],
                     csrf_token=CsrfProtector(settings).issue(),
                     error=error,
                 ),

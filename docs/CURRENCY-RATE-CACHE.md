@@ -105,11 +105,14 @@ The selection is stored only as the non-secret `currency` field in the
 encrypted, authenticated session cookie; it does not create a server-side user
 profile or alter the underlying sat balance.
 
-The same cookie carries a `language` preference, currently fixed to `EN`.
-Keeping this boundary explicit provides a forward-compatible localization
-setting without introducing browser-readable state or application database
-ownership of user preferences. Cookies issued before these fields existed
-decode with `USD` and `EN` defaults, subject to fallback to the operator's
-configured default when USD is not supported.
+The same cookie carries a canonical BCP 47 `language` preference. The initial
+choices are `en`, `fr`, `es`, `pt`, and `de`; the interface remains English
+until localized templates are introduced. Keeping this boundary explicit
+provides a forward-compatible localization setting without introducing
+browser-readable state or application database ownership of user preferences.
+Cookies issued before these fields existed decode with `USD` and `en` defaults,
+subject to fallback to the operator's configured default when USD is not
+supported. The earlier experimental `EN` value is normalized to `en` when its
+cookie is decoded and reissued.
 That preference should not be added to the public handle directory or treated
 as provider-owned wallet state.

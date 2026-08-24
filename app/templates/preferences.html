@@ -14,7 +14,7 @@ preferences are stored only inside this browser's encrypted Acorn session.</p>
   <label for="preference-language">Preferred language</label>
   <select id="preference-language" name="language" required>
     {% for option in language_options %}
-    <option value="{{ option }}"{% if option == language %} selected{% endif %}>{{ option }} — English</option>
+    <option value="{{ option.tag }}"{% if option.tag == language %} selected{% endif %}>{{ option.label }}</option>
     {% endfor %}
   </select>
   <button type="submit" data-progress-label="Saving preferences…">Save Preferences</button>
@@ -26,9 +26,9 @@ preferences are stored only inside this browser's encrypted Acorn session.</p>
     <p>Currency conversion is an informational estimate based on the most
     recently cached exchange rate. It does not change, denominate, or authorize
     the underlying balance.</p>
-    <p>English is currently the only interface language. The language field is
-    retained so future localization can follow the same user-controlled session
-    boundary without creating a server-side profile.</p>
+    <p>The language preference is saved now, but the interface remains in
+    English until localization is introduced. Keeping the preference in the
+    user-controlled session avoids creating a server-side profile.</p>
   </div>
 </details>
 {% endblock %}

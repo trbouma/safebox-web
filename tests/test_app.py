@@ -995,7 +995,11 @@ def test_preferences_page_uses_encrypted_session_defaults_and_supported_currenci
     assert "Display Preferences" in response.text
     assert 'option value="USD" selected' in response.text
     assert 'option value="CAD"' in response.text
-    assert 'option value="EN" selected' in response.text
+    assert 'option value="en" selected' in response.text
+    assert 'option value="fr">Français</option>' in response.text
+    assert 'option value="es">Español</option>' in response.text
+    assert 'option value="pt">Português</option>' in response.text
+    assert 'option value="de">Deutsch</option>' in response.text
     assert "stored only inside this browser's encrypted Acorn session" in response.text
     assert response.headers["cache-control"] == "no-store"
 
@@ -1023,7 +1027,7 @@ def test_preferences_update_reissues_cookie_without_changing_acorn_credentials(
             data={
                 "csrf_token": CsrfProtector(settings).issue(),
                 "currency": "cad",
-                "language": "en",
+                "language": "fr",
             },
             headers={"Origin": "https://safebox.example"},
             follow_redirects=False,
@@ -1035,7 +1039,7 @@ def test_preferences_update_reissues_cookie_without_changing_acorn_credentials(
     assert updated_token is not None
     updated = SessionCipher(settings).decode(updated_token)
     assert updated.currency == "CAD"
-    assert updated.language == "EN"
+    assert updated.language == "fr"
     assert updated.nsec == original.nsec
     assert updated.bootstrap_relay == original.bootstrap_relay
     assert updated.home_mint == original.home_mint
@@ -1062,7 +1066,7 @@ def test_preferences_reject_currency_not_supported_by_operator(tmp_path) -> None
             data={
                 "csrf_token": CsrfProtector(settings).issue(),
                 "currency": "AUD",
-                "language": "EN",
+                "language": "en",
             },
             headers={"Origin": "https://safebox.example"},
         )
@@ -2911,7 +2915,7 @@ def test_wallet_uses_currency_selected_in_encrypted_session(tmp_path) -> None:
         nsec=TEST_NSEC,
         bootstrap_relay="wss://relay.example.com",
         currency="CAD",
-        language="EN",
+        language="en",
     )
     with TestClient(app, base_url="https://safebox.example") as client:
         with Session(app.state.database_engine) as session:
@@ -7876,7 +7880,7 @@ def test_nsec_connection_uses_encrypted_secure_cookie_and_dependency() -> None:
     assert payload["authenticated"] is True
     assert payload["bootstrap_relay"] == "wss://relay.example.com"
     assert payload["currency"] == "USD"
-    assert payload["language"] == "EN"
+    assert payload["language"] == "en"
     assert payload["npub"].startswith(TEST_NPUB)
     assert "nsec" not in payload
     assert "deferred_acorn_mnemonic" not in payload
@@ -7920,6 +7924,23 @@ def test_session_cipher_validates_currency_and_language_preferences() -> None:
                 language="english",
             )
         )
+
+    legacy_token = cipher.encode(
+        SessionCredentials(
+            nsec=TEST_NSEC,
+            bootstrap_relay="wss://relay.example.com",
+            language="EN",
+        )
+    )
+    regional_token = cipher.encode(
+        SessionCredentials(
+            nsec=TEST_NSEC,
+            bootstrap_relay="wss://relay.example.com",
+            language="fr-ca",
+        )
+    )
+    assert cipher.decode(legacy_token).language == "en"
+    assert cipher.decode(regional_token).language == "fr-CA"
 
 
 def test_session_cipher_protects_and_validates_deferred_acorn_mnemonic() -> None:
