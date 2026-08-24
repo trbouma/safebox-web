@@ -678,9 +678,22 @@ def _transaction_history_view(entries: list[dict]) -> list[dict]:
             "D": ("Debit", "−", "debit"),
             "X": ("Error", "", "advisory"),
         }.get(tx_type, (tx_type or "Transaction", "", "advisory"))
-        amount = str(entry.get("amount", 0))
+        try:
+            transferred_amount = int(entry.get("amount") or 0)
+        except (TypeError, ValueError):
+            transferred_amount = 0
         created = str(entry.get("create_time") or "Unknown time")
-        fees = str(entry.get("fees") or 0)
+        try:
+            fee_amount = int(entry.get("fees") or 0)
+        except (TypeError, ValueError):
+            fee_amount = 0
+        wallet_impact = (
+            transferred_amount + fee_amount
+            if tx_type == "D"
+            else transferred_amount
+        )
+        amount = f"{wallet_impact:,}"
+        fees = f"{fee_amount:,}"
         current_balance = entry.get("current_balance")
         balance = "—" if current_balance is None else str(current_balance)
         tendered_amount = entry.get("tendered_amount")

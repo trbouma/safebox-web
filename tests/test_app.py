@@ -3858,8 +3858,10 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert 'class="transaction-card credit"' in response.text
     assert 'class="transaction-card debit"' in response.text
     assert "+21 sats" in response.text
-    assert "−5 sats" in response.text
-    assert response.text.index("−5 sats") < response.text.index("+21 sats")
+    assert "−6 sats" in response.text
+    assert response.text.index("−6 sats") < response.text.index("+21 sats")
+    assert "<dt>Tender</dt><dd>5.0 SAT</dd>" in response.text
+    assert "<dt>Fees</dt><dd>1 sats</dd>" in response.text
     assert "52 sats" in response.text
     assert "safebox web deposit &lt;confirmed&gt;" in response.text
     assert "invoice-is-not-rendered" not in response.text

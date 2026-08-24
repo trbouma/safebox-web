@@ -165,6 +165,11 @@ incoming transfers, validates and refreshes their proofs through the issuing
 mint, persists accepted proofs as normal wallet state, and records the credits
 in transaction history.
 
+A debit card's headline shows its complete wallet impact: transferred amount
+plus fees. The Tender and Fees rows retain those components separately, while
+the Balance row shows the resulting wallet balance. Credit headlines continue
+to show the amount credited.
+
 Safebox Web also exposes a separate **Clear Transactions** page. Its initial
 representation shows stored Clear balances, receipts, and history without
 scanning for new kind `7379` transfers.
