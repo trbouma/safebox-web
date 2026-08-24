@@ -28,6 +28,9 @@ def test_unsupported_languages_fall_back_to_english() -> None:
     assert translations_for("iu").gettext("Safebox is Connected") == (
         "Safebox is Connected"
     )
+    assert translations_for("iu").gettext("Home") == "ᐱᒋᐊᕐᕕᒃ"
+    assert translations_for("iu").gettext("Preferences") == "ᓇᓖᕌᕈᑏᑦ"
+    assert translations_for("iu").gettext("Advisories") == "ᖃᐅᔨᒃᑲᐃᔾᔪᑏᑦ"
 
 
 def test_template_renderer_injects_request_localization_without_shared_mutation() -> None:

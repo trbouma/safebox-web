@@ -16,11 +16,13 @@ Disconnect pane's recovery warning and acknowledgement are also translated as
 complete messages. Other informational, recovery, security, payment, and error
 text remains English until it receives contextual review.
 
-Inuktitut is currently preference-only: its catalog intentionally contains no
-translated application messages. The English fallback remains visible until a
-fluent speaker has reviewed the terminology, orthography, and especially the
-recovery-sensitive text. This avoids presenting machine-generated Indigenous
-language text as authoritative.
+The Inuktitut catalog contains only three provisional demonstration labels:
+Home (`ᐱᒋᐊᕐᕕᒃ`), Preferences/options (`ᓇᓖᕌᕈᑏᑦ`), and
+Advisories/notices (`ᖃᐅᔨᒃᑲᐃᔾᔪᑏᑦ`). Public Inuktitut-language sites and
+Canadian language resources informed these candidates, but a fluent speaker
+must still review their application context and orthography. All other text,
+especially recovery-sensitive language, continues to fall back to English.
+This avoids presenting unreviewed Indigenous-language text as authoritative.
 
 ## Runtime boundary
 

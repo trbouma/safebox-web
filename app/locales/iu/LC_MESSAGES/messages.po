@@ -1,5 +1,5 @@
-# Inuktitut translations intentionally remain empty until reviewed by a
-# fluent speaker. Safebox Web falls back to its English source messages.
+# Inuktitut translations are limited to provisional demonstration labels
+# until reviewed by a fluent speaker. Other messages fall back to English.
 msgid ""
 msgstr ""
 "Project-Id-Version: Safebox Web 0.1.0\n"
@@ -8,3 +8,13 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# Provisional demonstration terminology pending fluent-speaker review.
+msgid "Home"
+msgstr "ᐱᒋᐊᕐᕕᒃ"
+
+msgid "Preferences"
+msgstr "ᓇᓖᕌᕈᑏᑦ"
+
+msgid "Advisories"
+msgstr "ᖃᐅᔨᒃᑲᐃᔾᔪᑏᑦ"
