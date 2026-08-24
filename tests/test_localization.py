@@ -38,3 +38,29 @@ def test_template_renderer_injects_request_localization_without_shared_mutation(
     assert ">Home</a>" in rendered
     assert "Opening…" in rendered
     assert translations_for("fr-CA").gettext("Home") == "Home"
+
+
+@pytest.mark.parametrize(
+    ("language", "updating", "unavailable"),
+    (
+        ("fr", "Mise à jour…", "Le solde précédemment confirmé est temporairement indisponible."),
+        ("es", "Actualizando…", "El saldo confirmado previamente no está disponible temporalmente."),
+        ("pt", "Atualizando…", "O saldo confirmado anteriormente está temporariamente indisponível."),
+        ("de", "Aktualisierung…", "Das zuvor bestätigte Guthaben ist vorübergehend nicht verfügbar."),
+        ("it", "Aggiornamento…", "Il saldo precedentemente confermato è temporaneamente non disponibile."),
+    ),
+)
+def test_balance_status_catalog_entries_are_available(
+    language: str,
+    updating: str,
+    unavailable: str,
+) -> None:
+    translations = translations_for(language)
+
+    assert translations.gettext("Updating…") == updating
+    assert (
+        translations.gettext(
+            "The previously confirmed balance is temporarily unavailable."
+        )
+        == unavailable
+    )

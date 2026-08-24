@@ -1000,6 +1000,7 @@ def test_preferences_page_uses_encrypted_session_defaults_and_supported_currenci
     assert 'option value="es">Español</option>' in response.text
     assert 'option value="pt">Português</option>' in response.text
     assert 'option value="de">Deutsch</option>' in response.text
+    assert 'option value="it">Italiano</option>' in response.text
     assert "stored only inside this browser's encrypted Acorn session" in response.text
     assert response.headers["cache-control"] == "no-store"
 
@@ -1960,6 +1961,20 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
                 "Trennen",
             ),
         ),
+        (
+            "it",
+            "Safebox è connesso",
+            (
+                "Modalità connessa",
+                "Saldo Cash",
+                "Saldi Clear",
+                "Gestisci saldi",
+                "Gestisci documenti",
+                "Preferenze",
+                "Avvisi",
+                "Disconnetti",
+            ),
+        ),
     ),
 )
 def test_wallet_connected_heading_uses_session_language(
@@ -1992,6 +2007,46 @@ def test_wallet_connected_heading_uses_session_language(
     assert f'<h1 class="wallet-headline">{translated_title}</h1>' in response.text
     for translated_label in translated_labels:
         assert translated_label in response.text
+    translated_status_messages = {
+        "en": (
+            "Previously confirmed balance. Click to receive and accept pending transactions.",
+            "No Clear balances yet.",
+            "Before disconnecting, make sure you have your recovery information.",
+            "I have my recovery information and understand Safebox cannot restore it for me.",
+        ),
+        "fr": (
+            "Solde précédemment confirmé. Cliquez pour recevoir et accepter les transactions en attente.",
+            "Aucun solde Clear pour le moment.",
+            "Avant de vous déconnecter, assurez-vous d’avoir vos informations de récupération.",
+            "Je possède mes informations de récupération et je comprends que Safebox ne peut pas les restaurer pour moi.",
+        ),
+        "es": (
+            "Saldo confirmado previamente. Haga clic para recibir y aceptar transacciones pendientes.",
+            "Todavía no hay saldos Clear.",
+            "Antes de desconectarse, asegúrese de tener su información de recuperación.",
+            "Tengo mi información de recuperación y entiendo que Safebox no puede restaurarla por mí.",
+        ),
+        "pt": (
+            "Saldo confirmado anteriormente. Clique para receber e aceitar transações pendentes.",
+            "Ainda não há saldos Clear.",
+            "Antes de desconectar, certifique-se de ter suas informações de recuperação.",
+            "Tenho minhas informações de recuperação e entendo que o Safebox não pode restaurá-las para mim.",
+        ),
+        "de": (
+            "Zuvor bestätigtes Guthaben. Klicken Sie, um ausstehende Transaktionen zu empfangen und anzunehmen.",
+            "Noch kein Clear-Guthaben.",
+            "Stellen Sie vor dem Trennen sicher, dass Ihnen Ihre Wiederherstellungsinformationen vorliegen.",
+            "Meine Wiederherstellungsinformationen liegen mir vor und ich verstehe, dass Safebox sie nicht für mich wiederherstellen kann.",
+        ),
+        "it": (
+            "Saldo precedentemente confermato. Fai clic per ricevere e accettare le transazioni in sospeso.",
+            "Non ci sono ancora saldi Clear.",
+            "Prima di disconnetterti, assicurati di avere le informazioni di recupero.",
+            "Dispongo delle mie informazioni di recupero e comprendo che Safebox non può ripristinarle per me.",
+        ),
+    }
+    for translated_message in translated_status_messages[language]:
+        assert translated_message in response.text
 
 
 def test_manage_balances_is_the_parent_for_balance_actions(tmp_path) -> None:

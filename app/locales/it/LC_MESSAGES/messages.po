@@ -1,59 +1,59 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Safebox Web 0.1.0\n"
-"Language: pt\n"
+"Language: it\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 msgid "Safebox is Connected"
-msgstr "Safebox está conectado"
+msgstr "Safebox è connesso"
 
 msgid "Connected Mode"
-msgstr "Modo conectado"
+msgstr "Modalità connessa"
 
 msgid "Cash Balance"
 msgstr "Saldo Cash"
 
 msgid "Clear Balances"
-msgstr "Saldos Clear"
+msgstr "Saldi Clear"
 
 msgid "Manage Balances"
-msgstr "Gerenciar saldos"
+msgstr "Gestisci saldi"
 
 msgid "Manage Records"
-msgstr "Gerenciar registros"
+msgstr "Gestisci documenti"
 
 msgid "Preferences"
-msgstr "Preferências"
+msgstr "Preferenze"
 
 msgid "Advisories"
-msgstr "Avisos"
+msgstr "Avvisi"
 
 msgid "Disconnect"
-msgstr "Desconectar"
+msgstr "Disconnetti"
 
 msgid "Updating…"
-msgstr "Atualizando…"
+msgstr "Aggiornamento…"
 
 msgid "Funds finalization is running in the background."
-msgstr "A finalização dos fundos está sendo executada em segundo plano."
+msgstr "La finalizzazione dei fondi è in esecuzione in background."
 
 msgid "The previously confirmed balance is temporarily unavailable."
-msgstr "O saldo confirmado anteriormente está temporariamente indisponível."
+msgstr "Il saldo precedentemente confermato è temporaneamente non disponibile."
 
 msgid "Cached rate may be stale."
-msgstr "A taxa em cache pode estar desatualizada."
+msgstr "Il tasso memorizzato nella cache potrebbe non essere aggiornato."
 
 msgid "Previously confirmed balance. Click to receive and accept pending transactions."
-msgstr "Saldo confirmado anteriormente. Clique para receber e aceitar transações pendentes."
+msgstr "Saldo precedentemente confermato. Fai clic per ricevere e accettare le transazioni in sospeso."
 
 msgid "No Clear balances yet."
-msgstr "Ainda não há saldos Clear."
+msgstr "Non ci sono ancora saldi Clear."
 
 msgid "Before disconnecting, make sure you have your recovery information. Safebox does not store it, and it will be impossible to get back in if it is lost."
-msgstr "Antes de desconectar, certifique-se de ter suas informações de recuperação. O Safebox não as armazena e será impossível recuperar o acesso se elas forem perdidas."
+msgstr "Prima di disconnetterti, assicurati di avere le informazioni di recupero. Safebox non le memorizza e, in caso di smarrimento, sarà impossibile riottenere l’accesso."
 
 msgid "I have my recovery information and understand Safebox cannot restore it for me."
-msgstr "Tenho minhas informações de recuperação e entendo que o Safebox não pode restaurá-las para mim."
+msgstr "Dispongo delle mie informazioni di recupero e comprendo che Safebox non può ripristinarle per me."

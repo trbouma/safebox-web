@@ -106,8 +106,8 @@ encrypted, authenticated session cookie; it does not create a server-side user
 profile or alter the underlying sat balance.
 
 The same cookie carries a canonical BCP 47 `language` preference. The initial
-choices are `en`, `fr`, `es`, `pt`, and `de`; the interface remains English
-until localized templates are introduced. Keeping this boundary explicit
+choices are `en`, `fr`, `es`, `pt`, `de`, and `it`; untranslated interface
+text remains English until localized templates are introduced. Keeping this boundary explicit
 provides a forward-compatible localization setting without introducing
 browser-readable state or application database ownership of user preferences.
 Cookies issued before these fields existed decode with `USD` and `en` defaults,

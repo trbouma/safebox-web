@@ -56,17 +56,17 @@
 <a class="wallet-balance" href="/transactions" aria-labelledby="wallet-balance-heading">
   <h2 id="wallet-balance-heading">{{ _("Cash Balance") }}</h2>
   {% if not wallet_balance_available %}
-  <p class="wallet-balance-amount">Updating…</p>
-  <p class="wallet-balance-state">{% if wallet_balance_updating %}Funds finalization is running in the background.{% else %}The previously confirmed balance is temporarily unavailable.{% endif %}</p>
+  <p class="wallet-balance-amount">{{ _("Updating…") }}</p>
+  <p class="wallet-balance-state">{% if wallet_balance_updating %}{{ _("Funds finalization is running in the background.") }}{% else %}{{ _("The previously confirmed balance is temporarily unavailable.") }}{% endif %}</p>
   {% else %}
   {% if fiat_estimate %}
   <p class="wallet-balance-amount">≈ {{ fiat_estimate.currency_symbol }}{{ "{:,.2f}".format(fiat_estimate.amount) }} <span>{{ fiat_estimate.currency_code }}</span></p>
   <p class="wallet-balance-sats">{{ "{:,}".format(wallet_balance) }} sats</p>
-  {% if fiat_estimate.stale %}<p class="wallet-balance-rate-state">Cached rate may be stale.</p>{% endif %}
+  {% if fiat_estimate.stale %}<p class="wallet-balance-rate-state">{{ _("Cached rate may be stale.") }}</p>{% endif %}
   {% else %}
   <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
   {% endif %}
-  <p class="wallet-balance-state">Previously confirmed balance. Click to receive and accept pending transactions.</p>
+  <p class="wallet-balance-state">{{ _("Previously confirmed balance. Click to receive and accept pending transactions.") }}</p>
   {% endif %}
 </a>
 <a class="wallet-balance clear-balance" href="/clear" aria-labelledby="clear-balance-heading">
@@ -76,9 +76,9 @@
   <p class="wallet-clear-balance"><strong>{{ balance.display_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance.display_unit }}. <span>{{ balance.unit }} · {{ balance.mint }}</span></p>
   {% endfor %}
   {% else %}
-  <p class="wallet-balance-state">No Clear balances yet.</p>
+  <p class="wallet-balance-state">{{ _("No Clear balances yet.") }}</p>
   {% endif %}
-  <p class="wallet-balance-state">Previously confirmed balance. Click to receive and accept pending transactions.</p>
+  <p class="wallet-balance-state">{{ _("Previously confirmed balance. Click to receive and accept pending transactions.") }}</p>
 </a>
 <nav class="wallet-actions" aria-label="Safebox resources">
   <a href="/balances">{{ _("Manage Balances") }}</a>
@@ -113,12 +113,10 @@
 {% endif %}
 <form class="disconnect-form" method="post" action="/disconnect">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <p class="disconnect-warning">Before disconnecting, make sure you have your
-  recovery information. Safebox does not store it, and it will be impossible to
-  get back in if it is lost.</p>
+  <p class="disconnect-warning">{{ _("Before disconnecting, make sure you have your recovery information. Safebox does not store it, and it will be impossible to get back in if it is lost.") }}</p>
   <label class="disconnect-confirmation">
     <input name="confirmed" type="checkbox" value="yes" required>
-    I have my recovery information and understand Safebox cannot restore it for me.
+    {{ _("I have my recovery information and understand Safebox cannot restore it for me.") }}
   </label>
   <button type="submit">{{ _("Disconnect") }}</button>
 </form>

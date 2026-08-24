@@ -6,12 +6,14 @@ session's canonical BCP 47 language preference is held in its encrypted cookie
 and is supplied to the Jinja renderer for each representation.
 
 The initial supported preferences are English (`en`), French (`fr`), Spanish
-(`es`), Portuguese (`pt`), and German (`de`). English remains the source and
-fallback language while translation catalogs are developed. The initial
-localized surface is deliberately limited to the connected-wallet heading and
+(`es`), Portuguese (`pt`), German (`de`), and Italian (`it`). English remains
+the source and fallback language while translation catalogs are developed. The
+initial localized surface is deliberately limited to the connected-wallet heading and
 short, stable controls: mode, balance headings, primary resource actions,
-Preferences, Advisories, and Disconnect. Informational, recovery, security,
-payment, and error text remains English until it receives contextual review.
+Preferences, Advisories, and Disconnect. The balance-status messages and the
+Disconnect pane's recovery warning and acknowledgement are also translated as
+complete messages. Other informational, recovery, security, payment, and error
+text remains English until it receives contextual review.
 
 ## Runtime boundary
 

@@ -33,3 +33,27 @@ msgstr "Hinweise"
 
 msgid "Disconnect"
 msgstr "Trennen"
+
+msgid "Updating…"
+msgstr "Aktualisierung…"
+
+msgid "Funds finalization is running in the background."
+msgstr "Die Finalisierung der Guthaben läuft im Hintergrund."
+
+msgid "The previously confirmed balance is temporarily unavailable."
+msgstr "Das zuvor bestätigte Guthaben ist vorübergehend nicht verfügbar."
+
+msgid "Cached rate may be stale."
+msgstr "Der zwischengespeicherte Wechselkurs ist möglicherweise veraltet."
+
+msgid "Previously confirmed balance. Click to receive and accept pending transactions."
+msgstr "Zuvor bestätigtes Guthaben. Klicken Sie, um ausstehende Transaktionen zu empfangen und anzunehmen."
+
+msgid "No Clear balances yet."
+msgstr "Noch kein Clear-Guthaben."
+
+msgid "Before disconnecting, make sure you have your recovery information. Safebox does not store it, and it will be impossible to get back in if it is lost."
+msgstr "Stellen Sie vor dem Trennen sicher, dass Ihnen Ihre Wiederherstellungsinformationen vorliegen. Safebox speichert diese nicht; bei Verlust kann der Zugang nicht wiederhergestellt werden."
+
+msgid "I have my recovery information and understand Safebox cannot restore it for me."
+msgstr "Meine Wiederherstellungsinformationen liegen mir vor und ich verstehe, dass Safebox sie nicht für mich wiederherstellen kann."

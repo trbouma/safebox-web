@@ -33,3 +33,27 @@ msgstr "Avisos"
 
 msgid "Disconnect"
 msgstr "Desconectar"
+
+msgid "Updating…"
+msgstr "Actualizando…"
+
+msgid "Funds finalization is running in the background."
+msgstr "La finalización de fondos se está ejecutando en segundo plano."
+
+msgid "The previously confirmed balance is temporarily unavailable."
+msgstr "El saldo confirmado previamente no está disponible temporalmente."
+
+msgid "Cached rate may be stale."
+msgstr "Es posible que la tasa almacenada en caché esté desactualizada."
+
+msgid "Previously confirmed balance. Click to receive and accept pending transactions."
+msgstr "Saldo confirmado previamente. Haga clic para recibir y aceptar transacciones pendientes."
+
+msgid "No Clear balances yet."
+msgstr "Todavía no hay saldos Clear."
+
+msgid "Before disconnecting, make sure you have your recovery information. Safebox does not store it, and it will be impossible to get back in if it is lost."
+msgstr "Antes de desconectarse, asegúrese de tener su información de recuperación. Safebox no la guarda y será imposible recuperar el acceso si se pierde."
+
+msgid "I have my recovery information and understand Safebox cannot restore it for me."
+msgstr "Tengo mi información de recuperación y entiendo que Safebox no puede restaurarla por mí."
