@@ -4,7 +4,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.openetr import CONTROL_KIND, ORIGIN_KIND, build_openetr_history
+from app.openetr import (
+    CONTROL_KIND,
+    ORIGIN_KIND,
+    PROFILE_KIND,
+    build_issuer_profile,
+    build_openetr_history,
+)
 
 
 def event(
@@ -110,3 +116,70 @@ def test_openetr_history_excludes_invalid_and_unlinked_events() -> None:
 def test_openetr_history_rejects_non_sha256_object_identifier() -> None:
     with pytest.raises(ValueError, match="SHA-256"):
         build_openetr_history("not-a-digest", [], ["wss://relay.example"])
+
+
+def test_issuer_profile_uses_latest_valid_kind_zero_from_same_signer() -> None:
+    pubkey = "33" * 32
+    older = event(
+        "07" * 32,
+        kind=PROFILE_KIND,
+        created_at=100,
+        tags=[],
+        pubkey=pubkey,
+        content='{"name":"old-name"}',
+    )
+    latest = event(
+        "08" * 32,
+        kind=PROFILE_KIND,
+        created_at=200,
+        tags=[],
+        pubkey=pubkey,
+        content=(
+            '{"name":"issuer","display_name":"Warehouse Authority",'
+            '"nip05":"issuer@example.com","lud16":"pay@example.com",'
+            '"website":"https://example.com","about":"Issues records",'
+            '"picture":"https://example.com/profile.png"}'
+        ),
+    )
+    wrong_signer = event(
+        "09" * 32,
+        kind=PROFILE_KIND,
+        created_at=300,
+        tags=[],
+        pubkey="44" * 32,
+        content='{"name":"wrong"}',
+    )
+
+    profile = build_issuer_profile(pubkey, [older, latest, wrong_signer])
+
+    assert profile is not None
+    assert profile["event_id"] == latest.id
+    assert profile["display_name"] == "Warehouse Authority"
+    assert profile["name"] == "issuer"
+    assert profile["nip05"] == "issuer@example.com"
+    assert profile["lightning_address"] == "pay@example.com"
+    assert profile["website"] == "https://example.com"
+    assert profile["picture"] == "https://example.com/profile.png"
+
+
+def test_issuer_profile_rejects_invalid_or_unsafe_metadata() -> None:
+    pubkey = "55" * 32
+    profile_event = event(
+        "10" * 32,
+        kind=PROFILE_KIND,
+        created_at=100,
+        tags=[],
+        pubkey=pubkey,
+        content=(
+            '{"name":"Issuer","website":"javascript:alert(1)",'
+            '"picture":"data:image/png;base64,abc"}'
+        ),
+    )
+
+    profile = build_issuer_profile(pubkey, [profile_event])
+
+    assert profile is not None
+    assert profile["name"] == "Issuer"
+    assert profile["website"] is None
+    assert profile["picture"] is None
+    assert build_issuer_profile("not-a-key", [profile_event]) is None

@@ -93,6 +93,11 @@ was delayed must be reconciled rather than paid twice. The reserve is operator
 working capital, not recipient funds, and should be monitored as mint fees
 consume it.
 
+The field migration that exposed this requirement, including the separation of
+network availability, persisted wallet identity, Lightning settlement,
+recipient obligations, and operating capital, is recorded in
+[Service Acorn Migration and Operating Reserve Lessons](SERVICE-ACORN-MIGRATION-AND-OPERATING-RESERVE-LESSONS.md).
+
 On its first start the worker:
 
 1. generates a fresh seed phrase and `nsec` in memory;
@@ -166,6 +171,13 @@ key, so verify the provider identity and payment behavior after startup. Once
 verified, set `SAFEBOX_SERVICE_ACORN_MIGRATE=false` and restart; the endpoint
 comparison prevents repeated replacement, but disabling the flag records the
 operator's completed intent.
+
+When the old endpoint path cannot be loaded reliably, an operator may instead
+select a new state-file name and create a fresh service Acorn while retaining
+the old file for recovery. This is a replacement, not an in-place migration;
+outstanding jobs must be drained or quarantined first. See
+[Service Acorn Migration and Operating Reserve Lessons](SERVICE-ACORN-MIGRATION-AND-OPERATING-RESERVE-LESSONS.md)
+for the validated procedure and its operational consequences.
 
 ## Secret ownership and isolation
 

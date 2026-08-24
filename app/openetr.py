@@ -8,8 +8,10 @@ legal-validity claims.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 import re
 from typing import Any, Iterable
+from urllib.parse import urlsplit
 
 from monstr.client.client import ClientPool
 from monstr.encrypt import Keys
@@ -18,7 +20,9 @@ from monstr.event.event import Event
 
 ORIGIN_KIND = 1415
 CONTROL_KIND = 1416
+PROFILE_KIND = 0
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+HEX_PUBKEY_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 ACTION_LABELS = {
     "issue": "Origin issued",
@@ -74,6 +78,7 @@ def _event_view(event: Event) -> dict[str, Any]:
     return {
         "id": event.id,
         "author": _npub(event.pub_key),
+        "author_hex": event.pub_key,
         "created_at": _display_time(event.created_at),
         "kind": event.kind,
         "action": action or ("issue" if event.kind == ORIGIN_KIND else "unknown"),
@@ -87,6 +92,73 @@ def _event_view(event: Event) -> dict[str, Any]:
         "participant": (
             _npub(_tag_value(event, "p")) if _tag_value(event, "p") else None
         ),
+    }
+
+
+def _profile_text(value: Any, *, limit: int) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = " ".join(value.strip().split())
+    if not cleaned:
+        return None
+    return cleaned[:limit]
+
+
+def _profile_url(value: Any) -> str | None:
+    candidate = _profile_text(value, limit=2048)
+    if candidate is None:
+        return None
+    try:
+        parsed = urlsplit(candidate)
+    except ValueError:
+        return None
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+        return None
+    return candidate
+
+
+def build_issuer_profile(
+    pubkey_hex: str,
+    events: Iterable[Event],
+) -> dict[str, Any] | None:
+    """Return the latest valid, well-formed kind-0 profile for one signer."""
+
+    normalized_pubkey = str(pubkey_hex or "").strip().lower()
+    if not HEX_PUBKEY_PATTERN.fullmatch(normalized_pubkey):
+        return None
+    candidates = [
+        event
+        for event in events
+        if event.kind == PROFILE_KIND
+        and str(event.pub_key or "").lower() == normalized_pubkey
+        and _event_is_valid(event)
+    ]
+    if not candidates:
+        return None
+    latest = max(candidates, key=lambda item: (_timestamp(item.created_at), item.id))
+    try:
+        payload = json.loads(latest.content or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    name = _profile_text(payload.get("name"), limit=100)
+    display_name = _profile_text(
+        payload.get("display_name") or payload.get("displayName"),
+        limit=100,
+    )
+    return {
+        "event_id": latest.id,
+        "author": _npub(normalized_pubkey),
+        "created_at": _display_time(latest.created_at),
+        "display_name": display_name,
+        "name": name if name != display_name else None,
+        "about": _profile_text(payload.get("about"), limit=500),
+        "nip05": _profile_text(payload.get("nip05"), limit=254),
+        "lightning_address": _profile_text(payload.get("lud16"), limit=254),
+        "website": _profile_url(payload.get("website")),
+        "picture": _profile_url(payload.get("picture")),
     }
 
 
@@ -163,6 +235,8 @@ def build_openetr_history(
         "origin_count": len(origins),
         "warnings": warnings,
         "error": None,
+        "issuer_profile": None,
+        "issuer_profile_error": None,
     }
 
 
@@ -203,9 +277,31 @@ async def query_openetr_history(
             wait_connect=True,
             timeout=timeout,
         )
+        history = build_openetr_history(
+            normalized_digest,
+            [*origin_events, *control_events],
+            relay_list,
+        )
+        if history["origin"] is not None:
+            try:
+                profile_events = await client.query(
+                    {
+                        "kinds": [PROFILE_KIND],
+                        "authors": [history["origin"]["author_hex"]],
+                        "limit": 10,
+                    },
+                    emulate_single=True,
+                    wait_connect=True,
+                    timeout=timeout,
+                )
+            except Exception:
+                history["issuer_profile_error"] = (
+                    "Issuer profile metadata is temporarily unavailable."
+                )
+            else:
+                history["issuer_profile"] = build_issuer_profile(
+                    history["origin"]["author_hex"],
+                    profile_events,
+                )
 
-    return build_openetr_history(
-        normalized_digest,
-        [*origin_events, *control_events],
-        relay_list,
-    )
+    return history

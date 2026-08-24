@@ -24,6 +24,7 @@
       {% if openetr_history.origin.content %}<dt>Statement</dt><dd>{{ openetr_history.origin.content }}</dd>{% endif %}
     </dl>
   </section>
+  {% with history=openetr_history %}{% include "_issuer_profile.html" %}{% endwith %}
   <h2>Control Events</h2>
   {% for event in openetr_history.controls %}
   <article class="openetr-event">

@@ -322,6 +322,10 @@ the service private key. See
 [Service Acorn Lifecycle](SERVICE-ACORN-LIFECYCLE.md#funding-the-operating-reserve)
 for fee behavior, timeout recovery, and reserve ownership.
 
+The field-tested migration, operating-reserve failure, safe requeue, and
+end-to-end settlement outcome are documented in
+[Service Acorn Migration and Operating Reserve Lessons](SERVICE-ACORN-MIGRATION-AND-OPERATING-RESERVE-LESSONS.md).
+
 Stop both roles:
 
 ```sh

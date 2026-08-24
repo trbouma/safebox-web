@@ -7175,6 +7175,7 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
             "origin": {
                 "id": "01" * 32,
                 "author": "npub1issuer",
+                "author_hex": "11" * 32,
                 "created_at": "2026-08-10 12:00 UTC",
                 "content": "Issued warehouse receipt",
                 "kind": 1415,
@@ -7191,6 +7192,19 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
                     "kind": 1416,
                 }
             ],
+            "issuer_profile": {
+                "event_id": "03" * 32,
+                "author": "npub1issuer",
+                "created_at": "2026-08-10 11:00 UTC",
+                "display_name": "Warehouse Authority",
+                "name": "warehouse",
+                "about": "Issues and attests warehouse receipts.",
+                "nip05": "warehouse@example.com",
+                "lightning_address": None,
+                "website": "https://example.com",
+                "picture": None,
+            },
+            "issuer_profile_error": None,
             "warnings": [],
             "error": None,
         }
@@ -7217,6 +7231,11 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
     assert "Origin Event" in response.text
     assert digest in response.text
     assert "Issued warehouse receipt" in response.text
+    assert "Issuer Profile" in response.text
+    assert "Warehouse Authority" in response.text
+    assert "Claimed NIP-05" in response.text
+    assert "warehouse@example.com" in response.text
+    assert "does not independently establish" in response.text
     assert "Transfer initiated" in response.text
     assert "npub1recipient" in response.text
     assert query_args == {

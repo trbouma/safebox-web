@@ -48,6 +48,7 @@ not been imported into your Acorn.</p>
       {% if control_history.origin.content %}<dt>Statement</dt><dd>{{ control_history.origin.content }}</dd>{% endif %}
     </dl>
   </article>
+  {% with history=control_history %}{% include "_issuer_profile.html" %}{% endwith %}
   {% for event in control_history.controls %}
   <article class="openetr-event">
     <h3>{{ event.action_label }}</h3>

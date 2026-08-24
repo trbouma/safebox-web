@@ -409,6 +409,8 @@ The projection:
 - follows exact prior-event `e` links from that origin;
 - requires an explicit `origin` tag, when present, to agree with the selected
   origin;
+- queries the same configured relays for the origin signer's latest valid kind
+  `0` profile and presents selected recognition metadata;
 - displays the origin and related control events without making a recognition
   or legal-effect claim; and
 - reports competing origins, broken or orphaned chains, invalid signatures,
@@ -418,6 +420,14 @@ The lookup is intentionally on demand so merely opening a private record does
 not contact public OpenETR infrastructure. Expanding the pane presents a normal
 server-rendered link; following it reloads the record with the history pane
 open. No client-side graph logic or OpenETR key material is introduced.
+
+Issuer profile enrichment is recognition context rather than control evidence.
+The profile event must have a valid signature from the exact origin key. Its
+display name, name, description, and safe HTTP(S) links may help a reader
+recognize that key, but self-published NIP-05, Lightning-address, website, and
+profile-image values remain claims unless separately resolved or verified. A
+missing or malformed profile does not invalidate or hide an otherwise valid
+origin event.
 
 Operators configure the experimental query boundary with:
 
@@ -429,11 +439,11 @@ SAFEBOX_OPENETR_QUERY_LIMIT=100
 
 This implementation is a proving surface, not the final OpenETR component
 boundary described above. In particular it does not yet apply full structural
-or recognition policy, resolve participant profiles, derive an authoritative
-current controller across ambiguous branches, support legacy kinds, or issue
-events. Experience with this projection should determine whether the mature
-query implementation is imported as a package or retained behind a small,
-versioned compatibility module.
+or recognition policy, resolve profiles for later control-event participants,
+derive an authoritative current controller across ambiguous branches, support
+legacy kinds, or issue events. Experience with this projection should
+determine whether the mature query implementation is imported as a package or
+retained behind a small, versioned compatibility module.
 
 WebSockets, record transmission, live subscriptions, and peer-to-peer workflow
 coordination should receive their own design decisions. Issue and verify remain

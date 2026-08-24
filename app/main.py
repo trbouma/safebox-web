@@ -4837,7 +4837,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             timeout=settings.openetr_query_timeout_seconds,
                             limit=settings.openetr_query_limit,
                         ),
-                        timeout=(settings.openetr_query_timeout_seconds * 2) + 1,
+                        timeout=(settings.openetr_query_timeout_seconds * 3) + 1,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -7742,7 +7742,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         timeout=settings.openetr_query_timeout_seconds,
                         limit=settings.openetr_query_limit,
                     ),
-                    timeout=(settings.openetr_query_timeout_seconds * 2) + 1,
+                    timeout=(settings.openetr_query_timeout_seconds * 3) + 1,
                 )
             except Exception as exc:
                 logger.warning(
