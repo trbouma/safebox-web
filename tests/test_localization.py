@@ -22,8 +22,12 @@ def test_language_tags_are_canonicalized_for_session_storage() -> None:
 
 def test_unsupported_languages_fall_back_to_english() -> None:
     assert supported_language("fr-CA") == "fr-CA"
+    assert supported_language("iu") == "iu"
     assert supported_language("nl") == DEFAULT_LANGUAGE
     assert supported_language("../fr") == DEFAULT_LANGUAGE
+    assert translations_for("iu").gettext("Safebox is Connected") == (
+        "Safebox is Connected"
+    )
 
 
 def test_template_renderer_injects_request_localization_without_shared_mutation() -> None:

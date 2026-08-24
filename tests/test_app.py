@@ -1001,6 +1001,7 @@ def test_preferences_page_uses_encrypted_session_defaults_and_supported_currenci
     assert 'option value="pt">Português</option>' in response.text
     assert 'option value="de">Deutsch</option>' in response.text
     assert 'option value="it">Italiano</option>' in response.text
+    assert 'option value="iu">ᐃᓄᒃᑎᑐᑦ (Inuktitut)</option>' in response.text
     assert "stored only inside this browser's encrypted Acorn session" in response.text
     assert response.headers["cache-control"] == "no-store"
 
@@ -1975,6 +1976,20 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
                 "Disconnetti",
             ),
         ),
+        (
+            "iu",
+            "Safebox is Connected",
+            (
+                "Connected Mode",
+                "Cash Balance",
+                "Clear Balances",
+                "Manage Balances",
+                "Manage Records",
+                "Preferences",
+                "Advisories",
+                "Disconnect",
+            ),
+        ),
     ),
 )
 def test_wallet_connected_heading_uses_session_language(
@@ -2043,6 +2058,12 @@ def test_wallet_connected_heading_uses_session_language(
             "Non ci sono ancora saldi Clear.",
             "Prima di disconnetterti, assicurati di avere le informazioni di recupero.",
             "Dispongo delle mie informazioni di recupero e comprendo che Safebox non può ripristinarle per me.",
+        ),
+        "iu": (
+            "Previously confirmed balance. Click to receive and accept pending transactions.",
+            "No Clear balances yet.",
+            "Before disconnecting, make sure you have your recovery information.",
+            "I have my recovery information and understand Safebox cannot restore it for me.",
         ),
     }
     for translated_message in translated_status_messages[language]:

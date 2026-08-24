@@ -16,6 +16,7 @@ SUPPORTED_LANGUAGES = {
     "pt": "Português",
     "de": "Deutsch",
     "it": "Italiano",
+    "iu": "ᐃᓄᒃᑎᑐᑦ (Inuktitut)",
 }
 LOCALE_DIRECTORY = Path(__file__).resolve().parent / "locales"
 _LANGUAGE_TAG_PATTERN = re.compile(

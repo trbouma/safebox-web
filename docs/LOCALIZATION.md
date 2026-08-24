@@ -6,14 +6,21 @@ session's canonical BCP 47 language preference is held in its encrypted cookie
 and is supplied to the Jinja renderer for each representation.
 
 The initial supported preferences are English (`en`), French (`fr`), Spanish
-(`es`), Portuguese (`pt`), German (`de`), and Italian (`it`). English remains
-the source and fallback language while translation catalogs are developed. The
-initial localized surface is deliberately limited to the connected-wallet heading and
+(`es`), Portuguese (`pt`), German (`de`), Italian (`it`), and Inuktitut
+(`iu`, displayed as `ᐃᓄᒃᑎᑐᑦ`). English remains the source and fallback
+language while translation catalogs are developed. The initial localized
+surface is deliberately limited to the connected-wallet heading and
 short, stable controls: mode, balance headings, primary resource actions,
 Preferences, Advisories, and Disconnect. The balance-status messages and the
 Disconnect pane's recovery warning and acknowledgement are also translated as
 complete messages. Other informational, recovery, security, payment, and error
 text remains English until it receives contextual review.
+
+Inuktitut is currently preference-only: its catalog intentionally contains no
+translated application messages. The English fallback remains visible until a
+fluent speaker has reviewed the terminology, orthography, and especially the
+recovery-sensitive text. This avoids presenting machine-generated Indigenous
+language text as authoritative.
 
 ## Runtime boundary
 
