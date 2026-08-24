@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 import ipaddress
 import json
 import os
+import re
 from time import time
 from urllib.parse import urlsplit, urlunsplit
 
@@ -41,6 +42,8 @@ class SessionCredentials:
     deferred_acorn_mnemonic: str | None = None
     record_protection_key: str | None = None
     record_protection_backup_confirmed: bool = False
+    currency: str = "USD"
+    language: str = "EN"
     version: int = 1
 
 
@@ -189,6 +192,14 @@ class SessionCipher:
                 raise ValueError("session cookie record protection key is invalid") from exc
         if not isinstance(credentials.record_protection_backup_confirmed, bool):
             raise ValueError("session cookie record protection status is invalid")
+        if not isinstance(credentials.currency, str) or not re.fullmatch(
+            r"[A-Z]{3}", credentials.currency
+        ):
+            raise ValueError("session cookie currency preference is invalid")
+        if not isinstance(credentials.language, str) or not re.fullmatch(
+            r"[A-Z]{2,3}(?:-[A-Z0-9]{2,8})*", credentials.language
+        ):
+            raise ValueError("session cookie language preference is invalid")
         if (
             credentials.record_protection_backup_confirmed
             and credentials.record_protection_key is None

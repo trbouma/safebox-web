@@ -110,6 +110,7 @@ from app.security import (
     InvoicePaymentCipher,
     InvoicePaymentState,
     SessionCipher,
+    SessionCredentials,
     cookie_name_for_request,
     credentials_from_connection,
     is_allowed_transport,
@@ -127,6 +128,39 @@ from app.templating import render_template
 logger = logging.getLogger("safebox_web.security")
 BITCOIN_TXID_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
 RECORDS_PAGE_SIZE = 10
+SUPPORTED_SESSION_LANGUAGES = ("EN",)
+
+
+def _optional_session_credentials(
+    request: Request,
+    settings: Settings,
+) -> SessionCredentials | None:
+    token = request.cookies.get(cookie_name_for_request(request))
+    if not token:
+        return None
+    try:
+        return SessionCipher(settings).decode(token)
+    except ValueError:
+        return None
+
+
+def _session_display_preferences(
+    credentials: SessionCredentials | None,
+    settings: Settings,
+) -> tuple[str, str]:
+    currency = (
+        credentials.currency
+        if credentials is not None
+        and credentials.currency in settings.currency_rate_currencies
+        else settings.default_display_currency
+    )
+    language = (
+        credentials.language
+        if credentials is not None
+        and credentials.language in SUPPORTED_SESSION_LANGUAGES
+        else "EN"
+    )
+    return currency, language
 
 
 def _humanize_retention(seconds: int) -> str:
@@ -3030,6 +3064,106 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def favicon() -> FileResponse:
         return FileResponse(static_directory / "favicon.ico", media_type="image/x-icon")
 
+    @app.get("/preferences", response_class=HTMLResponse)
+    async def preferences_form(
+        request: Request,
+        credentials: CredentialsDependency,
+        session: DatabaseSessionDependency,
+    ) -> HTMLResponse:
+        """Present browser-held display preferences without loading the Acorn."""
+
+        settings = request.app.state.settings
+        currency, language = _session_display_preferences(credentials, settings)
+        rate_rows = session.exec(
+            select(CurrencyRate).where(
+                CurrencyRate.currency_code.in_(settings.currency_rate_currencies)
+            )
+        ).all()
+        descriptions = {
+            row.currency_code: row.currency_description for row in rate_rows
+        }
+        return HTMLResponse(
+            render_template(
+                "preferences.html",
+                title="Display Preferences",
+                currency=currency,
+                language=language,
+                currency_options=[
+                    {"code": code, "description": descriptions.get(code)}
+                    for code in settings.currency_rate_currencies
+                ],
+                language_options=SUPPORTED_SESSION_LANGUAGES,
+                csrf_token=CsrfProtector(settings).issue(),
+                error=None,
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.post("/preferences", response_class=HTMLResponse)
+    async def update_preferences(
+        request: Request,
+        credentials: CredentialsDependency,
+        csrf_token: str = Form(...),
+        currency: str = Form(...),
+        language: str = Form("EN"),
+    ):
+        """Replace the encrypted session with validated display preferences."""
+
+        settings = request.app.state.settings
+        normalized_currency = str(currency or "").strip().upper()
+        normalized_language = str(language or "").strip().upper()
+        current_currency, current_language = _session_display_preferences(
+            credentials,
+            settings,
+        )
+        error = None
+        status_code = 400
+        if not CsrfProtector(settings).verify(csrf_token):
+            error = "The form token is invalid or expired. Review the preferences again."
+            status_code = 403
+        elif normalized_currency not in settings.currency_rate_currencies:
+            error = "Select a currency supported by this Safebox service."
+        elif normalized_language not in SUPPORTED_SESSION_LANGUAGES:
+            error = "Select a language supported by this Safebox service."
+        if error is not None:
+            return HTMLResponse(
+                render_template(
+                    "preferences.html",
+                    title="Display Preferences",
+                    currency=(
+                        normalized_currency
+                        if normalized_currency in settings.currency_rate_currencies
+                        else current_currency
+                    ),
+                    language=(
+                        normalized_language
+                        if normalized_language in SUPPORTED_SESSION_LANGUAGES
+                        else current_language
+                    ),
+                    currency_options=[
+                        {"code": code, "description": None}
+                        for code in settings.currency_rate_currencies
+                    ],
+                    language_options=SUPPORTED_SESSION_LANGUAGES,
+                    csrf_token=CsrfProtector(settings).issue(),
+                    error=error,
+                ),
+                status_code=status_code,
+                headers={"Cache-Control": "no-store"},
+            )
+        response = RedirectResponse("/wallet?preferences=updated", status_code=303)
+        set_session_cookie(
+            response,
+            request=request,
+            settings=settings,
+            credentials=replace(
+                credentials,
+                currency=normalized_currency,
+                language=normalized_language,
+            ),
+        )
+        return response
+
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request):
         settings = request.app.state.settings
@@ -4055,15 +4189,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         csrf_token = CsrfProtector(settings).issue()
-        session_credentials = None
-        session_token = request.cookies.get(cookie_name_for_request(request))
-        if session_token:
-            try:
-                session_credentials = SessionCipher(settings).decode(session_token)
-            except ValueError:
-                # The normal LoadedAcorn dependency rejects invalid cookies.
-                # This fallback exists for dependency-overridden test clients.
-                session_credentials = None
+        session_credentials = _optional_session_credentials(request, settings)
+        preferred_currency, preferred_language = _session_display_preferences(
+            session_credentials,
+            settings,
+        )
         claimed_handle = session.exec(
             select(ClaimedHandle).where(
                 ClaimedHandle.npub == acorn.pubkey_bech32
@@ -4121,7 +4251,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fiat_estimate = currency_balance_estimate(
                 session,
                 sats=wallet_balance,
-                currency_code=settings.default_display_currency,
+                currency_code=preferred_currency,
                 stale_seconds=settings.currency_rate_stale_seconds,
             )
         clear_balances = (
@@ -4163,6 +4293,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             wallet_balance_available=wallet_balance_available,
             wallet_balance_updating=finalization_running,
             fiat_estimate=fiat_estimate,
+            preferred_currency=preferred_currency,
+            preferred_language=preferred_language,
+            preferences_updated=(
+                request.query_params.get("preferences") == "updated"
+            ),
             clear_summary=clear_summary,
             onboard_invite_path="/invite",
             csrf_token=csrf_token,
@@ -5644,6 +5779,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: DatabaseSessionDependency,
     ):
         settings = request.app.state.settings
+        preferred_currency, _preferred_language = _session_display_preferences(
+            _optional_session_credentials(request, settings),
+            settings,
+        )
         checks_performed = request.query_params.get("check") == "1"
         verification = None
         verification_error = None
@@ -5661,7 +5800,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fiat_estimate = currency_balance_estimate(
                 session,
                 sats=wallet_balance,
-                currency_code=settings.default_display_currency,
+                currency_code=preferred_currency,
                 stale_seconds=settings.currency_rate_stale_seconds,
             )
         try:
@@ -7801,6 +7940,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "authenticated": True,
             "npub": acorn.pubkey_bech32,
             "bootstrap_relay": credentials.bootstrap_relay,
+            "currency": credentials.currency,
+            "language": credentials.language,
         }
 
     return app

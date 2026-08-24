@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Choose how Safebox presents informational balance estimates. These
+preferences are stored only inside this browser's encrypted Acorn session.</p>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/preferences" data-progress-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="preference-currency">Preferred currency</label>
+  <select id="preference-currency" name="currency" required>
+    {% for option in currency_options %}
+    <option value="{{ option.code }}"{% if option.code == currency %} selected{% endif %}>{{ option.code }}{% if option.description %} — {{ option.description }}{% endif %}</option>
+    {% endfor %}
+  </select>
+  <label for="preference-language">Preferred language</label>
+  <select id="preference-language" name="language" required>
+    {% for option in language_options %}
+    <option value="{{ option }}"{% if option == language %} selected{% endif %}>{{ option }} — English</option>
+    {% endfor %}
+  </select>
+  <button type="submit" data-progress-label="Saving preferences…">Save Preferences</button>
+  <p class="progress" data-progress-message hidden>Updating the encrypted session. Please wait…</p>
+</form>
+<details class="general-advisories">
+  <summary>Advisories</summary>
+  <div class="general-advisories-content">
+    <p>Currency conversion is an informational estimate based on the most
+    recently cached exchange rate. It does not change, denominate, or authorize
+    the underlying balance.</p>
+    <p>English is currently the only interface language. The language field is
+    retained so future localization can follow the same user-controlled session
+    boundary without creating a server-side profile.</p>
+  </div>
+</details>
+{% endblock %}

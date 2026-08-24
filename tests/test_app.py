@@ -973,6 +973,105 @@ def test_public_rates_page_explains_when_cache_is_empty(tmp_path) -> None:
     assert "not enabled by this Safebox operator" in response.text
 
 
+def test_preferences_page_uses_encrypted_session_defaults_and_supported_currencies(
+    tmp_path,
+) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            SessionCipher(settings).encode(credentials),
+            domain="safebox.example",
+            path="/",
+        )
+        response = client.get("/preferences")
+
+    assert response.status_code == 200
+    assert "Display Preferences" in response.text
+    assert 'option value="USD" selected' in response.text
+    assert 'option value="CAD"' in response.text
+    assert 'option value="EN" selected' in response.text
+    assert "stored only inside this browser's encrypted Acorn session" in response.text
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_preferences_update_reissues_cookie_without_changing_acorn_credentials(
+    tmp_path,
+) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    original = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+        home_mint="https://mint.example.com",
+        record_protection_key=TEST_RPK,
+    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            SessionCipher(settings).encode(original),
+            domain="safebox.example",
+            path="/",
+        )
+        response = client.post(
+            "/preferences",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "currency": "cad",
+                "language": "en",
+            },
+            headers={"Origin": "https://safebox.example"},
+            follow_redirects=False,
+        )
+        updated_token = client.cookies.get(SECURE_COOKIE_NAME)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/wallet?preferences=updated"
+    assert updated_token is not None
+    updated = SessionCipher(settings).decode(updated_token)
+    assert updated.currency == "CAD"
+    assert updated.language == "EN"
+    assert updated.nsec == original.nsec
+    assert updated.bootstrap_relay == original.bootstrap_relay
+    assert updated.home_mint == original.home_mint
+    assert updated.record_protection_key == original.record_protection_key
+
+
+def test_preferences_reject_currency_not_supported_by_operator(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        original_token = SessionCipher(settings).encode(credentials)
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            original_token,
+            domain="safebox.example",
+            path="/",
+        )
+        response = client.post(
+            "/preferences",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "currency": "AUD",
+                "language": "EN",
+            },
+            headers={"Origin": "https://safebox.example"},
+        )
+
+    assert response.status_code == 400
+    assert "Select a currency supported by this Safebox service" in response.text
+    assert "set-cookie" not in response.headers
+
+
 def test_root_clears_invalid_session_and_renders_existing_acorn_connection() -> None:
     client = make_https_client()
     client.cookies.set(
@@ -2796,6 +2895,52 @@ def test_wallet_displays_cached_currency_estimate_without_mint_verification(tmp_
     assert 'class="wallet-balance-amount">≈ $100.00 <span>CAD</span>' in response.text
     assert 'class="wallet-balance-sats">50,000 sats' in response.text
     assert "Cached rate may be stale" not in response.text
+
+
+def test_wallet_uses_currency_selected_in_encrypted_session(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        currency_rates_enabled=True,
+        default_display_currency="USD",
+    )
+    app = create_app(settings)
+    fake = FakeLoadedAcorn(balance=50_000)
+    app.dependency_overrides[get_acorn] = lambda: fake
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+        currency="CAD",
+        language="EN",
+    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        with Session(app.state.database_engine) as session:
+            from app.models import CurrencyRate
+
+            session.add(
+                CurrencyRate(
+                    currency_code="CAD",
+                    fiat_per_btc=200_000.0,
+                    currency_symbol="$",
+                    currency_description="Canadian dollar",
+                    source="test",
+                    fetched_at=now,
+                    updated_at=now,
+                )
+            )
+            session.commit()
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            SessionCipher(settings).encode(credentials),
+            domain="safebox.example",
+            path="/",
+        )
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert 'class="wallet-balance-amount">≈ $100.00 <span>CAD</span>' in response.text
+    assert "Display preferences: <strong>CAD</strong>" in response.text
+    assert '<a href="/preferences">change preferences</a>' in response.text
 
 
 def test_wallet_clear_snapshot_uses_friendly_cached_mint_metadata(tmp_path) -> None:
@@ -7727,6 +7872,8 @@ def test_nsec_connection_uses_encrypted_secure_cookie_and_dependency() -> None:
     payload = session_response.json()
     assert payload["authenticated"] is True
     assert payload["bootstrap_relay"] == "wss://relay.example.com"
+    assert payload["currency"] == "USD"
+    assert payload["language"] == "EN"
     assert payload["npub"].startswith(TEST_NPUB)
     assert "nsec" not in payload
     assert "deferred_acorn_mnemonic" not in payload
@@ -7749,6 +7896,27 @@ def test_session_cipher_uses_randomized_aes_256_gcm_tokens() -> None:
     assert first != second
     assert cipher.decode(first) == credentials
     assert cipher.decode(second) == credentials
+
+
+def test_session_cipher_validates_currency_and_language_preferences() -> None:
+    cipher = SessionCipher(TEST_SETTINGS)
+
+    with pytest.raises(ValueError, match="currency preference"):
+        cipher.encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+                currency="usd",
+            )
+        )
+    with pytest.raises(ValueError, match="language preference"):
+        cipher.encode(
+            SessionCredentials(
+                nsec=TEST_NSEC,
+                bootstrap_relay="wss://relay.example.com",
+                language="english",
+            )
+        )
 
 
 def test_session_cipher_protects_and_validates_deferred_acorn_mnemonic() -> None:

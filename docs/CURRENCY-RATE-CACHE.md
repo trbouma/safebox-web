@@ -98,7 +98,18 @@ the economic correctness of the quoted rate.
 
 ## User preference boundary
 
-The first implementation uses the operator-configured default display currency.
-A future user-selected currency may be stored in the encrypted session cookie.
+The operator configures the currencies for which rates are cached and the
+default used by a new or older session. A connected user can select any of
+those supported currencies from the server-rendered Display Preferences page.
+The selection is stored only as the non-secret `currency` field in the
+encrypted, authenticated session cookie; it does not create a server-side user
+profile or alter the underlying sat balance.
+
+The same cookie carries a `language` preference, currently fixed to `EN`.
+Keeping this boundary explicit provides a forward-compatible localization
+setting without introducing browser-readable state or application database
+ownership of user preferences. Cookies issued before these fields existed
+decode with `USD` and `EN` defaults, subject to fallback to the operator's
+configured default when USD is not supported.
 That preference should not be added to the public handle directory or treated
 as provider-owned wallet state.

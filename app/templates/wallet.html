@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <p class="continuity-mode">Connected Mode</p>
+{% if preferences_updated %}<p role="status"><strong>Display preferences updated.</strong></p>{% endif %}
 {% if lightning_lnurl %}
 <section class="wallet-address" aria-label="Transfer address">
   <div class="wallet-address-actions">
@@ -127,6 +128,10 @@
     <div class="wallet-details">
       <p>Component public key: <code>{{ npub }}</code></p>
       <p>Bootstrap relay: <code>{{ home_relay }}</code></p>
+      <p>Display preferences: <strong>{{ preferred_currency }}</strong> ·
+        <strong>{{ preferred_language }}</strong> —
+        <a href="/preferences">change preferences</a>.
+      </p>
       {% if record_protection_available %}
       <p>Protected record mnemonic backup:
         <strong>{% if record_protection_backup_confirmed %}confirmed{% else %}not yet confirmed{% endif %}</strong>

@@ -34,6 +34,7 @@ _PARENT_NAVIGATION = {
     "pay.html": ("/balances", "Back to Balances"),
     "pay_invoice.html": ("/scan/lightning", "Back to Scanner"),
     "payment_result.html": ("/balances", "Back to Balances"),
+    "preferences.html": ("/wallet", "Back to Wallet"),
     "record.html": ("/records", "Back to Records"),
     "record_deleted.html": ("/records", "Back to Records"),
     "record_form.html": ("/records", "Back to Records"),
