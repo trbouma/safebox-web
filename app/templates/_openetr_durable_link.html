@@ -1,0 +1,13 @@
+{% if durable_url and durable_qr %}
+<details class="openetr-durable-link">
+  <summary>Durable Link and QR Code</summary>
+  <div class="openetr-durable-link-content">
+    <p>This control graph has a clickable durable link and a scannable QR code
+    that can be shared, printed, or captured for later verification.</p>
+    <p><a href="{{ durable_url }}" rel="noreferrer noopener" target="_blank">{{ durable_url }}</a></p>
+    <div class="invoice-qr" aria-label="OpenETR durable link QR code">
+      {{ durable_qr | safe }}
+    </div>
+  </div>
+</details>
+{% endif %}

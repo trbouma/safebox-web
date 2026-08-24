@@ -2755,6 +2755,15 @@ def _qr_svg(payload: str, *, include_acorn: bool = False) -> str:
     return svg.replace("</svg>", f"{acorn_mark}</svg>", 1)
 
 
+def _openetr_durable_url(settings: Settings, digest: str) -> str:
+    """Return the configured public verifier URL for one exact object digest."""
+
+    normalized_digest = str(digest or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{64}", normalized_digest) is None:
+        raise ValueError("OpenETR durable links require a full SHA-256 object digest")
+    return f"{settings.openetr_public_base_url.rstrip('/')}/{normalized_digest}"
+
+
 def _invoice_svg(invoice: str) -> str:
     return _qr_svg(invoice)
 
@@ -4973,7 +4982,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     + base64.b64encode(blob_data).decode("ascii")
                 )
             control_history = None
-            if blob_sha256:
+            durable_url = None
+            durable_qr = None
+            if blob_sha256 and re.fullmatch(
+                r"[0-9a-fA-F]{64}", str(blob_sha256).strip()
+            ):
+                durable_url = _openetr_durable_url(settings, str(blob_sha256))
+                durable_qr = _qr_svg(durable_url)
                 try:
                     control_history = await asyncio.wait_for(
                         query_openetr_history(
@@ -5010,6 +5025,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         str(blob_sha256)[:8].upper() if blob_sha256 else None
                     ),
                     control_history=control_history,
+                    durable_url=durable_url,
+                    durable_qr=durable_qr,
                     descriptor=scanned_value,
                     csrf_token=form_token.issue(),
                 ),
@@ -7909,6 +7926,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         blob_query = urlencode({"label": label})
         record_url = f"/record?{blob_query}"
         if openetr:
+            durable_url = (
+                _openetr_durable_url(
+                    settings,
+                    str(record_value.origsha256).strip().lower(),
+                )
+                if blob_fingerprint
+                else None
+            )
             return render_template(
                 "control_history.html",
                 title="Control History",
@@ -7917,6 +7942,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 has_blob=bool(getattr(record_value, "blobref", None)),
                 blob_fingerprint=blob_fingerprint,
                 openetr_history=openetr_history,
+                durable_url=durable_url,
+                durable_qr=_qr_svg(durable_url) if durable_url else None,
             )
         return render_template(
             "record.html",

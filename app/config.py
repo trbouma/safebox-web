@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
@@ -32,6 +33,7 @@ DEFAULT_BITCOIN_API_BASE = "https://blockstream.info/api"
 DEFAULT_BITCOIN_LOOKUP_TIMEOUT_SECONDS = 10.0
 DEFAULT_BITCOIN_SWEEP_FEE_RATE = 2.0
 DEFAULT_OPENETR_RELAYS = ("wss://relay.openetr.org",)
+DEFAULT_OPENETR_PUBLIC_BASE_URL = "https://openetr.org/etr"
 DEFAULT_OPENETR_QUERY_TIMEOUT_SECONDS = 5.0
 DEFAULT_OPENETR_QUERY_LIMIT = 100
 DEFAULT_CURRENCY_RATE_SOURCE_URL = "https://blockchain.info/ticker"
@@ -306,6 +308,7 @@ class Settings:
     bitcoin_lookup_timeout_seconds: float = DEFAULT_BITCOIN_LOOKUP_TIMEOUT_SECONDS
     bitcoin_sweep_fee_rate: float = DEFAULT_BITCOIN_SWEEP_FEE_RATE
     openetr_relays: tuple[str, ...] = DEFAULT_OPENETR_RELAYS
+    openetr_public_base_url: str = DEFAULT_OPENETR_PUBLIC_BASE_URL
     openetr_query_timeout_seconds: float = DEFAULT_OPENETR_QUERY_TIMEOUT_SECONDS
     openetr_query_limit: int = DEFAULT_OPENETR_QUERY_LIMIT
     database_url: str = "sqlite:///data/database.db"
@@ -385,6 +388,17 @@ class Settings:
             raise ValueError("SAFEBOX_BITCOIN_SWEEP_FEE_RATE must be positive")
         if not self.openetr_relays:
             raise ValueError("SAFEBOX_OPENETR_RELAYS must contain at least one relay")
+        openetr_public_url = urlsplit(self.openetr_public_base_url.strip())
+        if (
+            openetr_public_url.scheme.lower() != "https"
+            or not openetr_public_url.hostname
+            or openetr_public_url.query
+            or openetr_public_url.fragment
+        ):
+            raise ValueError(
+                "SAFEBOX_OPENETR_PUBLIC_BASE_URL must be an HTTPS URL without "
+                "a query or fragment"
+            )
         if self.openetr_query_timeout_seconds <= 0:
             raise ValueError("SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS must be positive")
         if self.openetr_query_limit < 1:
@@ -553,6 +567,10 @@ class Settings:
             bitcoin_lookup_timeout_seconds=bitcoin_lookup_timeout,
             bitcoin_sweep_fee_rate=bitcoin_sweep_fee_rate,
             openetr_relays=_openetr_relays_from_env(),
+            openetr_public_base_url=os.getenv(
+                "SAFEBOX_OPENETR_PUBLIC_BASE_URL",
+                DEFAULT_OPENETR_PUBLIC_BASE_URL,
+            ).strip(),
             openetr_query_timeout_seconds=openetr_query_timeout,
             openetr_query_limit=openetr_query_limit,
             database_url=os.getenv(

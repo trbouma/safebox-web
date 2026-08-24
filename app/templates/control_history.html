@@ -13,18 +13,8 @@
   <p class="openetr-evidence-note">These are cryptographically valid signed
   events returned by the configured OpenETR relay infrastructure. Recognition
   of the signer and the effect of an event remain separate questions.</p>
-  <section class="openetr-event" aria-labelledby="openetr-origin-heading">
-    <h2 id="openetr-origin-heading">Origin Event</h2>
-    <dl class="openetr-event-fields">
-      <dt>Object digest</dt><dd><code>{{ openetr_history.digest }}</code></dd>
-      <dt>Event</dt><dd><code>{{ openetr_history.origin.id }}</code></dd>
-      <dt>Kind</dt><dd>{{ openetr_history.origin.kind }}</dd>
-      <dt>Issuer</dt><dd><code>{{ openetr_history.origin.author }}</code></dd>
-      <dt>Created</dt><dd>{{ openetr_history.origin.created_at }}</dd>
-      {% if openetr_history.origin.content %}<dt>Statement</dt><dd>{{ openetr_history.origin.content }}</dd>{% endif %}
-    </dl>
-  </section>
-  {% with history=openetr_history %}{% include "_issuer_profile.html" %}{% endwith %}
+  {% with history=openetr_history %}{% include "_origin_issuer.html" %}{% endwith %}
+  {% include "_openetr_durable_link.html" %}
   <h2>Control Events</h2>
   {% for event in openetr_history.controls %}
   <article class="openetr-event">

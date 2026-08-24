@@ -227,6 +227,11 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .openetr-event-fields dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .openetr-evidence-note, .openetr-source { color: var(--muted); font-size: .92rem; }
 .openetr-warning { color: var(--advisory); }
+.openetr-durable-link { margin: 1rem 0; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); }
+.openetr-durable-link > summary { cursor: pointer; padding: 1rem; font-weight: 700; }
+.openetr-durable-link[open] > summary { border-bottom: 1px solid var(--note-border); }
+.openetr-durable-link-content { padding: 0 1rem 1rem; }
+.openetr-durable-link-content a { overflow-wrap: anywhere; }
 .invoice-qr { display: flex; justify-content: center; margin: 1.5rem 0; }
 .invoice-qr svg { width: min(100%, 22rem); height: auto; }
 .qr-code { display: block; overflow: hidden; border-radius: 1rem; background: #fff; }

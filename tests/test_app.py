@@ -42,6 +42,7 @@ from acorn import (
 import app.main as main_module
 import app.security as security_module
 from app.config import (
+    DEFAULT_OPENETR_PUBLIC_BASE_URL,
     DEFAULT_SESSION_TTL_HOURS,
     DEFAULT_SESSION_TTL_SECONDS,
     Settings,
@@ -736,6 +737,29 @@ def test_default_session_lifetime_is_30_days() -> None:
     assert settings.onboard_invite_code == "INVITEME"
     assert settings.onboard_invite_codes == ("INVITEME",)
     assert settings.background_job_threads == 2
+    assert settings.openetr_public_base_url == DEFAULT_OPENETR_PUBLIC_BASE_URL
+
+
+def test_openetr_public_base_url_requires_https() -> None:
+    with pytest.raises(ValueError, match="SAFEBOX_OPENETR_PUBLIC_BASE_URL"):
+        Settings(
+            cookie_key=TEST_KEY,
+            openetr_public_base_url="http://openetr.example/etr",
+        )
+
+
+def test_openetr_durable_url_uses_full_normalized_digest() -> None:
+    digest = "AB" * 32
+    settings = replace(
+        TEST_SETTINGS,
+        openetr_public_base_url="https://verify.example/etr/",
+    )
+
+    assert main_module._openetr_durable_url(settings, digest) == (
+        f"https://verify.example/etr/{digest.lower()}"
+    )
+    with pytest.raises(ValueError, match="full SHA-256"):
+        main_module._openetr_durable_url(settings, "1EA23F2B")
 
 
 def test_settings_load_onboard_invite_code_from_env(tmp_path, monkeypatch) -> None:
@@ -6568,6 +6592,9 @@ def test_scanned_presentation_displays_record_and_history_without_import(monkeyp
     assert "verified copy" in response.text
     assert "Control History" in response.text
     assert "Attested original" in response.text
+    assert "<summary>Durable Link and QR Code</summary>" in response.text
+    assert "https://openetr.org/etr/" in response.text
+    assert 'aria-label="OpenETR durable link QR code"' in response.text
     assert ">Done</button>" in response.text
     assert "Import Record" not in response.text
     assert 'action="/record/import"' not in response.text
@@ -7570,14 +7597,36 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
     assert '<section class="openetr-history-content"' in response.text
     assert '<details class="openetr-history"' not in response.text
     assert 'href="/record?label=Receipt">Back to Record</a>' in response.text
-    assert "Origin Event" in response.text
+    assert "Origin and Issuer" in response.text
     assert digest in response.text
     assert "Issued warehouse receipt" in response.text
-    assert "Issuer Profile" in response.text
+    assert "Issuer Profile" not in response.text
+    assert "Issuer Name (Display Name)" in response.text
     assert "Warehouse Authority" in response.text
+    assert "Issues and attests warehouse receipts." in response.text
     assert "Claimed NIP-05" in response.text
     assert "warehouse@example.com" in response.text
     assert "does not independently establish" in response.text
+    assert "Protocol Details" in response.text
+    assert "Origin Event ID" in response.text
+    assert "Origin Event Kind" in response.text
+    assert "Issuer Public Key" in response.text
+    assert "Profile Event ID" in response.text
+    assert "Profile Event Kind" in response.text
+    assert response.text.index("Warehouse Authority") < response.text.index(
+        "Issued warehouse receipt"
+    ) < response.text.index("Protocol Details")
+    durable_url = f"https://openetr.org/etr/{digest}"
+    assert "<summary>Durable Link and QR Code</summary>" in response.text
+    assert (
+        "This control graph has a clickable durable link and a scannable QR code"
+        in response.text
+    )
+    assert durable_url in response.text
+    assert 'aria-label="OpenETR durable link QR code"' in response.text
+    assert response.text.index("Origin and Issuer") < response.text.index(
+        "Durable Link and QR Code"
+    ) < response.text.index("Control Events")
     assert "Transfer initiated" in response.text
     assert "npub1recipient" in response.text
     assert query_args == {

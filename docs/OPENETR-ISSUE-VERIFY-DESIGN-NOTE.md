@@ -411,6 +411,14 @@ The projection:
   origin;
 - queries the same configured relays for the origin signer's latest valid kind
   `0` profile and presents selected recognition metadata;
+- combines the origin and issuer into one human-first presentation: issuer
+  display name, name, description, and other populated profile claims appear
+  before the statement made about the Original Record at issuance, while event
+  identifiers, kinds, signer key, object digest, and profile-event metadata
+  follow under protocol details;
+- derives an operator-configured durable verifier link from the complete
+  object digest and presents the identical URL as a clickable link and
+  server-rendered QR code in a collapsible section;
 - displays the origin and related control events without making a recognition
   or legal-effect claim; and
 - reports competing origins, broken or orphaned chains, invalid signatures,
@@ -433,6 +441,7 @@ Operators configure the experimental query boundary with:
 
 ```dotenv
 SAFEBOX_OPENETR_RELAYS=wss://relay.openetr.org
+SAFEBOX_OPENETR_PUBLIC_BASE_URL=https://openetr.org/etr
 SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS=5
 SAFEBOX_OPENETR_QUERY_LIMIT=100
 ```

@@ -1,0 +1,46 @@
+{% set origin = history.origin %}
+{% set profile = history.issuer_profile %}
+<section class="openetr-event openetr-origin-issuer" aria-labelledby="openetr-origin-issuer-heading">
+  <h2 id="openetr-origin-issuer-heading">Origin and Issuer</h2>
+
+  {% if profile %}
+  <dl class="openetr-event-fields openetr-human-fields">
+    {% if profile.display_name %}<dt>Issuer Name (Display Name)</dt><dd>{{ profile.display_name }}</dd>{% endif %}
+    {% if profile.name %}<dt>Name</dt><dd>{{ profile.name }}</dd>{% endif %}
+    {% if profile.about %}<dt>About</dt><dd>{{ profile.about }}</dd>{% endif %}
+    {% if profile.nip05 %}<dt>Claimed NIP-05</dt><dd>{{ profile.nip05 }}</dd>{% endif %}
+    {% if profile.lightning_address %}<dt>Claimed Lightning Address</dt><dd>{{ profile.lightning_address }}</dd>{% endif %}
+    {% if profile.website %}<dt>Website</dt><dd><a href="{{ profile.website }}" rel="noreferrer noopener" target="_blank">{{ profile.website }}</a></dd>{% endif %}
+    {% if profile.picture %}<dt>Profile Image</dt><dd><a href="{{ profile.picture }}" rel="noreferrer noopener" target="_blank">Open Image</a></dd>{% endif %}
+  </dl>
+  {% elif history.issuer_profile_error %}
+  <p class="openetr-warning"><strong>Issuer profile:</strong> {{ history.issuer_profile_error }}</p>
+  {% else %}
+  <p class="openetr-source">No valid kind 0 profile for the issuer was returned by the configured relays.</p>
+  {% endif %}
+
+  <dl class="openetr-event-fields openetr-human-fields">
+    <dt>Issued</dt><dd>{{ origin.created_at }}</dd>
+    {% if origin.content %}<dt>Statement</dt><dd>{{ origin.content }}</dd>{% endif %}
+  </dl>
+
+  {% if profile %}
+  <p class="openetr-evidence-note">The issuer information is self-published
+  Nostr profile metadata signed by the same key as the origin event. It may
+  help recognize the issuer, but it does not independently establish the
+  issuer's authority.</p>
+  {% endif %}
+
+  <h3>Protocol Details</h3>
+  <dl class="openetr-event-fields openetr-protocol-fields">
+    <dt>Object Digest</dt><dd><code>{{ history.digest }}</code></dd>
+    <dt>Origin Event ID</dt><dd><code>{{ origin.id }}</code></dd>
+    {% if origin.kind %}<dt>Origin Event Kind</dt><dd>{{ origin.kind }}</dd>{% endif %}
+    <dt>Issuer Public Key</dt><dd><code>{{ origin.author }}</code></dd>
+    {% if profile %}
+    <dt>Profile Event ID</dt><dd><code>{{ profile.event_id }}</code></dd>
+    <dt>Profile Event Kind</dt><dd>0</dd>
+    <dt>Profile Updated</dt><dd>{{ profile.created_at }}</dd>
+    {% endif %}
+  </dl>
+</section>
