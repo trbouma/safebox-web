@@ -98,7 +98,7 @@ button:disabled { cursor: wait; opacity: .65; }
 .wallet-balance-rate-state { margin: .2rem 0 0; color: var(--advisory); font-size: .85rem; font-weight: 700; }
 .wallet-balance-state { margin: .6rem 0 0; color: var(--muted); font-size: .9rem; }
 .wallet-balance-state + .wallet-balance-state { margin-top: .08rem; }
-.wallet-clear-balance { margin: .65rem 0 0; color: var(--text); font-size: .95rem; }
+.wallet-clear-balance { margin: .65rem 0 0; color: var(--link); font-size: 1.2rem; font-weight: 700; line-height: 1.25; }
 .wallet-clear-balance span { display: block; margin-top: .12rem; color: var(--muted); font-size: .75rem; overflow-wrap: anywhere; }
 .clear-balance { margin-top: -0.5rem; }
 .rates-table-wrap { margin: 1.25rem 0; overflow-x: auto; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); }
