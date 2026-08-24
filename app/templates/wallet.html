@@ -129,6 +129,13 @@
       <p>Display preferences: <strong>{{ preferred_currency }}</strong> ·
         <strong>{{ preferred_language }}</strong>.
       </p>
+      {% if translations_provisional %}
+      <p class="advisory" role="note"><strong>Translation notice:</strong>
+        Interface translations are provisional and may contain errors.
+        English remains the reference language for important recovery,
+        security, and transaction information.
+      </p>
+      {% endif %}
       {% if record_protection_available %}
       <p>Protected record mnemonic backup:
         <strong>{% if record_protection_backup_confirmed %}confirmed{% else %}not yet confirmed{% endif %}</strong>

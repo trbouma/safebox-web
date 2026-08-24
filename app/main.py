@@ -4302,6 +4302,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             fiat_estimate=fiat_estimate,
             preferred_currency=preferred_currency,
             preferred_language=preferred_language,
+            translations_provisional=(
+                preferred_language.split("-", 1)[0] != "en"
+            ),
             preferences_updated=(
                 request.query_params.get("preferences") == "updated"
             ),

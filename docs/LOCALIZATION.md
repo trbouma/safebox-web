@@ -16,13 +16,25 @@ Disconnect pane's recovery warning and acknowledgement are also translated as
 complete messages. Other informational, recovery, security, payment, and error
 text remains English until it receives contextual review.
 
-The Inuktitut catalog contains only three provisional demonstration labels:
-Home (`ᐱᒋᐊᕐᕕᒃ`), Preferences/options (`ᓇᓖᕌᕈᑏᑦ`), and
-Advisories/notices (`ᖃᐅᔨᒃᑲᐃᔾᔪᑏᑦ`). Public Inuktitut-language sites and
+The Inuktitut catalog contains only six provisional demonstration messages:
+Safebox is Connected (`Safebox ᐊᑕᔪᖅ`), Home (`ᐱᒋᐊᕐᕕᒃ`),
+Preferences/options (`ᓇᓖᕌᕈᑏᑦ`), and Advisories/notices
+(`ᖃᐅᔨᒃᑲᐃᔾᔪᑏᑦ`), plus Manage Balances
+(`ᐊᒥᐊᒃᑯᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ`) and Manage Records
+(`ᑎᑎᖅᑲᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ`). The balance wording uses the attested financial
+term `ᐊᒥᐊᒃᑯᑦ` for a remainder or balance; the records wording uses
+`ᑎᑎᖅᑲᑦ` for documents or records. Public Inuktitut-language sites and
 Canadian language resources informed these candidates, but a fluent speaker
-must still review their application context and orthography. All other text,
-especially recovery-sensitive language, continues to fall back to English.
-This avoids presenting unreviewed Indigenous-language text as authoritative.
+must still review their application context, dialect, and orthography. All
+other text, especially recovery-sensitive language, continues to fall back to
+English. This avoids presenting unreviewed Indigenous-language text as
+authoritative.
+
+When a connected Acorn uses any non-English language preference, the wallet's
+Advisories pane identifies interface translations as provisional. It also says
+that English remains the reference language for important recovery, security,
+and transaction information. The notice is intentionally written in English
+so its warning does not depend on the translations it qualifies.
 
 ## Runtime boundary
 

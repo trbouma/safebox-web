@@ -1978,13 +1978,13 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
         ),
         (
             "iu",
-            "Safebox is Connected",
+            "Safebox ᐊᑕᔪᖅ",
             (
                 "Connected Mode",
                 "Cash Balance",
                 "Clear Balances",
-                "Manage Balances",
-                "Manage Records",
+                "ᐊᒥᐊᒃᑯᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ",
+                "ᑎᑎᖅᑲᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ",
                 "ᓇᓖᕌᕈᑏᑦ",
                 "ᖃᐅᔨᒃᑲᐃᔾᔪᑏᑦ",
                 "Disconnect",
@@ -2022,6 +2022,13 @@ def test_wallet_connected_heading_uses_session_language(
     assert f'<h1 class="wallet-headline">{translated_title}</h1>' in response.text
     for translated_label in translated_labels:
         assert translated_label in response.text
+    if language == "en":
+        assert "Interface translations are provisional" not in response.text
+    else:
+        assert "Interface translations are provisional and may contain errors." in (
+            response.text
+        )
+        assert "English remains the reference language" in response.text
     translated_status_messages = {
         "en": (
             "Previously confirmed balance. Click to receive and accept pending transactions.",

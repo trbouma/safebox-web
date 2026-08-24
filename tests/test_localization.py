@@ -25,12 +25,16 @@ def test_unsupported_languages_fall_back_to_english() -> None:
     assert supported_language("iu") == "iu"
     assert supported_language("nl") == DEFAULT_LANGUAGE
     assert supported_language("../fr") == DEFAULT_LANGUAGE
-    assert translations_for("iu").gettext("Safebox is Connected") == (
-        "Safebox is Connected"
-    )
+    assert translations_for("iu").gettext("Safebox is Connected") == "Safebox ᐊᑕᔪᖅ"
     assert translations_for("iu").gettext("Home") == "ᐱᒋᐊᕐᕕᒃ"
     assert translations_for("iu").gettext("Preferences") == "ᓇᓖᕌᕈᑏᑦ"
     assert translations_for("iu").gettext("Advisories") == "ᖃᐅᔨᒃᑲᐃᔾᔪᑏᑦ"
+    assert translations_for("iu").gettext("Manage Balances") == (
+        "ᐊᒥᐊᒃᑯᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ"
+    )
+    assert translations_for("iu").gettext("Manage Records") == (
+        "ᑎᑎᖅᑲᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ"
+    )
 
 
 def test_template_renderer_injects_request_localization_without_shared_mutation() -> None:

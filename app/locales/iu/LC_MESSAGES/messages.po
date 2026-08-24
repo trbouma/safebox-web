@@ -10,6 +10,9 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 # Provisional demonstration terminology pending fluent-speaker review.
+msgid "Safebox is Connected"
+msgstr "Safebox ᐊᑕᔪᖅ"
+
 msgid "Home"
 msgstr "ᐱᒋᐊᕐᕕᒃ"
 
@@ -18,3 +21,9 @@ msgstr "ᓇᓖᕌᕈᑏᑦ"
 
 msgid "Advisories"
 msgstr "ᖃᐅᔨᒃᑲᐃᔾᔪᑏᑦ"
+
+msgid "Manage Balances"
+msgstr "ᐊᒥᐊᒃᑯᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ"
+
+msgid "Manage Records"
+msgstr "ᑎᑎᖅᑲᓂᒃ ᐊᐅᓚᑦᑎᓂᖅ"
