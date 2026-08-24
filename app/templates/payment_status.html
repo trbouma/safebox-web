@@ -1,13 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Balance Transfer</h1>
-<nav class="page-actions" aria-label="Page navigation">
-  <a class="button" href="/wallet">Home</a>
-</nav>
 {% if job.status == "RUNNING" %}
 <p role="status"><strong>Your transfer is being processed.</strong></p>
 <p>You can leave this page and return later. Current phase: {{ job.phase | lower }}.</p>
-<a class="button" href="/pay/status">Refresh Status</a>
 {% elif job.status == "COMPLETE" %}
 <p class="success"><strong>Transfer completed.</strong></p>
 <p>Transferred: <strong>{{ "{:,}".format(job.amount) }} sats</strong></p>
@@ -28,8 +24,11 @@
 {% endif %}
 {% if job.error %}<p><strong>Reason:</strong> {{ job.error }}</p>{% endif %}
 {% endif %}
-<nav class="page-actions" aria-label="Page navigation">
-  <a class="button" href="/transactions">Transaction History</a>
-  <a class="button" href="/wallet">Home</a>
+<nav class="page-navigation" aria-label="Page navigation">
+  {% if job.status == "RUNNING" %}
+  <a class="nav-button" href="/pay/status">Refresh Status</a>
+  {% endif %}
+  <a class="nav-button" href="/transactions">Transaction History</a>
+  <a class="nav-button" href="/wallet">Home</a>
 </nav>
 {% endblock %}

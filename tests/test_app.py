@@ -5568,6 +5568,9 @@ def test_confirmed_scanned_invoice_runs_as_background_job(monkeypatch, tmp_path)
     assert response.status_code == 200
     assert "Transfer completed" in response.text
     assert "Total Fees" in response.text
+    assert '<a class="nav-button" href="/transactions">Transaction History</a>' in response.text
+    assert '<a class="nav-button" href="/wallet">Home</a>' in response.text
+    assert response.text.count('href="/wallet"') == 1
     assert job is not None and job["total_fees"] == 1
     assert acorn.invoice_payments == [
         {"invoice": invoice, "comment": "pytest invoice"}
