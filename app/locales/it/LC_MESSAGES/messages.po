@@ -60,3 +60,30 @@ msgstr "Prima di disconnetterti, assicurati di avere le informazioni di recupero
 
 msgid "I have my recovery information and understand Safebox cannot restore it for me."
 msgstr "Dispongo delle mie informazioni di recupero e comprendo che Safebox non può ripristinarle per me."
+
+msgid "Credit"
+msgstr "Accredito"
+
+msgid "Debit"
+msgstr "Addebito"
+
+msgid "Error"
+msgstr "Errore"
+
+msgid "Transaction"
+msgstr "Transazione"
+
+msgid "Pending Credit"
+msgstr "Accredito in sospeso"
+
+msgid "Tender"
+msgstr "Importo presentato"
+
+msgid "Fees"
+msgstr "Commissioni"
+
+msgid "Balance"
+msgstr "Saldo"
+
+msgid "Note"
+msgstr "Nota"

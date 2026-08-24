@@ -60,3 +60,30 @@ msgstr "Avant de vous déconnecter, assurez-vous d’avoir vos informations de r
 
 msgid "I have my recovery information and understand Safebox cannot restore it for me."
 msgstr "Je possède mes informations de récupération et je comprends que Safebox ne peut pas les restaurer pour moi."
+
+msgid "Credit"
+msgstr "Crédit"
+
+msgid "Debit"
+msgstr "Débit"
+
+msgid "Error"
+msgstr "Erreur"
+
+msgid "Transaction"
+msgstr "Transaction"
+
+msgid "Pending Credit"
+msgstr "Crédit en attente"
+
+msgid "Tender"
+msgstr "Montant présenté"
+
+msgid "Fees"
+msgstr "Frais"
+
+msgid "Balance"
+msgstr "Solde"
+
+msgid "Note"
+msgstr "Note"

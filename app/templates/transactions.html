@@ -26,7 +26,7 @@
   {% for pending in pending_transactions %}
   <article class="transaction-card pending">
     <header class="transaction-header">
-      <span class="transaction-kind">Pending Credit</span>
+      <span class="transaction-kind">{{ _("Pending Credit") }}</span>
       <time class="transaction-date">{{ pending.created }}</time>
     </header>
     <div class="transaction-amount">+{{ "{:,}".format(pending.amount) }} sats</div>
@@ -70,16 +70,16 @@
   {% for entry in entries %}
   <article class="transaction-card {{ entry.style }}">
     <header class="transaction-header">
-      <span class="transaction-kind">{{ entry.direction }}</span>
+      <span class="transaction-kind">{{ _(entry.direction) }}</span>
       <time class="transaction-date">{{ entry.created }}</time>
     </header>
     <div class="transaction-amount">{{ entry.sign }}{{ entry.amount }} sats</div>
     <dl class="transaction-details">
-      <div><dt>Tender</dt><dd>{{ entry.tender }}</dd></div>
-      <div><dt>Fees</dt><dd>{{ entry.fees }} sats</dd></div>
-      <div><dt>Balance</dt><dd>{{ entry.balance }} sats</dd></div>
+      <div><dt>{{ _("Tender") }}</dt><dd>{{ entry.tender }}</dd></div>
+      <div><dt>{{ _("Fees") }}</dt><dd>{{ entry.fees }} sats</dd></div>
+      <div><dt>{{ _("Balance") }}</dt><dd>{{ entry.balance }} sats</dd></div>
     </dl>
-    {% if entry.comment %}<p class="transaction-note"><strong>Note:</strong> {{ entry.comment }}</p>{% endif %}
+    {% if entry.comment %}<p class="transaction-note"><strong>{{ _("Note") }}:</strong> {{ entry.comment }}</p>{% endif %}
   </article>
   {% endfor %}
 </section>

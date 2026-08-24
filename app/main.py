@@ -1373,6 +1373,7 @@ def _transactions_page(
     finalization_job: dict | None = None,
     pending_transactions: list[dict] | None = None,
     checks_performed: bool = False,
+    preferred_language: str = "en",
 ) -> str:
     """Render transaction history with an explicit incoming funds check."""
 
@@ -1393,6 +1394,7 @@ def _transactions_page(
         finalization_job=finalization_job,
         pending_transactions=pending_transactions or [],
         checks_performed=checks_performed,
+        preferred_language=preferred_language,
     )
 
 
@@ -5846,7 +5848,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session: DatabaseSessionDependency,
     ):
         settings = request.app.state.settings
-        preferred_currency, _preferred_language = _session_display_preferences(
+        preferred_currency, preferred_language = _session_display_preferences(
             _optional_session_credentials(request, settings),
             settings,
         )
@@ -5968,6 +5970,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             finalization_job=finalization_job,
             pending_transactions=pending_transactions,
             checks_performed=checks_performed,
+            preferred_language=preferred_language,
         )
 
     @app.get("/clear", response_class=HTMLResponse)
@@ -6670,6 +6673,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             wallet_balance_verified=wallet_balance_verified,
             pending_amount=pending_amount,
             pending_count=pending_count,
+            preferred_language=_session_display_preferences(
+                _optional_session_credentials(request, settings),
+                settings,
+            )[1],
         )
 
     @app.get("/record/present", response_class=HTMLResponse)

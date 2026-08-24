@@ -60,3 +60,30 @@ msgstr "Stellen Sie vor dem Trennen sicher, dass Ihnen Ihre Wiederherstellungsin
 
 msgid "I have my recovery information and understand Safebox cannot restore it for me."
 msgstr "Meine Wiederherstellungsinformationen liegen mir vor und ich verstehe, dass Safebox sie nicht für mich wiederherstellen kann."
+
+msgid "Credit"
+msgstr "Gutschrift"
+
+msgid "Debit"
+msgstr "Belastung"
+
+msgid "Error"
+msgstr "Fehler"
+
+msgid "Transaction"
+msgstr "Transaktion"
+
+msgid "Pending Credit"
+msgstr "Ausstehende Gutschrift"
+
+msgid "Tender"
+msgstr "Ausgangsbetrag"
+
+msgid "Fees"
+msgstr "Gebühren"
+
+msgid "Balance"
+msgstr "Guthaben"
+
+msgid "Note"
+msgstr "Notiz"

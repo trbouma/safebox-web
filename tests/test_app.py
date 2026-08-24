@@ -3930,6 +3930,37 @@ def test_transaction_history_has_an_empty_state(tmp_path) -> None:
     assert "No transaction history was found" in response.text
 
 
+def test_transaction_history_localizes_presented_transaction_types(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn(
+        transaction_history=[
+            {"tx_type": "C", "amount": 21, "fees": 0},
+            {"tx_type": "D", "amount": 5, "fees": 1},
+        ]
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+        language="fr",
+    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            SessionCipher(settings).encode(credentials),
+            domain="safebox.example",
+            path="/",
+        )
+        response = client.get("/transactions")
+
+    assert response.status_code == 200
+    assert '<span class="transaction-kind">Crédit</span>' in response.text
+    assert '<span class="transaction-kind">Débit</span>' in response.text
+    assert "<dt>Frais</dt>" in response.text
+    assert "<dt>Solde</dt>" in response.text
+
+
 def test_transaction_history_displays_cached_currency_estimate(tmp_path) -> None:
     settings = replace(
         database_settings(tmp_path),

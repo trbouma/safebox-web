@@ -97,3 +97,24 @@ def test_balance_status_catalog_entries_are_available(
         )
         == unavailable
     )
+
+
+@pytest.mark.parametrize(
+    ("language", "credit", "debit"),
+    (
+        ("fr", "Crédit", "Débit"),
+        ("es", "Crédito", "Débito"),
+        ("pt", "Crédito", "Débito"),
+        ("de", "Gutschrift", "Belastung"),
+        ("it", "Accredito", "Addebito"),
+    ),
+)
+def test_transaction_directions_are_localized(
+    language: str,
+    credit: str,
+    debit: str,
+) -> None:
+    translations = translations_for(language)
+
+    assert translations.gettext("Credit") == credit
+    assert translations.gettext("Debit") == debit
