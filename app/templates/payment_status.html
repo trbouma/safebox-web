@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Balance Transfer</h1>
+<nav class="page-actions" aria-label="Page navigation">
+  <a class="button" href="/wallet">Home</a>
+</nav>
+{% if job.status == "RUNNING" %}
+<p role="status"><strong>Your transfer is being processed.</strong></p>
+<p>You can leave this page and return later. Current phase: {{ job.phase | lower }}.</p>
+<a class="button" href="/pay/status">Refresh Status</a>
+{% elif job.status == "COMPLETE" %}
+<p class="success"><strong>Transfer completed.</strong></p>
+<p>Transferred: <strong>{{ "{:,}".format(job.amount) }} sats</strong></p>
+<p>Total Fees: <strong>{{ "{:,}".format(job.total_fees or 0) }} sats</strong></p>
+{% if job.mint_fees is not none %}<p>Mint Fees: <strong>{{ "{:,}".format(job.mint_fees) }} sats</strong></p>{% endif %}
+{% if job.lightning_fee is not none %}<p>Lightning Fee: <strong>{{ "{:,}".format(job.lightning_fee) }} sats</strong></p>{% endif %}
+{% if job.lightning_fee_reserve %}<p>Lightning Fee Reserve: <strong>{{ "{:,}".format(job.lightning_fee_reserve) }} sats</strong></p>{% endif %}
+{% if job.lightning_fee_return %}<p>Lightning Fee Returned: <strong>{{ "{:,}".format(job.lightning_fee_return) }} sats</strong></p>{% endif %}
+<p>Transfer Address: <code>{{ job.recipient }}</code></p>
+{% if job.message %}<p>{{ job.message }}</p>{% endif %}
+{% else %}
+<p class="error"><strong>The transfer needs review.</strong></p>
+<p>Do not retry blindly. Review transaction history and reconcile pending payments first.</p>
+{% if job.total_fees %}
+<p>Known Fees Consumed: <strong>{{ "{:,}".format(job.total_fees) }} sats</strong></p>
+{% if job.mint_fees is not none %}<p>Mint Fees: <strong>{{ "{:,}".format(job.mint_fees) }} sats</strong></p>{% endif %}
+{% if job.lightning_fee is not none %}<p>Lightning Fee: <strong>{{ "{:,}".format(job.lightning_fee) }} sats</strong></p>{% endif %}
+{% endif %}
+{% if job.error %}<p><strong>Reason:</strong> {{ job.error }}</p>{% endif %}
+{% endif %}
+<nav class="page-actions" aria-label="Page navigation">
+  <a class="button" href="/transactions">Transaction History</a>
+  <a class="button" href="/wallet">Home</a>
+</nav>
+{% endblock %}

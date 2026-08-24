@@ -167,6 +167,38 @@ def get_payment_acorn(acorn: LoadedAcornDependency) -> Acorn:
 PaymentAcornDependency = Annotated[Acorn, Depends(get_payment_acorn)]
 
 
+def get_payment_acorn_factory(
+    acorn: PaymentAcornDependency,
+    settings: SettingsDependency,
+) -> AcornFactory:
+    """Clone the authenticated payment component for an in-memory job."""
+
+    nsec = getattr(acorn, "privkey_bech32", None)
+    bootstrap_relay = getattr(acorn, "home_relay", None)
+    blossom_home_server = settings.blossom_home_server
+
+    def create() -> Acorn:
+        # Test and adapter implementations may not expose Acorn's key fields.
+        # Production Acorn instances always take the fresh-instance branch.
+        if not nsec or not bootstrap_relay:
+            return acorn
+        return Acorn(
+            nsec=nsec,
+            home_relay=bootstrap_relay,
+            relays=[bootstrap_relay],
+            blossom_home_server=blossom_home_server,
+            blossom_servers=[blossom_home_server],
+        )
+
+    return create
+
+
+PaymentAcornFactoryDependency = Annotated[
+    AcornFactory,
+    Depends(get_payment_acorn_factory),
+]
+
+
 def get_deposit_acorn(acorn: LoadedAcornDependency) -> Acorn:
     """Make the Lightning deposit mutation boundary explicit."""
 

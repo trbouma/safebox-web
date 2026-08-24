@@ -68,6 +68,7 @@ from app.dependencies import (
 from app.main import create_app
 from app.funds_finalization import claim_finalization_job, get_finalization_job
 from app.clear_acceptance import get_clear_acceptance_job
+from app.outgoing_payment import get_outgoing_payment_job
 from app.security import (
     CsrfProtector,
     DepositQuoteCipher,
@@ -151,10 +152,16 @@ class FakePaymentFees(int):
         *,
         mint_fees: int,
         lightning_fee_reserve: int,
+        lightning_fee: int | None = None,
+        lightning_fee_return: int = 0,
     ):
         instance = super().__new__(cls, total)
         instance.mint_fees = mint_fees
         instance.lightning_fee_reserve = lightning_fee_reserve
+        instance.lightning_fee = (
+            lightning_fee_reserve if lightning_fee is None else lightning_fee
+        )
+        instance.lightning_fee_return = lightning_fee_return
         return instance
 
 
@@ -3343,6 +3350,12 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
                 "PRAGMA table_info(clear_acceptance_job)"
             )
         }
+        outgoing_payment_job_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(outgoing_payment_job)"
+            )
+        }
         worker_heartbeat_columns = {
             row[1]
             for row in connection.execute(
@@ -3358,9 +3371,10 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "currency_rate",
         "funds_finalization_job",
         "clear_acceptance_job",
+        "outgoing_payment_job",
         "web_worker_heartbeat",
     }.issubset(tables)
-    assert revision == ("20260823_0008",)
+    assert revision == ("20260824_0009",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -3436,6 +3450,26 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "updated_at",
         "lease_expires_at",
     } == clear_acceptance_job_columns
+    assert {
+        "npub",
+        "owner_token",
+        "owner_worker_id",
+        "payment_kind",
+        "recipient",
+        "amount",
+        "status",
+        "phase",
+        "total_fees",
+        "mint_fees",
+        "lightning_fee",
+        "lightning_fee_reserve",
+        "lightning_fee_return",
+        "message",
+        "error",
+        "started_at",
+        "updated_at",
+        "lease_expires_at",
+    } == outgoing_payment_job_columns
     assert {
         "worker_id",
         "started_at",
@@ -5494,7 +5528,7 @@ def test_scanned_invoice_renders_review_without_exposing_raw_invoice(monkeypatch
     assert acorn.invoice_payments == []
 
 
-def test_confirmed_scanned_invoice_delegates_to_acorn(monkeypatch) -> None:
+def test_confirmed_scanned_invoice_runs_as_background_job(monkeypatch, tmp_path) -> None:
     invoice = "lnbc210n1pytestinvoice"
     decoded = {
         "invoice": invoice,
@@ -5504,29 +5538,37 @@ def test_confirmed_scanned_invoice_delegates_to_acorn(monkeypatch) -> None:
         "payment_hash": "ab" * 32,
     }
     monkeypatch.setattr(main_module, "_decode_lightning_invoice", lambda value: decoded)
-    app = create_app(TEST_SETTINGS)
+    app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
+    app.dependency_overrides[get_acorn] = lambda: acorn
     state_token = InvoicePaymentCipher(TEST_SETTINGS).encode(
         InvoicePaymentState(invoice=invoice, amount=21)
     )
 
-    response = client.post(
-        "/pay/invoice",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "invoice_state": state_token,
-            "comment": "pytest invoice",
-            "confirmed": "yes",
-        },
-    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/pay/invoice",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "invoice_state": state_token,
+                "comment": "pytest invoice",
+                "confirmed": "yes",
+            },
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_outgoing_payment_job(app.state.database_engine, acorn.pubkey_bech32)
+            if job and job["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
+        response = client.get("/pay/status")
 
     assert response.status_code == 200
-    assert "Invoice payment successful" in response.text
-    assert "Total Fees: <strong>1 sats" in response.text
-    assert "Mint Fees: <strong>1 sats" in response.text
-    assert "Lightning Fee Reserve: <strong>0 sats" in response.text
+    assert "Transfer completed" in response.text
+    assert "Total Fees" in response.text
+    assert job is not None and job["total_fees"] == 1
     assert acorn.invoice_payments == [
         {"invoice": invoice, "comment": "pytest invoice"}
     ]
@@ -5699,29 +5741,33 @@ def test_unpaid_deposit_keeps_same_invoice_available_for_recheck() -> None:
     assert acorn.history_entries == []
 
 
-def test_confirmed_lightning_payment_delegates_to_acorn() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_confirmed_lightning_payment_runs_as_background_job(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.post(
-        "/pay",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "lightning_address": "alice@example.com",
-            "amount": "21",
-            "comment": "pytest web payment",
-            "confirmed": "yes",
-        },
-    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "lightning_address": "alice@example.com",
+                "amount": "21",
+                "comment": "pytest web payment",
+                "confirmed": "yes",
+            },
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_outgoing_payment_job(app.state.database_engine, acorn.pubkey_bech32)
+            if job and job["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
 
     assert response.status_code == 200
-    assert "Balance transferred" in response.text
-    assert "21 sats" in response.text
-    assert "Total Fees: <strong>1 sats" in response.text
-    assert "Mint Fees: <strong>1 sats" in response.text
-    assert "Lightning Fee Reserve: <strong>0 sats" in response.text
+    assert "Transfer" in response.text
+    assert job is not None and job["status"] == "COMPLETE"
     assert acorn.payments == [
         {
             "amount": 21,
@@ -5909,8 +5955,8 @@ def test_safebox_direct_ecash_transfer_exception_shows_safe_reason(
     assert len(acorn.ecash_transfers) == 1
 
 
-def test_lightning_payment_falls_back_when_nip05_is_not_safebox(
-    monkeypatch,
+def test_lightning_payment_falls_back_to_background_job(
+    monkeypatch, tmp_path,
 ) -> None:
     class FakeClient:
         def __init__(self, **kwargs) -> None:
@@ -5926,21 +5972,24 @@ def test_lightning_payment_falls_back_when_nip05_is_not_safebox(
             raise main_module.httpx.HTTPError("not found")
 
     monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
-    app = create_app(TEST_SETTINGS)
+    app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.post(
-        "/pay",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "lightning_address": "alice@example.com",
-            "amount": "21",
-            "comment": "lightning please",
-            "confirmed": "yes",
-        },
-    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "lightning_address": "alice@example.com",
+                "amount": "21",
+                "comment": "lightning please",
+                "confirmed": "yes",
+            },
+        )
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not acorn.payments:
+            time.sleep(0.01)
 
     assert response.status_code == 200
     assert acorn.ecash_transfers == []
@@ -5953,7 +6002,7 @@ def test_lightning_payment_falls_back_when_nip05_is_not_safebox(
     ]
 
 
-def test_lightning_payment_failure_shows_safe_reason(monkeypatch) -> None:
+def test_lightning_payment_failure_is_recorded_for_review(monkeypatch, tmp_path) -> None:
     class FakeClient:
         def __init__(self, **kwargs) -> None:
             self.kwargs = kwargs
@@ -5972,34 +6021,56 @@ def test_lightning_payment_failure_shows_safe_reason(monkeypatch) -> None:
             self.payments.append(
                 {"amount": amount, "lnaddress": lnaddress, "comment": comment}
             )
-            raise RuntimeError("Melt quote failed <inspect>")
+            error = RuntimeError("Melt quote failed <inspect>")
+            error.fees = FakePaymentFees(
+                2,
+                mint_fees=2,
+                lightning_fee_reserve=10,
+                lightning_fee=0,
+                lightning_fee_return=10,
+            )
+            raise error
 
     monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
-    app = create_app(TEST_SETTINGS)
+    app = create_app(database_settings(tmp_path))
     acorn = FailingLightningAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "lightning_address": "alice@example.com",
+                "amount": "21",
+                "comment": "lightning please",
+                "confirmed": "yes",
+            },
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_outgoing_payment_job(app.state.database_engine, acorn.pubkey_bech32)
+            if job and job["status"] == "FAILED":
+                break
+            time.sleep(0.01)
+        response = client.get("/pay/status")
 
-    response = client.post(
-        "/pay",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "lightning_address": "alice@example.com",
-            "amount": "21",
-            "comment": "lightning please",
-            "confirmed": "yes",
-        },
-    )
-
-    assert response.status_code == 502
-    assert "Safebox did not receive a confirmed successful result" in response.text
+    assert response.status_code == 200
+    assert "transfer needs review" in response.text
     assert "Melt quote failed &lt;inspect&gt;" in response.text
-    assert "<inspect>" not in response.text
+    assert job is not None and job["phase"] == "REVIEW"
+    assert job["total_fees"] == 2
+    assert job["mint_fees"] == 2
+    assert "Known Fees Consumed" in response.text
     assert acorn.ecash_transfers == []
     assert len(acorn.payments) == 1
+    assert acorn.history_entries[-1]["tx_type"] == "X"
+    assert acorn.history_entries[-1]["fees"] == 2
+    assert "Funds transfer failed" in acorn.history_entries[-1]["comment"]
 
 
-def test_lightning_payment_stale_proofs_repairs_and_returns_to_review(monkeypatch) -> None:
+def test_lightning_payment_stale_proofs_stops_for_review(monkeypatch, tmp_path) -> None:
     class FakeClient:
         def __init__(self, **kwargs) -> None:
             self.kwargs = kwargs
@@ -6023,32 +6094,34 @@ def test_lightning_payment_stale_proofs_repairs_and_returns_to_review(monkeypatc
             )
 
     monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
-    app = create_app(TEST_SETTINGS)
+    app = create_app(database_settings(tmp_path))
     acorn = StaleProofAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "lightning_address": "alice@example.com",
+                "amount": "21",
+                "comment": "lightning please",
+                "confirmed": "yes",
+            },
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_outgoing_payment_job(app.state.database_engine, acorn.pubkey_bech32)
+            if job and job["status"] == "FAILED":
+                break
+            time.sleep(0.01)
 
-    response = client.post(
-        "/pay",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "lightning_address": "alice@example.com",
-            "amount": "21",
-            "comment": "lightning please",
-            "confirmed": "yes",
-        },
-    )
-
-    assert response.status_code == 409
-    assert acorn.repair_calls == 1
+    assert response.status_code == 200
+    assert acorn.repair_calls == 0
     assert len(acorn.payments) == 1
-    assert "Safebox repaired stale proofs" in response.text
-    assert "confirm the transfer again" in response.text
-    assert 'value="alice@example.com"' in response.text
-    assert 'value="21"' in response.text
-    assert 'value="lightning please"' in response.text
-    assert "<code>acorn reconcile-payments</code>" not in response.text
-    assert "wallet contains stale proofs" in response.text
+    assert job is not None and job["phase"] == "REVIEW"
+    assert "wallet contains stale proofs" in str(job["error"])
 
 
 def test_payment_requires_explicit_confirmation_before_calling_acorn() -> None:

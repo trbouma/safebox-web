@@ -166,3 +166,28 @@ class ClearAcceptanceJob(SQLModel, table=True):
     started_at: datetime = Field(default_factory=utc_now, nullable=False)
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
     lease_expires_at: datetime = Field(nullable=False, index=True)
+
+
+class OutgoingPaymentJob(SQLModel, table=True):
+    """Non-secret coordination state for one outgoing Lightning payment."""
+
+    __tablename__ = "outgoing_payment_job"
+
+    npub: str = Field(primary_key=True)
+    owner_token: str = Field(nullable=False)
+    owner_worker_id: Optional[str] = Field(default=None, nullable=True, index=True)
+    payment_kind: str = Field(nullable=False)
+    recipient: str = Field(nullable=False)
+    amount: int = Field(nullable=False)
+    status: str = Field(default="RUNNING", nullable=False, index=True)
+    phase: str = Field(default="STARTING", nullable=False)
+    total_fees: Optional[int] = Field(default=None, nullable=True)
+    mint_fees: Optional[int] = Field(default=None, nullable=True)
+    lightning_fee: Optional[int] = Field(default=None, nullable=True)
+    lightning_fee_reserve: Optional[int] = Field(default=None, nullable=True)
+    lightning_fee_return: Optional[int] = Field(default=None, nullable=True)
+    message: Optional[str] = Field(default=None, nullable=True)
+    error: Optional[str] = Field(default=None, nullable=True)
+    started_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    lease_expires_at: datetime = Field(nullable=False, index=True)

@@ -125,6 +125,47 @@ user's still-valid encrypted session and resumes from relay-backed state.
 Safebox cannot resume in the user's absence because it deliberately does not
 persist the nsec.
 
+## Attached-Acorn outgoing Lightning payments
+
+Outgoing Lightning-address and fixed-invoice payments use the same bounded,
+session-bound execution model. After the user reviews and confirms the
+transfer, the request atomically claims one outgoing-payment job for that
+Acorn, submits it to the local executor, and redirects immediately to a status
+page. The user can leave, return, or refresh the page while Acorn performs the
+mint swap and Lightning melt.
+
+The coordination row stores only the component public key, payment type,
+display address, amount, phase, fee result, timestamps, and lease ownership.
+It does not contain the nsec, Cashu proofs, a BOLT11 invoice, or recovery
+material. The actual invoice and the factory capable of recreating the Acorn
+exist only in the claiming process's memory. Acorn's encrypted relay-backed
+pending-melt journal remains authoritative for uncertain mint or Lightning
+outcomes.
+
+A clean completion records total, mint, actual Lightning, reserved Lightning,
+and returned Lightning fees for presentation. A failure or worker interruption
+stops in **Review**; Safebox does not blindly repeat the transfer. The user must
+inspect transaction history and reconcile pending payments before deciding to
+retry. If the web process dies, the application coordination row can describe
+the interruption, but resumption still requires a connected session because
+Safebox Web does not persist the user's private key.
+
+Failures are also written to the Acorn's encrypted relay-backed transaction
+history as `Error` advisories. A terminal `UNPAID` result is recorded
+idempotently by Acorn using the melt quote. Safebox records other asynchronous
+exceptions as failed or requiring review, without presenting an uncertain
+outcome as a completed debit. When Acorn can prove that preparation consumed a
+mint proof-swap fee, the advisory and status page show that known fee. The
+requested value and quoted Lightning reserve are not treated as spent merely
+because the attempt failed. If the relay cannot accept the advisory, the job
+status says that history publication failed and the encrypted pending-melt
+journal remains the recovery authority.
+
+Direct Acorn-to-Acorn Cash transfers and Clear transfers retain their distinct
+paths for now. Their relay publication, recipient acceptance, and recovery
+semantics are not identical to a Lightning melt and should not be hidden behind
+the outgoing-Lightning job merely for interface uniformity.
+
 The heartbeat table contains only an opaque process identifier and timestamps.
 Relay-backed transfer and continuity events remain the authoritative recovery
 queue, so worker and job rows are coordination and presentation state rather
@@ -289,11 +330,12 @@ same time, particularly with multiple web workers or multiple browser tabs.
 Relay-backed advisory locks help, but the application should not treat them as
 a complete local scheduling mechanism.
 
-Incoming-funds finalization now has a wallet-scoped database lease. Deposits,
-payments, record updates, and other proof maintenance do not yet participate
-in that lease, so they can still overlap with finalization from another tab or
-worker. The shared policy should eventually cover every attached-Acorn
-mutation.
+Incoming-funds finalization, Clear acceptance, and outgoing Lightning payments
+now each have a wallet-scoped database lease and refuse to start while one of
+the other two is running. Deposits, direct Acorn-to-Acorn transfers, record
+updates, and other proof maintenance do not yet participate in that shared
+policy, so they can still overlap from another tab or worker. The shared policy
+should eventually cover every attached-Acorn mutation.
 
 ### Ambiguous delivery outcomes
 
@@ -356,7 +398,7 @@ protects wallet state. Neither substitutes for the other.
 - Monitor `QUOTE_PENDING`, `INVOICE_PENDING`, `DELIVERING`, and
   `DELIVERY_FAILED` row ages.
 - Do not automatically replay an ambiguous delivery.
-- Do not start another wallet mutation while attached-Acorn Cash finalization
-  or Clear acceptance is running.
+- Do not start another wallet mutation while attached-Acorn Cash finalization,
+  Clear acceptance, or an outgoing Lightning payment is running.
 - Stop accepting new provider payments before maintenance that may interrupt
   settlement or delivery.

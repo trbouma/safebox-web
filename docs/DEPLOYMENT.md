@@ -176,11 +176,12 @@ made by the Safebox process, so `localhost` refers to that process's host
 namespace; inside Docker it normally refers to the container itself.
 
 `SAFEBOX_BACKGROUND_JOB_THREADS` is the per-Uvicorn-process bound for
-session-held Cash finalization and Clear acceptance. The default of two keeps
-slow relay or mint work away from the HTTP event loop while limiting concurrent
-wallet jobs. With two Uvicorn workers and the default setting, at most four
-such jobs can execute concurrently across different Acorns. Database leases
-still prevent concurrent mutation of the same Acorn.
+session-held Cash finalization, Clear acceptance, and outgoing Lightning
+payments. The default of two keeps slow relay or mint work away from the HTTP
+event loop while limiting concurrent wallet jobs. With two Uvicorn workers and
+the default setting, at most four such jobs can execute concurrently across
+different Acorns. Database leases still prevent concurrent mutation of the
+same Acorn.
 
 If `SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS` is absent, both the
 application settings and Compose configuration default it to seven days. Set

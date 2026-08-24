@@ -75,6 +75,7 @@ from app.dependencies import (
     DepositAcornDependency,
     LoadedAcornDependency,
     PaymentAcornDependency,
+    PaymentAcornFactoryDependency,
     ReceiveAcornDependency,
     RecordAcornDependency,
 )
@@ -88,6 +89,11 @@ from app.clear_acceptance import (
     claim_clear_acceptance_job,
     get_clear_acceptance_job,
     run_clear_acceptance_job_in_thread,
+)
+from app.outgoing_payment import (
+    claim_outgoing_payment_job,
+    get_outgoing_payment_job,
+    run_outgoing_payment_job_in_thread,
 )
 from app.worker_liveness import (
     new_worker_id,
@@ -136,10 +142,21 @@ def _payment_fee_breakdown(fees: object) -> dict[str, int | None]:
     mint_fees = getattr(fees, "mint_fees", None)
     lightning_fee_reserve = getattr(fees, "lightning_fee_reserve", None)
     if mint_fees is None or lightning_fee_reserve is None:
-        return {"mint_fees": None, "lightning_fee_reserve": None}
+        return {
+            "mint_fees": None,
+            "lightning_fee": None,
+            "lightning_fee_reserve": None,
+            "lightning_fee_return": None,
+        }
     return {
         "mint_fees": int(mint_fees),
+        "lightning_fee": int(
+            getattr(fees, "lightning_fee", lightning_fee_reserve)
+        ),
         "lightning_fee_reserve": int(lightning_fee_reserve),
+        "lightning_fee_return": int(
+            getattr(fees, "lightning_fee_return", 0)
+        ),
     }
 RECORDS_PAGE_SIZE = 10
 SUPPORTED_SESSION_LANGUAGES = SUPPORTED_LANGUAGES
@@ -2909,6 +2926,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.finalization_tasks = {}
         app.state.clear_acceptance_tasks = {}
+        app.state.outgoing_payment_tasks = {}
         app.state.background_job_executor = ThreadPoolExecutor(
             max_workers=runtime_settings.background_job_threads,
             thread_name_prefix="safebox-wallet-job",
@@ -2919,6 +2937,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tasks = [
                 *app.state.finalization_tasks.values(),
                 *app.state.clear_acceptance_tasks.values(),
+                *app.state.outgoing_payment_tasks.values(),
             ]
             await asyncio.to_thread(
                 app.state.background_job_executor.shutdown,
@@ -2944,6 +2963,59 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         StaticFiles(directory=static_directory),
         name="static",
     )
+
+    def start_outgoing_payment(
+        request: Request,
+        *,
+        acorn,
+        acorn_factory,
+        payment_kind: str,
+        recipient: str,
+        display_recipient: str,
+        amount: int,
+        comment: str,
+    ) -> RedirectResponse:
+        npub = acorn.pubkey_bech32
+        cash_job = get_finalization_job(request.app.state.database_engine, npub)
+        if cash_job and cash_job.get("status") == "RUNNING":
+            return RedirectResponse("/transactions?finalization=running", status_code=303)
+        clear_job = get_clear_acceptance_job(request.app.state.database_engine, npub)
+        if clear_job and clear_job.get("status") == "RUNNING":
+            return RedirectResponse("/clear/acceptance-status", status_code=303)
+        claimed, owner_token, _job = claim_outgoing_payment_job(
+            request.app.state.database_engine,
+            npub,
+            payment_kind=payment_kind,
+            recipient=display_recipient,
+            amount=amount,
+            worker_id=request.app.state.worker_id,
+        )
+        if claimed:
+            task = asyncio.wrap_future(
+                request.app.state.background_job_executor.submit(
+                    run_outgoing_payment_job_in_thread,
+                    engine=request.app.state.database_engine,
+                    acorn_factory=acorn_factory,
+                    npub=npub,
+                    owner_token=owner_token,
+                    payment_kind=payment_kind,
+                    recipient=recipient,
+                    amount=amount,
+                    comment=comment,
+                    load_timeout_seconds=(
+                        request.app.state.settings.wallet_load_timeout_seconds
+                    ),
+                )
+            )
+            request.app.state.outgoing_payment_tasks[npub] = task
+
+            def remove_completed_task(completed: asyncio.Task) -> None:
+                current = request.app.state.outgoing_payment_tasks.get(npub)
+                if current is completed:
+                    request.app.state.outgoing_payment_tasks.pop(npub, None)
+
+            task.add_done_callback(remove_completed_task)
+        return RedirectResponse("/pay/status", status_code=303)
 
     @app.exception_handler(HTTPException)
     async def browser_session_error(request: Request, exc: HTTPException):
@@ -5160,6 +5232,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def pay_lightning_invoice(
         request: Request,
         acorn: PaymentAcornDependency,
+        acorn_factory: PaymentAcornFactoryDependency,
         csrf_token: str = Form(...),
         invoice_state: str = Form(...),
         comment: str = Form("Transferred from Safebox Web"),
@@ -5250,54 +5323,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 status_code=400,
             )
-        try:
-            message, fees, _payment_hash, _preimage, _description_hash = (
-                await asyncio.wait_for(
-                    acorn.pay_multi_invoice(
-                        lninvoice=state.invoice,
-                        comment=payment_comment,
-                    ),
-                    timeout=settings.payment_timeout_seconds,
-                )
-            )
-        except TimeoutError:
-            logger.warning("lightning invoice payment timed out outcome=unknown")
-            return HTMLResponse(
-                _page(
-                    "Invoice payment status unresolved",
-                    "<p>The payment timed out before Safebox received a final result. "
-                    "Do not retry it. Reconcile pending payments and review transaction "
-                    "history first.</p><p><a href=\"/wallet\">Return to wallet</a></p>",
-                ),
-                status_code=504,
-            )
-        except Exception as exc:
-            logger.warning(
-                "lightning invoice payment did not return success error_type=%s",
-                type(exc).__name__,
-            )
-            return HTMLResponse(
-                _page(
-                    "Invoice payment not confirmed",
-                    "<p>Safebox did not receive a confirmed successful result. Do not "
-                    "retry blindly. Reconcile pending payments and review transaction "
-                    "history first.</p><p><a href=\"/wallet\">Return to wallet</a></p>",
-                ),
-                status_code=502,
-            )
-        return render_template(
-            "payment_result.html",
-            title="Invoice payment successful",
-            amount=f"{state.amount:,}",
-            fees=f"{int(fees):,}",
-            **_payment_fee_breakdown(fees),
-            recipient="Lightning invoice",
-            message=str(message).splitlines()[0],
+        return start_outgoing_payment(
+            request,
+            acorn=acorn,
+            acorn_factory=acorn_factory,
+            payment_kind="invoice",
+            recipient=state.invoice,
+            display_recipient="Lightning invoice",
+            amount=state.amount,
+            comment=payment_comment,
         )
 
     @app.get("/pay", response_class=HTMLResponse)
-    async def payment_form(request: Request, acorn: PaymentAcornDependency) -> str:
+    async def payment_form(request: Request, acorn: PaymentAcornDependency):
         settings = request.app.state.settings
+        engine = getattr(request.app.state, "database_engine", None)
+        outgoing_job = (
+            get_outgoing_payment_job(engine, acorn.pubkey_bech32)
+            if engine is not None
+            else None
+        )
+        if outgoing_job and outgoing_job.get("status") == "RUNNING":
+            return RedirectResponse("/pay/status", status_code=303)
         try:
             clear_balances = await _payment_clear_balances(request, acorn)
         except Exception as exc:
@@ -5326,6 +5373,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def make_payment(
         request: Request,
         acorn: PaymentAcornDependency,
+        acorn_factory: PaymentAcornFactoryDependency,
         csrf_token: str = Form(...),
         lightning_address: str = Form(...),
         amount: str = Form(...),
@@ -5761,70 +5809,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 message=message,
             )
 
-        try:
-            message, fees = await asyncio.wait_for(
-                acorn.pay_multi(
-                    amount=payment_amount,
-                    lnaddress=recipient,
-                    comment=payment_comment,
-                ),
-                timeout=settings.payment_timeout_seconds,
-            )
-        except TimeoutError:
-            logger.warning("lightning payment timed out outcome=unknown")
-            return HTMLResponse(
-                _page(
-                    "Transfer status unresolved",
-                    "<p>The Lightning payment timed out before Safebox received a final result. "
-                    "Do not retry it. Use <code>acorn reconcile-payments</code> and "
-                    "review transaction history before attempting another transfer.</p>"
-                    '<p><a href="/wallet">Return to wallet</a></p>',
-                ),
-                status_code=504,
-            )
-        except Exception as exc:
-            error_reason = str(exc).strip()
-            stale_proofs = _is_stale_proof_error(error_reason)
-            if stale_proofs:
-                return await repair_stale_proofs_for_review(error_reason)
-            recovery_guidance = (
-                "<p>The wallet proof state needs maintenance before another "
-                "transfer. Run <code>acorn check-proofs</code>, then "
-                "<code>acorn repair-proofs</code> if repair is recommended, "
-                "and confirm the balance with <code>acorn balance --verify</code>.</p>"
-                if stale_proofs
-                else "<p>Do not retry blindly. Review transaction history and run "
-                "<code>acorn reconcile-payments</code> before deciding whether "
-                "another transfer is safe.</p>"
-            )
-            logger.warning(
-                "lightning payment did not return success error_type=%s error=%s",
-                type(exc).__name__,
-                str(exc),
-            )
-            return HTMLResponse(
-                _page(
-                    "Transfer not confirmed",
-                    "<p>Safebox did not receive a confirmed successful result.</p>"
-                    + recovery_guidance
-                    + (
-                        f"<p><strong>Reason:</strong> {escape(error_reason)}</p>"
-                        if error_reason
-                        else ""
-                    )
-                    + '<p><a href="/wallet">Return to wallet</a></p>',
-                ),
-                status_code=502,
-            )
-
-        return render_template(
-            "payment_result.html",
-            title="Balance transferred",
-            amount=f"{payment_amount:,}",
-            fees=f"{int(fees):,}",
-            **_payment_fee_breakdown(fees),
+        return start_outgoing_payment(
+            request,
+            acorn=acorn,
+            acorn_factory=acorn_factory,
+            payment_kind="address",
             recipient=recipient,
-            message=str(message).splitlines()[0],
+            display_recipient=recipient,
+            amount=payment_amount,
+            comment=payment_comment,
+        )
+
+    @app.get("/pay/status", response_class=HTMLResponse)
+    async def outgoing_payment_status(
+        request: Request,
+        acorn: AcornDependency,
+    ) -> HTMLResponse:
+        job = get_outgoing_payment_job(
+            request.app.state.database_engine,
+            acorn.pubkey_bech32,
+        )
+        if job is None:
+            return RedirectResponse("/pay", status_code=303)
+        return HTMLResponse(
+            render_template(
+                "payment_status.html",
+                title="Balance Transfer",
+                job=job,
+            )
         )
 
     @app.get("/transactions", response_class=HTMLResponse)
@@ -6150,6 +6162,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=400,
             )
         npub = acorn.pubkey_bech32
+        outgoing_job = get_outgoing_payment_job(
+            request.app.state.database_engine,
+            npub,
+        )
+        if outgoing_job and outgoing_job.get("status") == "RUNNING":
+            return RedirectResponse("/pay/status", status_code=303)
         cash_job = get_finalization_job(
             request.app.state.database_engine,
             npub,
@@ -6301,6 +6319,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=403, detail="Form token is invalid or expired")
 
         npub = acorn.pubkey_bech32
+        outgoing_job = get_outgoing_payment_job(
+            request.app.state.database_engine,
+            npub,
+        )
+        if outgoing_job and outgoing_job.get("status") == "RUNNING":
+            return RedirectResponse("/pay/status", status_code=303)
         clear_job = get_clear_acceptance_job(
             request.app.state.database_engine,
             npub,

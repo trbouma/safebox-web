@@ -4,8 +4,11 @@
 <p>Total Fees: <strong>{{ fees }} {{ unit | default("sats", true) }}</strong></p>
 {% if mint_fees is defined and mint_fees is not none %}
 <p>Mint Fees: <strong>{{ "{:,}".format(mint_fees) }} sats</strong></p>
+<p>Lightning Fee: <strong>{{ "{:,}".format(lightning_fee) }} sats</strong></p>
+{% if lightning_fee_reserve or lightning_fee_return %}
 <p>Lightning Fee Reserve: <strong>{{ "{:,}".format(lightning_fee_reserve) }} sats</strong></p>
-<p class="advisory-note">The Lightning amount is the fee reserve reported by the mint. It may not be the final routing fee.</p>
+<p>Lightning Fee Returned: <strong>{{ "{:,}".format(lightning_fee_return) }} sats</strong></p>
+{% endif %}
 {% endif %}
 <p>Transfer Address: <code>{{ recipient }}</code></p>
 <p>{{ message }}</p>
