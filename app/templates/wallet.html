@@ -5,7 +5,7 @@
 {% if lightning_lnurl %}
 <section class="wallet-address" aria-label="Transfer address">
   <div class="wallet-address-actions">
-    <a href="/scan/lightning">Scan</a>
+    <a href="/scan/lightning">{{ _("Scan") }}</a>
     <details class="wallet-address-disclosure">
       <summary>
         <span class="wallet-address-summary-icon wallet-address-summary-qr" aria-hidden="true">
@@ -86,7 +86,7 @@
 </nav>
 {% if silent_payment_address %}
 <details class="receive-payment-card silent-payment-card">
-  <summary>Receive Silent Payment</summary>
+  <summary>{{ _("Receive Silent Payment") }}</summary>
   <div class="receive-payment-content silent-payment-content">
     <p>This reusable address is derived from this Acorn's public key. The
     address itself does not appear in the resulting network transaction.</p>

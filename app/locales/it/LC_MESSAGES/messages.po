@@ -117,3 +117,9 @@ msgstr "Lo stato delle prove del portafoglio richiede attenzione prima di un alt
 
 msgid "The available balance is not sufficient for this transfer."
 msgstr "Il saldo disponibile non è sufficiente per questo trasferimento."
+
+msgid "Scan"
+msgstr "Scansiona"
+
+msgid "Receive Silent Payment"
+msgstr "Ricevi un pagamento silenzioso"

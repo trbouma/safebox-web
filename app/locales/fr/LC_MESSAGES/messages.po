@@ -117,3 +117,9 @@ msgstr "L’état des preuves du portefeuille doit être vérifié avant un autr
 
 msgid "The available balance is not sufficient for this transfer."
 msgstr "Le solde disponible est insuffisant pour ce transfert."
+
+msgid "Scan"
+msgstr "Scanner"
+
+msgid "Receive Silent Payment"
+msgstr "Recevoir un paiement silencieux"

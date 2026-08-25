@@ -117,3 +117,9 @@ msgstr "O estado das provas da carteira precisa de atenção antes de outra tran
 
 msgid "The available balance is not sufficient for this transfer."
 msgstr "O saldo disponível não é suficiente para esta transferência."
+
+msgid "Scan"
+msgstr "Escanear"
+
+msgid "Receive Silent Payment"
+msgstr "Receber pagamento silencioso"

@@ -143,3 +143,26 @@ def test_invalid_lightning_address_error_is_localized(
         translations_for(language).gettext("Not a valid Lightning address.")
         == expected
     )
+
+
+@pytest.mark.parametrize(
+    ("language", "scan", "receive_silent_payment"),
+    (
+        ("fr", "Scanner", "Recevoir un paiement silencieux"),
+        ("es", "Escanear", "Recibir un pago silencioso"),
+        ("pt", "Escanear", "Receber pagamento silencioso"),
+        ("de", "Scannen", "Silent Payment empfangen"),
+        ("it", "Scansiona", "Ricevi un pagamento silenzioso"),
+        ("iu", "Scan", "Receive Silent Payment"),
+        ("zh-Hans", "扫描", "接收静默支付"),
+    ),
+)
+def test_wallet_scan_and_silent_payment_labels_are_localized(
+    language: str,
+    scan: str,
+    receive_silent_payment: str,
+) -> None:
+    translations = translations_for(language)
+
+    assert translations.gettext("Scan") == scan
+    assert translations.gettext("Receive Silent Payment") == receive_silent_payment

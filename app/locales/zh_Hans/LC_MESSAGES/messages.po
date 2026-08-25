@@ -117,3 +117,9 @@ msgstr "再次转账前，需要检查钱包凭证状态。"
 
 msgid "The available balance is not sufficient for this transfer."
 msgstr "可用余额不足，无法完成此转账。"
+
+msgid "Scan"
+msgstr "扫描"
+
+msgid "Receive Silent Payment"
+msgstr "接收静默支付"

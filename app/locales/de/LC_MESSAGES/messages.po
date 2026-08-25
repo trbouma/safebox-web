@@ -117,3 +117,9 @@ msgstr "Der Nachweisstatus der Wallet muss vor einer weiteren Übertragung gepr�
 
 msgid "The available balance is not sufficient for this transfer."
 msgstr "Das verfügbare Guthaben reicht für diese Übertragung nicht aus."
+
+msgid "Scan"
+msgstr "Scannen"
+
+msgid "Receive Silent Payment"
+msgstr "Silent Payment empfangen"
