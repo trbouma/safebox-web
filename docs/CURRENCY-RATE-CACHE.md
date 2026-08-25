@@ -68,7 +68,7 @@ boundary still requires HTTPS outside direct loopback development.
 SAFEBOX_CURRENCY_RATES_ENABLED=true
 SAFEBOX_CURRENCY_RATE_SOURCE_URL=https://blockchain.info/ticker
 SAFEBOX_CURRENCY_RATE_INTERVAL_SECONDS=3600
-SAFEBOX_CURRENCY_RATE_CURRENCIES=CAD,USD,EUR,GBP,JPY,INR
+SAFEBOX_CURRENCY_RATE_CURRENCIES=CAD,USD,EUR,GBP,JPY,INR,CNY,AUD,CHF,SGD,HKD,BRL
 SAFEBOX_DEFAULT_DISPLAY_CURRENCY=USD
 SAFEBOX_CURRENCY_RATE_STALE_SECONDS=86400
 ```
@@ -106,7 +106,7 @@ encrypted, authenticated session cookie; it does not create a server-side user
 profile or alter the underlying sat balance.
 
 The same cookie carries a canonical BCP 47 `language` preference. The initial
-choices are `en`, `fr`, `es`, `pt`, `de`, `it`, and `iu`; untranslated
+choices are `en`, `fr`, `es`, `pt`, `de`, `it`, `iu`, and `zh-Hans`; untranslated
 interface text remains English until localized templates are introduced.
 Keeping this boundary explicit
 provides a forward-compatible localization setting without introducing

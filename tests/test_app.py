@@ -1050,6 +1050,12 @@ def test_preferences_page_uses_encrypted_session_defaults_and_supported_currenci
     assert "Display Preferences" in response.text
     assert 'option value="USD" selected' in response.text
     assert 'option value="CAD"' in response.text
+    assert 'option value="CNY"' in response.text
+    assert 'option value="AUD"' in response.text
+    assert 'option value="CHF"' in response.text
+    assert 'option value="SGD"' in response.text
+    assert 'option value="HKD"' in response.text
+    assert 'option value="BRL"' in response.text
     assert 'option value="en" selected' in response.text
     assert 'option value="fr">Français</option>' in response.text
     assert 'option value="es">Español</option>' in response.text
@@ -1162,7 +1168,7 @@ def test_preferences_reject_currency_not_supported_by_operator(tmp_path) -> None
             "/preferences",
             data={
                 "csrf_token": CsrfProtector(settings).issue(),
-                "currency": "AUD",
+                "currency": "AED",
                 "language": "en",
             },
             headers={"Origin": "https://safebox.example"},

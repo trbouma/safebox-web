@@ -7,9 +7,32 @@ import httpx
 import pytest
 from sqlmodel import Session
 
-from app.currency_rates import currency_balance_estimate, refresh_currency_rates
+from app.currency_rates import (
+    CURRENCY_METADATA,
+    currency_balance_estimate,
+    refresh_currency_rates,
+)
 from app.database import create_database_engine, run_migrations
 from app.models import CurrencyRate
+
+
+@pytest.mark.parametrize(
+    ("currency", "symbol", "description"),
+    (
+        ("CNY", "CN¥", "Chinese yuan (renminbi)"),
+        ("AUD", "A$", "Australian dollar"),
+        ("CHF", "Fr", "Swiss franc"),
+        ("SGD", "S$", "Singapore dollar"),
+        ("HKD", "HK$", "Hong Kong dollar"),
+        ("BRL", "R$", "Brazilian real"),
+    ),
+)
+def test_additional_currency_metadata_is_unambiguous(
+    currency: str,
+    symbol: str,
+    description: str,
+) -> None:
+    assert CURRENCY_METADATA[currency] == (symbol, description)
 
 
 def test_refresh_persists_only_valid_requested_rates(tmp_path) -> None:

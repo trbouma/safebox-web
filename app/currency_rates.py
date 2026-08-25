@@ -21,6 +21,12 @@ CURRENCY_METADATA = {
     "GBP": ("£", "British pound"),
     "JPY": ("¥", "Japanese yen"),
     "INR": ("₹", "Indian rupee"),
+    "CNY": ("CN¥", "Chinese yuan (renminbi)"),
+    "AUD": ("A$", "Australian dollar"),
+    "CHF": ("Fr", "Swiss franc"),
+    "SGD": ("S$", "Singapore dollar"),
+    "HKD": ("HK$", "Hong Kong dollar"),
+    "BRL": ("R$", "Brazilian real"),
 }
 
 
