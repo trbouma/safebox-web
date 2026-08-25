@@ -66,7 +66,7 @@ from acorn import (
     detect_silent_payment_receipts,
 )
 from app.database import create_database_engine, run_migrations
-from app.currency_rates import currency_balance_estimate
+from app.currency_rates import CURRENCY_METADATA, currency_balance_estimate
 from app.dependencies import (
     AcornDependency,
     BackgroundAcornFactoryDependency,
@@ -759,12 +759,21 @@ def _transaction_history_view(entries: list[dict]) -> list[dict]:
         current_balance = entry.get("current_balance")
         balance = "—" if current_balance is None else str(current_balance)
         tendered_amount = entry.get("tendered_amount")
-        tendered_currency = str(entry.get("tendered_currency") or "SAT")
-        tender = (
-            "—"
-            if tendered_amount is None
-            else f"{tendered_amount} {tendered_currency}"
-        )
+        tendered_currency = str(entry.get("tendered_currency") or "SAT").upper()
+        if tendered_amount is None:
+            tender = "—"
+        else:
+            try:
+                formatted_tender = f"{float(tendered_amount):,.2f}"
+            except (TypeError, ValueError):
+                tender = "—"
+            else:
+                currency_symbol = CURRENCY_METADATA.get(
+                    tendered_currency,
+                    ("", ""),
+                )[0]
+                symbol_prefix = currency_symbol if currency_symbol else ""
+                tender = f"{symbol_prefix}{formatted_tender} {tendered_currency}"
         comment = str(entry.get("comment") or "").strip()
         # Preserve old journal data while presenting protocol-neutral language.
         comment = comment.replace("ecash transfer received", "funds transfer received")

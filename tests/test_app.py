@@ -3856,8 +3856,8 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
                 "tx_type": "D",
                 "amount": 5,
                 "comment": "coffee",
-                "tendered_amount": 5.0,
-                "tendered_currency": "SAT",
+                "tendered_amount": 0.05,
+                "tendered_currency": "CAD",
                 "fees": 1,
                 "current_balance": 46,
             },
@@ -3896,7 +3896,8 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert "+21 sats" in response.text
     assert "−6 sats" in response.text
     assert response.text.index("−6 sats") < response.text.index("+21 sats")
-    assert "<dt>Tender</dt><dd>5.0 SAT</dd>" in response.text
+    assert "<dt>Tender</dt><dd>$0.05 CAD</dd>" in response.text
+    assert "<dt>Tender</dt><dd>21.00 SAT</dd>" in response.text
     assert "<dt>Fees</dt><dd>1 sats</dd>" in response.text
     assert "52 sats" in response.text
     assert "safebox web deposit &lt;confirmed&gt;" in response.text
