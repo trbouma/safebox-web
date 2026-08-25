@@ -8000,10 +8000,10 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
     assert digest in response.text
     assert "Issued warehouse receipt" in response.text
     assert "Issuer Profile" not in response.text
-    assert "Issuer Name (Display Name)" in response.text
+    assert "<dt>Issuer</dt>" in response.text
     assert "Warehouse Authority" in response.text
     assert "Issues and attests warehouse receipts." in response.text
-    assert "Claimed NIP-05" in response.text
+    assert "NIP-05" in response.text
     assert "warehouse@example.com" in response.text
     assert "does not independently establish" in response.text
     assert "Protocol Details" in response.text

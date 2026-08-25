@@ -5,13 +5,13 @@
 
   {% if profile %}
   <dl class="openetr-event-fields openetr-human-fields">
-    {% if profile.display_name %}<dt>Issuer Name (Display Name)</dt><dd>{{ profile.display_name }}</dd>{% endif %}
+    {% if profile.display_name %}<dt>Issuer</dt><dd>{{ profile.display_name }}</dd>{% endif %}
     {% if profile.name %}<dt>Name</dt><dd>{{ profile.name }}</dd>{% endif %}
     {% if profile.about %}<dt>About</dt><dd>{{ profile.about }}</dd>{% endif %}
-    {% if profile.nip05 %}<dt>Claimed NIP-05</dt><dd>{{ profile.nip05 }}</dd>{% endif %}
-    {% if profile.lightning_address %}<dt>Claimed Lightning Address</dt><dd>{{ profile.lightning_address }}</dd>{% endif %}
+    {% if profile.nip05 %}<dt>NIP-05</dt><dd>{{ profile.nip05 }}</dd>{% endif %}
+    {% if profile.lightning_address %}<dt>Lightning</dt><dd>{{ profile.lightning_address }}</dd>{% endif %}
     {% if profile.website %}<dt>Website</dt><dd><a href="{{ profile.website }}" rel="noreferrer noopener" target="_blank">{{ profile.website }}</a></dd>{% endif %}
-    {% if profile.picture %}<dt>Profile Image</dt><dd><a href="{{ profile.picture }}" rel="noreferrer noopener" target="_blank">Open Image</a></dd>{% endif %}
+    {% if profile.picture %}<dt>Image</dt><dd><a href="{{ profile.picture }}" rel="noreferrer noopener" target="_blank">Open Image</a></dd>{% endif %}
   </dl>
   {% elif history.issuer_profile_error %}
   <p class="openetr-warning"><strong>Issuer profile:</strong> {{ history.issuer_profile_error }}</p>
