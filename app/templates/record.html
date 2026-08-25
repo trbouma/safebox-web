@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<script src="/static/check-pane.js" defer></script>
 {% if saved %}<p role="status"><strong>Record saved and verified.</strong></p>{% endif %}
 <pre>{{ payload }}</pre>
 {% if has_blob %}
@@ -206,7 +207,14 @@
 {% endif %}
 <nav class="record-capabilities" aria-label="Record actions">
   {% if has_blob and blob_fingerprint %}
-  <a class="record-capability" href="{{ control_history_url }}">Check</a>
+  <details class="record-check-pane" data-lazy-check
+           data-check-url="{{ control_history_fragment_url }}">
+    <summary class="record-capability">Check</summary>
+    <div class="record-check-content" data-check-content>
+      <p class="openetr-source">Open this pane to load the verification evidence.</p>
+      <noscript><p><a class="nav-button" href="{{ control_history_url }}">Open Check</a></p></noscript>
+    </div>
+  </details>
   {% else %}
   <button class="record-capability" type="button" disabled
           title="An Original Record with a valid fingerprint is required">Check</button>

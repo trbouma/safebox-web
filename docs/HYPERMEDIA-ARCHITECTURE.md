@@ -266,6 +266,15 @@ record still performs a direct authoritative lookup for that record. Viewing,
 editing, sharing, presenting, downloading, saving, importing, and deleting
 records all use the records-only Acorn dependency and do not load funds state.
 
+The record's **Check** control is a bounded progressive enhancement. The
+server-rendered record supplies both the verification-fragment URL and an
+ordinary full-page fallback link. Opening the disclosure asks that URL for a
+complete server-rendered HTML fragment and places the result in the pane.
+JavaScript does not construct evidence, select relays, interpret control
+events, authorize access, or retain record state. This keeps the potentially
+slow OpenETR relay query out of the initial record response while preserving a
+usable no-JavaScript path.
+
 For a new wallet with no catalog, the ordinary page presents an empty initial
 state and explains that this is expected. For an older wallet with uncatalogued
 records, it does not automatically scan and decrypt the complete record history

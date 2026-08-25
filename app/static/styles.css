@@ -303,6 +303,13 @@ figure.blob-preview { padding: .75rem; }
 .record-capability { display: flex; box-sizing: border-box; width: 100%; min-height: 2.75rem; align-items: center; justify-content: center; margin: 0; padding: .55rem .6rem; border: 1px solid var(--border); border-radius: .45rem; background: var(--control); color: var(--text); font: inherit; font-weight: 700; text-align: center; text-decoration: none; }
 .record-capability:hover, .record-capability:focus-visible { border-color: var(--link); color: var(--link); }
 .record-capability:disabled { cursor: not-allowed; opacity: .5; }
+.record-check-pane { min-width: 0; }
+.record-check-pane > summary { cursor: pointer; list-style: none; }
+.record-check-pane > summary::marker { content: ""; }
+.record-check-pane > summary::-webkit-details-marker { display: none; }
+.record-check-pane[open] > summary { border-color: var(--link); color: var(--link); }
+.record-check-content { margin-top: .65rem; padding: 1rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); }
+.record-check-content > .openetr-history-content { padding: 0; }
 .danger-zone { margin: 2rem 0 1.5rem; padding: 1rem; border: 1px solid var(--error); border-radius: .7rem; }
 .danger-zone h2 { margin-top: 0; font-size: 1.15rem; }
 .danger-button { border-color: var(--error); color: var(--error); font-weight: 700; }

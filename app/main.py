@@ -7959,6 +7959,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         acorn: RecordAcornDependency,
         saved: bool = False,
         openetr: bool = False,
+        fragment: bool = False,
     ):
         settings = request.app.state.settings
         try:
@@ -8097,7 +8098,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 else None
             )
             return render_template(
-                "control_history.html",
+                "_control_history_content.html" if fragment else "control_history.html",
                 title="Control History",
                 label=label,
                 record_url=record_url,
@@ -8116,6 +8117,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             present_url=f'/record/present?{urlencode({"label": label})}',
             control_history_url=(
                 f'/record?{urlencode({"label": label, "openetr": "1"})}'
+            ),
+            control_history_fragment_url=(
+                f'/record?{urlencode({"label": label, "openetr": "1", "fragment": "1"})}'
             ),
             saved=saved,
             record_type=str(record_value.type),

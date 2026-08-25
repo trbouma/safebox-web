@@ -1,0 +1,34 @@
+<section class="openetr-history-content" aria-label="Control history details">
+  {% if not has_blob %}
+  <p>An Original Record is required before its control history can be queried.</p>
+  {% elif not blob_fingerprint %}
+  <p>This Original Record does not contain a valid SHA-256 object digest.</p>
+  {% elif openetr_history.error %}
+  <p class="error">{{ openetr_history.error }}</p>
+  {% elif not openetr_history.origin %}
+  <p>No OpenETR origin event was found for this Original Record.</p>
+  {% else %}
+  {% include "_openetr_durable_link.html" %}
+  <p class="openetr-evidence-note">These are cryptographically valid signed
+  events returned by the configured OpenETR relay infrastructure. Recognition
+  of the signer and the effect of an event remain separate questions.</p>
+  {% with history=openetr_history %}{% include "_origin_issuer.html" %}{% endwith %}
+  <h2>Control Events</h2>
+  {% for event in openetr_history.controls %}
+  <article class="openetr-event">
+    <h3>{{ event.action_label }}</h3>
+    <dl class="openetr-event-fields openetr-human-fields">
+      <dt>Created</dt><dd>{{ event.created_at }}</dd>
+      {% if event.participant %}<dt>Participant</dt><dd><code>{{ event.participant }}</code></dd>{% endif %}
+      {% if event.content %}<dt>Statement</dt><dd>{{ event.content }}</dd>{% endif %}
+    </dl>
+  </article>
+  {% else %}
+  <p>No related control events were found.</p>
+  {% endfor %}
+  {% for warning in openetr_history.warnings %}
+  <p class="openetr-warning"><strong>Note:</strong> {{ warning }}</p>
+  {% endfor %}
+  {% with history=openetr_history %}{% include "_openetr_protocol_details.html" %}{% endwith %}
+  {% endif %}
+</section>

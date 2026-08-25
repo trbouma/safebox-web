@@ -7791,8 +7791,8 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
     assert 'href="/record/present?label=Private+Notes">Present</a>' in detail.text
     assert ">Issue</button>" not in detail.text
     assert ">Verify</button>" not in detail.text
-    assert ">Check</a>" in detail.text
-    assert detail.text.index(">Check</a>") < detail.text.index(">Present</a>")
+    assert '<summary class="record-capability">Check</summary>' in detail.text
+    assert detail.text.index(">Check</summary>") < detail.text.index(">Present</a>")
     assert detail.text.index(">Present</a>") < detail.text.index(">Share</a>")
     assert "/record/blob?label=Private+Notes" in detail.text
     assert response.status_code == 200
@@ -7925,10 +7925,20 @@ def test_record_offers_control_history_button_without_querying(monkeypatch) -> N
     )
 
     assert response.status_code == 200
-    assert '<details class="openetr-history"' not in response.text
-    assert '>Check</a>' in response.text
-    assert "openetr=1" in response.text.replace("&amp;", "&")
+    assert '<details class="record-check-pane" data-lazy-check' in response.text
+    assert '<summary class="record-capability">Check</summary>' in response.text
+    assert "openetr=1&fragment=1" in response.text.replace("&amp;", "&")
     assert queried is False
+
+    fragment = TestClient(app, base_url="https://safebox.example").get(
+        "/record",
+        params={"label": "Receipt", "openetr": "1", "fragment": "1"},
+    )
+
+    assert fragment.status_code == 200
+    assert '<section class="openetr-history-content"' in fragment.text
+    assert "<!doctype html>" not in fragment.text
+    assert queried is True
 
 
 def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
