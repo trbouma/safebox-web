@@ -137,6 +137,23 @@ or verifier policy over the same kind of anchor.
 [See the complete record model](records-and-wallet-passes.md){ .md-button .md-button--primary }
 [Understand Deep Verification](deep-verification.md){ .md-button }
 
+## Check, Present, Share
+
+Safebox turns graduated disclosure into three understandable record actions:
+
+- **Check** opens the Control History and durable signed evidence without
+  requiring disclosure of the private record.
+- **Present** lets another person inspect the exact record temporarily without
+  importing it.
+- **Share** gives the recipient the exact record when retention or deep
+  verification is justified.
+
+The progression is deliberate: check the evidence first, present when the
+decision requires the record, and share only when the recipient needs to keep
+or analyze it.
+
+[Explore Graduated Disclosure](graduated-disclosure.md){ .md-button .md-button--primary }
+
 ## Web-enabled but local-first under the hood
 
 Safebox Web can feel like an ordinary web app: open it in a browser, use clear

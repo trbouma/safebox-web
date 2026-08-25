@@ -51,37 +51,39 @@ Those are different questions:
 
 Safebox is designed so those questions stay legible.
 
-## Two levels of verification
+## Check, Present, Share
 
-Safebox supports two complementary ways to verify a record. The appropriate
-level depends on the consequence of the decision being made.
+Safebox presents graduated disclosure as three ordinary actions. The
+appropriate stopping point depends on the consequence of the decision being
+made.
 
-| Level | What the verifier receives | Best suited to |
+| Action | What the verifier receives | Best suited to |
 | --- | --- | --- |
-| **Presentation verification** | A temporary view of the record, its human-readable details, and its Control History, with a QR path to durable evidence | Quick inspection, routine checks, and situations where the verifier does not need to retain the record |
-| **Deep verification** | The exact record bytes for the verifier's own local process, together with the digest anchor and available signed evidence | Higher-consequence decisions, independent tooling, archival comparison, native-format validation, or policy review |
+| **Check** | Control History and durable OpenETR evidence; the private artifact does not need to be disclosed | Evidence review, signer recognition, status, and deciding whether further disclosure is warranted |
+| **Present** | A temporary view of the exact record, its human-readable details, and its Control History | Routine inspection where the verifier does not need to retain the record |
+| **Share** | The exact record bytes in the verifier's own Safebox, together with the digest anchor and available signed evidence | Higher-consequence decisions, independent tooling, archival comparison, native-format validation, or policy review |
 
-Presentation verification is the ordinary interaction. The holder opens the
-record and presents a QR code. A verifier can inspect the record and follow its
-durable evidence without importing it into another Safebox. When the
-presentation ends, its temporary transfer object can be removed; the durable
-OpenETR evidence remains independently queryable.
+**Check** is the Safebox name for opening the record's Control History. It is
+the lowest-disclosure starting point: inspect the signed evidence first, then
+decide whether the record itself is needed.
 
-Deep verification is an intentional escalation. The record is shared with the
-verifier so the verifier can retain the exact artifact, calculate its digest,
-apply native format checks, query signed origin and control events, consult
-recognition sources, and apply its own policy. Receiving a copy for
+**Present** is the ordinary inspection interaction. The holder opens the
+record and presents a QR code. A verifier can inspect the exact record and
+follow its durable evidence without importing it into another Safebox. When
+the presentation ends, its temporary transfer object can be removed; the
+durable OpenETR evidence remains independently queryable.
+
+**Share** is the intentional escalation to deep verification. The verifier can
+retain the exact artifact, calculate its digest, apply native format checks,
+query signed origin and control events, consult recognition sources, and apply
+its own policy. Receiving a copy for
 verification does **not** by itself transfer ownership or control. Any control
 transfer must be represented by the appropriate separately signed events.
 
 ```text
-routine decision
-    -> present record and QR
-    -> inspect record and Control History
-
-higher-consequence decision
-    -> receive exact record
-    -> verify bytes, native proof, signed evidence, recognition, and policy
+Check   -> inspect Control History and durable evidence
+Present -> inspect the exact record temporarily
+Share   -> receive the exact record for deep verification
 ```
 
 This makes verification proportional to risk. Safebox does not force every

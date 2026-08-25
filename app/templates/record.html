@@ -205,20 +205,18 @@
 </section>
 {% endif %}
 <nav class="record-capabilities" aria-label="Record actions">
+  {% if has_blob and blob_fingerprint %}
+  <a class="record-capability" href="{{ control_history_url }}">Check</a>
+  {% else %}
+  <button class="record-capability" type="button" disabled
+          title="An Original Record with a valid fingerprint is required">Check</button>
+  {% endif %}
+  <a class="record-capability" href="{{ present_url }}">Present</a>
+  <a class="record-capability" href="{{ share_url }}">Share</a>
   {% if has_blob %}
   <a class="record-capability" href="{{ blob_url }}">Original</a>
   {% else %}
   <button class="record-capability" type="button" disabled>Original</button>
-  {% endif %}
-  <a class="record-capability" href="{{ share_url }}">Share</a>
-  <a class="record-capability" href="{{ present_url }}">Present</a>
-  <button class="record-capability" type="button" disabled title="Issuance support is planned">Issue</button>
-  <button class="record-capability" type="button" disabled title="Verification support is planned">Verify</button>
-  {% if has_blob and blob_fingerprint %}
-  <a class="record-capability" href="{{ control_history_url }}">Control History</a>
-  {% else %}
-  <button class="record-capability" type="button" disabled
-          title="An Original Record with a valid fingerprint is required">Control History</button>
   {% endif %}
 </nav>
 <p><a class="nav-button" href="{{ edit_url }}">Edit this record</a></p>

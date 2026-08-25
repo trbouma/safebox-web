@@ -15,32 +15,64 @@ This is **graduated disclosure**. The holder and verifier can begin with minimal
 evidence and move to deeper access only when the consequence of the decision
 warrants it.
 
+In Safebox, the model becomes three ordinary actions:
+
 ```text
-evidence only
-    -> public or temporary view
-    -> presentation verification
-    -> deep verification
+Check -> Present -> Share
 ```
+
+- **Check** reviews the record's Control History and durable OpenETR evidence
+  without disclosing the private record.
+- **Present** makes the exact record temporarily available for inspection and
+  verification without importing it.
+- **Share** transfers the exact record to another Safebox when retention or
+  deeper verification is justified.
+
+The names describe what a person is trying to do. The protocol detail remains
+available underneath, but users do not need to learn it before making an
+appropriate disclosure decision.
 
 Graduated disclosure complements selective disclosure. Selective disclosure
 asks which attributes should be revealed. Graduated disclosure asks how far
 the complete verification interaction needs to proceed.
 
-## The Safebox Disclosure Path
+## Check, Present, Share
 
-| Stage | What happens |
-| --- | --- |
-| **Evidence only** | OpenETR carries a digest and signed statement while Acorn keeps the record private. |
-| **Public record** | A less-sensitive record can be published so anyone can compare its exact bytes with the signed evidence. |
-| **Present** | The holder displays the record and a QR code. The verifier temporarily inspects the record and its Control History without importing it. |
-| **Deep verify** | The verifier receives the exact record and applies native-format, cryptographic, recognition, and policy checks in its own environment. |
+| Action | Disclosure | What happens |
+| --- | --- | --- |
+| **Check** | Evidence only | Safebox opens the Control History. OpenETR provides the digest-bound origin, issuer, signed statements, later events, and durable verifier link while Acorn keeps the private record. |
+| **Present** | Temporary access | The holder displays a QR code. The verifier temporarily inspects the exact record and its Control History without importing it. |
+| **Share** | Recipient receives the record | The verifier imports the exact record into its own Safebox and can retain it for native-format, cryptographic, recognition, and policy checks. |
 
-Most interactions should stop at presentation verification. Deep verification
-is available for secondary inspection, disputes, regulated decisions, or other
+Some records may also be intentionally public. Public access is a disclosure
+policy, not a fourth Safebox action: anyone can inspect the artifact and use
+**Check** to compare it with the signed evidence.
+
+Many interactions can stop at **Check**. Routine inspection can proceed to
+**Present**. **Share** is the deliberate escalation for secondary inspection,
+disputes, regulated decisions, authorized retention, or other
 higher-consequence cases.
 
 Receiving a copy does not transfer control or ownership. OpenETR control
 changes require their own separately authorized and signed events.
+
+## Check The Evidence
+
+In Safebox, **Control History** is the evidence a person checks. The user-facing
+action is therefore **Check**.
+
+Check can show:
+
+- the digest identifying the exact Original Record;
+- the signed origin statement;
+- available issuer or signer information;
+- relevant control, attestation, replacement, or termination events; and
+- a durable link and QR code for independent OpenETR verification.
+
+Check does not need to disclose the private artifact. It establishes what
+portable evidence exists and helps the verifier decide whether the signer is
+recognized for the claimed role. A signature proves that a key made a
+statement; recognition and policy determine what effect to give it.
 
 ## Sensitive And Public Records
 
@@ -77,10 +109,10 @@ Presentation verification is not merely looking at a similar image. An exact
 digest comparison requires the exact artifact bytes. Cropping, editing,
 resaving, scanning, or recompressing a file normally changes its digest.
 
-## Escalate To Deep Verification
+## Share For Deep Verification
 
-When secondary inspection is justified, Safebox can share the exact record for
-the verifier's own process. The verifier may then:
+When secondary inspection is justified, the Safebox **Share** action transfers
+the exact record into the verifier's own Safebox. The verifier may then:
 
 - retain the artifact where authorized;
 - calculate its digest independently;
