@@ -105,6 +105,14 @@ contains the request and invoice, but the invoice does not cryptographically
 commit to that request. Strict NIP-57 clients may therefore ignore or reject
 the receipt even when the Lightning payment and ecash delivery succeed.
 
+Settlement checks are deliberately paced. The singleton worker permits at most
+one mint quote-status request every four seconds across all queued provider
+payments, and an unpaid quote is not eligible for another check for five
+seconds. This is process scheduling rather than wallet state: the durable
+payment row remains authoritative across restarts. The headroom prevents a
+busy queue or an eager browser refresh from exceeding a mint's request limit;
+browser activity does not directly poll the mint.
+
 After settlement, the worker first delivers the value to the registered Acorn
 as gift-wrapped ecash. It then signs a kind-9735 receipt with the persistent
 service Acorn key and publishes it to the validated relays requested by the

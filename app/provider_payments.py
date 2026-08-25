@@ -8,7 +8,7 @@ import hashlib
 import hmac
 import json
 import logging
-from time import time
+from time import monotonic, time
 from types import SimpleNamespace
 import uuid
 
@@ -32,6 +32,8 @@ from app.security import normalize_home_mint
 
 logger = logging.getLogger("safebox_web.provider_payments")
 MAX_PROVIDER_SETTLEMENT_ATTEMPTS = 60
+MIN_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS = 4.0
+PROVIDER_SETTLEMENT_RECHECK_SECONDS = 5.0
 
 
 def _is_quote_not_found_error(exc: Exception) -> bool:
@@ -333,6 +335,9 @@ async def process_provider_payments_once(
     delivery_retry_attempts: int = 4,
     delivery_retry_base_seconds: float = 2.0,
     delivery_retry_max_seconds: float = 60.0,
+    settlement_check_interval_seconds: float = (
+        MIN_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS
+    ),
 ) -> bool:
     """Process at most one item from each safe payment transition."""
 
@@ -383,6 +388,21 @@ async def process_provider_payments_once(
         changed = True
 
     invoice = next_provider_payment(engine, "INVOICE_PENDING")
+    if invoice is not None:
+        last_check = float(
+            getattr(acorn, "_provider_last_settlement_check", 0.0) or 0.0
+        )
+        now_monotonic = monotonic()
+        if now_monotonic - last_check < max(
+            0.1,
+            float(settlement_check_interval_seconds),
+        ):
+            invoice = None
+        else:
+            # Settlement polling is operational scheduling state, not wallet
+            # state. Keep it in the singleton worker process so several queued
+            # invoices cannot collectively hammer the mint's quote endpoint.
+            acorn._provider_last_settlement_check = now_monotonic
     if invoice is not None and invoice.mint_quote:
         terminal_error: str | None = None
         try:
@@ -420,7 +440,8 @@ async def process_provider_payments_once(
             next_check_at=(
                 None
                 if paid or terminal_error
-                else utc_now() + timedelta(seconds=2)
+                else utc_now()
+                + timedelta(seconds=PROVIDER_SETTLEMENT_RECHECK_SECONDS)
             ),
         )
         if paid:

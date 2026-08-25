@@ -521,6 +521,27 @@ def test_worker_fails_provider_invoice_after_repeated_unpaid_checks(tmp_path) ->
     engine.dispose()
 
 
+def test_worker_throttles_settlement_checks_across_queued_cycles(
+    tmp_path, monkeypatch
+) -> None:
+    engine, payment_id = queued_payment(tmp_path)
+    acorn = FakeProviderAcorn(quote_paid=False)
+    clock = iter((100.0, 101.0, 105.0))
+    monkeypatch.setattr(provider_module, "monotonic", lambda: next(clock))
+
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
+    assert len(acorn.check_calls) == 1
+
+    update_provider_payment(engine, payment_id, next_check_at=utc_now())
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is False
+    assert len(acorn.check_calls) == 1
+
+    update_provider_payment(engine, payment_id, next_check_at=utc_now())
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
+    assert len(acorn.check_calls) == 2
+    engine.dispose()
+
+
 def test_zap_worker_delivers_ecash_then_publishes_receipt(
     tmp_path, monkeypatch
 ) -> None:
