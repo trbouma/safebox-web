@@ -129,7 +129,11 @@ from app.security import (
 
 
 from app.templating import render_template
-from app.localization import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
+from app.localization import (
+    DEFAULT_LANGUAGE,
+    SUPPORTED_LANGUAGES,
+    normalize_language_tag,
+)
 
 
 logger = logging.getLogger("safebox_web.security")
@@ -3303,7 +3307,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         settings = request.app.state.settings
         normalized_currency = str(currency or "").strip().upper()
-        normalized_language = str(language or "").strip().lower()
+        try:
+            normalized_language = normalize_language_tag(
+                str(language or "").strip()
+            )
+        except ValueError:
+            normalized_language = ""
         current_currency, current_language = _session_display_preferences(
             credentials,
             settings,

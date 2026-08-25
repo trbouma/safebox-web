@@ -1104,6 +1104,45 @@ def test_preferences_update_reissues_cookie_without_changing_acorn_credentials(
     assert updated.record_protection_key == original.record_protection_key
 
 
+def test_preferences_save_and_render_simplified_chinese(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    app.dependency_overrides[get_acorn] = lambda: FakeLoadedAcorn()
+    credentials = SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        client.cookies.set(
+            SECURE_COOKIE_NAME,
+            SessionCipher(settings).encode(credentials),
+            domain="safebox.example",
+            path="/",
+        )
+        response = client.post(
+            "/preferences",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "currency": "USD",
+                "language": "zh-Hans",
+            },
+            headers={"Origin": "https://safebox.example"},
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 303
+        updated_token = client.cookies.get(SECURE_COOKIE_NAME)
+        assert updated_token is not None
+        updated = SessionCipher(settings).decode(updated_token)
+        assert updated.language == "zh-Hans"
+
+        wallet = client.get("/wallet")
+
+    assert wallet.status_code == 200
+    assert '<html lang="zh-Hans" data-theme="dark">' in wallet.text
+    assert '<h1 class="wallet-headline">Safebox 已连接</h1>' in wallet.text
+
+
 def test_preferences_reject_currency_not_supported_by_operator(tmp_path) -> None:
     settings = database_settings(tmp_path)
     app = create_app(settings)
