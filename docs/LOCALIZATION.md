@@ -8,7 +8,9 @@ and is supplied to the Jinja renderer for each representation.
 The initial supported preferences are English (`en`), French (`fr`), Spanish
 (`es`), Portuguese (`pt`), German (`de`), Italian (`it`), and Inuktitut
 (`iu`, displayed as `ᐃᓄᒃᑎᑐᑦ`). English remains the source and fallback
-language while translation catalogs are developed. The initial localized
+language while translation catalogs are developed. Simplified Chinese
+(`zh-Hans`, displayed as `简体中文`) is also available through a complete catalog
+for the currently localized interface surface. The initial localized
 surface is deliberately limited to the connected-wallet heading and
 short, stable controls: mode, balance headings, primary resource actions,
 Preferences, Advisories, and Disconnect. The balance-status messages and the

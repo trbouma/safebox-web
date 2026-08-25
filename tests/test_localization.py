@@ -23,6 +23,7 @@ def test_language_tags_are_canonicalized_for_session_storage() -> None:
 def test_unsupported_languages_fall_back_to_english() -> None:
     assert supported_language("fr-CA") == "fr-CA"
     assert supported_language("iu") == "iu"
+    assert supported_language("zh-Hans") == "zh-Hans"
     assert supported_language("nl") == DEFAULT_LANGUAGE
     assert supported_language("../fr") == DEFAULT_LANGUAGE
     assert translations_for("iu").gettext("Safebox is Connected") == "Safebox ᐊᑕᔪᖅ"
@@ -50,6 +51,7 @@ def test_unsupported_languages_fall_back_to_english() -> None:
         ("de", "Anzeigeeinstellungen aktualisiert."),
         ("it", "Preferenze di visualizzazione aggiornate."),
         ("iu", "ᓇᓖᕌᕈᑏᑦ ᓄᑖᙳᖅᑎᑕᐅᔪᑦ."),
+        ("zh-Hans", "显示偏好设置已更新。"),
     ),
 )
 def test_display_preferences_confirmation_is_localized(
@@ -81,6 +83,7 @@ def test_template_renderer_injects_request_localization_without_shared_mutation(
         ("pt", "Atualizando…", "O saldo confirmado anteriormente está temporariamente indisponível."),
         ("de", "Aktualisierung…", "Das zuvor bestätigte Guthaben ist vorübergehend nicht verfügbar."),
         ("it", "Aggiornamento…", "Il saldo precedentemente confermato è temporaneamente non disponibile."),
+        ("zh-Hans", "正在更新…", "先前确认的余额暂时不可用。"),
     ),
 )
 def test_balance_status_catalog_entries_are_available(
@@ -107,6 +110,7 @@ def test_balance_status_catalog_entries_are_available(
         ("pt", "Crédito", "Débito"),
         ("de", "Gutschrift", "Belastung"),
         ("it", "Accredito", "Addebito"),
+        ("zh-Hans", "入账", "支出"),
     ),
 )
 def test_transaction_directions_are_localized(
@@ -128,6 +132,7 @@ def test_transaction_directions_are_localized(
         ("pt", "Não é um endereço Lightning válido."),
         ("de", "Keine gültige Lightning-Adresse."),
         ("it", "L’indirizzo Lightning non è valido."),
+        ("zh-Hans", "这不是有效的 Lightning 地址。"),
     ),
 )
 def test_invalid_lightning_address_error_is_localized(

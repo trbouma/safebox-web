@@ -1057,6 +1057,7 @@ def test_preferences_page_uses_encrypted_session_defaults_and_supported_currenci
     assert 'option value="de">Deutsch</option>' in response.text
     assert 'option value="it">Italiano</option>' in response.text
     assert 'option value="iu">ᐃᓄᒃᑎᑐᑦ (Inuktitut)</option>' in response.text
+    assert 'option value="zh-Hans">简体中文</option>' in response.text
     assert "stored only inside this browser's encrypted Acorn session" in response.text
     assert response.headers["cache-control"] == "no-store"
 
@@ -2045,6 +2046,20 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
                 "Disconnect",
             ),
         ),
+        (
+            "zh-Hans",
+            "Safebox 已连接",
+            (
+                "已连接模式",
+                "现金余额",
+                "Clear 余额",
+                "管理余额",
+                "管理记录",
+                "偏好设置",
+                "注意事项",
+                "断开连接",
+            ),
+        ),
     ),
 )
 def test_wallet_connected_heading_uses_session_language(
@@ -2126,6 +2141,12 @@ def test_wallet_connected_heading_uses_session_language(
             "No Clear balances yet.",
             "Before disconnecting, make sure you have your recovery information.",
             "I have my recovery information and understand Safebox cannot restore it for me.",
+        ),
+        "zh-Hans": (
+            "先前确认的余额。点击以接收并接受待处理交易。",
+            "暂无 Clear 余额。",
+            "断开连接前，请确保您已保存恢复信息。",
+            "我已保存恢复信息，并了解 Safebox 无法为我恢复这些信息。",
         ),
     }
     for translated_message in translated_status_messages[language]:

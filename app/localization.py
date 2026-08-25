@@ -17,6 +17,7 @@ SUPPORTED_LANGUAGES = {
     "de": "Deutsch",
     "it": "Italiano",
     "iu": "ᐃᓄᒃᑎᑐᑦ (Inuktitut)",
+    "zh-Hans": "简体中文",
 }
 LOCALE_DIRECTORY = Path(__file__).resolve().parent / "locales"
 _LANGUAGE_TAG_PATTERN = re.compile(
@@ -50,6 +51,8 @@ def supported_language(value: str | None) -> str:
         normalized = normalize_language_tag(value or DEFAULT_LANGUAGE)
     except ValueError:
         return DEFAULT_LANGUAGE
+    if normalized in SUPPORTED_LANGUAGES:
+        return normalized
     base_language = normalized.split("-", 1)[0]
     return normalized if base_language in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
 
