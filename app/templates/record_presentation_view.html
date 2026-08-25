@@ -38,18 +38,20 @@ not been imported into your Acorn.</p>
   {% elif not control_history.origin %}
   <p>No OpenETR origin event was found for this Original Record.</p>
   {% else %}
-  {% with history=control_history %}{% include "_origin_issuer.html" %}{% endwith %}
   {% include "_openetr_durable_link.html" %}
+  {% with history=control_history %}{% include "_origin_issuer.html" %}{% endwith %}
+  <h3>Control Events</h3>
   {% for event in control_history.controls %}
   <article class="openetr-event">
     <h3>{{ event.action_label }}</h3>
-    <dl class="openetr-event-fields">
-      <dt>Event</dt><dd><code>{{ event.id }}</code></dd>
-      <dt>Signer</dt><dd><code>{{ event.author }}</code></dd>
+    <dl class="openetr-event-fields openetr-human-fields">
       <dt>Created</dt><dd>{{ event.created_at }}</dd>
+      {% if event.participant %}<dt>Participant</dt><dd><code>{{ event.participant }}</code></dd>{% endif %}
+      {% if event.content %}<dt>Statement</dt><dd>{{ event.content }}</dd>{% endif %}
     </dl>
   </article>
   {% else %}<p>No related control events were found.</p>{% endfor %}
+  {% with history=control_history %}{% include "_openetr_protocol_details.html" %}{% endwith %}
   {% endif %}
 </section>
 <form method="post" action="/record/presentation/done" data-progress-form>

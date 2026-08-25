@@ -227,11 +227,16 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .openetr-event-fields dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .openetr-evidence-note, .openetr-source { color: var(--muted); font-size: .92rem; }
 .openetr-warning { color: var(--advisory); }
-.openetr-durable-link { margin: 1rem 0; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); }
-.openetr-durable-link > summary { cursor: pointer; padding: 1rem; font-weight: 700; }
-.openetr-durable-link[open] > summary { border-bottom: 1px solid var(--note-border); }
-.openetr-durable-link-content { padding: 0 1rem 1rem; }
-.openetr-durable-link-content a { overflow-wrap: anywhere; }
+.openetr-durable-link { margin: 0 0 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); text-align: center; }
+.openetr-durable-link h2 { margin-top: 0; }
+.openetr-durable-qr-button { display: block; width: min(100%, 24rem); margin: 0 auto; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.openetr-durable-qr-button:hover { background: transparent; transform: none; }
+.openetr-durable-qr-button:focus-visible { outline: .2rem solid var(--accent); outline-offset: .25rem; }
+.openetr-durable-qr-button .invoice-qr { margin: 1rem 0; }
+.openetr-protocol-details { margin: 1rem 0; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); }
+.openetr-protocol-details > summary { cursor: pointer; padding: 1rem; color: var(--muted); font-weight: 700; }
+.openetr-protocol-details[open] > summary { border-bottom: 1px solid var(--note-border); }
+.openetr-protocol-details-content { padding: 0 1rem 1rem; }
 .invoice-qr { display: flex; justify-content: center; margin: 1.5rem 0; }
 .invoice-qr svg { width: min(100%, 22rem); height: auto; }
 .qr-code { display: block; overflow: hidden; border-radius: 1rem; background: #fff; }

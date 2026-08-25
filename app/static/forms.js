@@ -107,6 +107,45 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("click", async (event) => {
+  const control = event.target.closest("button[data-copy-value]");
+  if (!control) {
+    return;
+  }
+
+  const value = control.dataset.copyValue;
+  const status = document.getElementById(control.dataset.copyStatus);
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      const temporary = document.createElement("textarea");
+      temporary.value = value;
+      temporary.setAttribute("readonly", "");
+      temporary.style.position = "fixed";
+      temporary.style.opacity = "0";
+      document.body.appendChild(temporary);
+      temporary.select();
+      const copied = document.execCommand("copy");
+      temporary.remove();
+      if (!copied) {
+        throw new Error("copy was rejected");
+      }
+    }
+
+    if (status) {
+      status.hidden = false;
+      status.textContent = "Durable verification link copied to the clipboard.";
+    }
+  } catch (_error) {
+    if (status) {
+      status.hidden = false;
+      status.textContent = "The verification link could not be copied automatically.";
+    }
+  }
+});
+
+document.addEventListener("click", async (event) => {
   const qr = event.target.closest("button[data-address-copy]");
   if (!qr) {
     return;

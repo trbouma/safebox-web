@@ -6987,7 +6987,8 @@ def test_scanned_presentation_displays_record_and_history_without_import(monkeyp
     assert "verified copy" in response.text
     assert "Control History" in response.text
     assert "Attested original" in response.text
-    assert "<summary>Durable Link and QR Code</summary>" in response.text
+    assert "Verification QR Code" in response.text
+    assert 'data-copy-value="https://openetr.org/etr/' in response.text
     assert "https://openetr.org/etr/" in response.text
     assert 'aria-label="OpenETR durable link QR code"' in response.text
     assert ">Done</button>" in response.text
@@ -8015,16 +8016,17 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
         "Issued warehouse receipt"
     ) < response.text.index("Protocol Details")
     durable_url = f"https://openetr.org/etr/{digest}"
-    assert "<summary>Durable Link and QR Code</summary>" in response.text
-    assert (
-        "This control graph has a clickable durable link and a scannable QR code"
-        in response.text
-    )
+    assert "Verification QR Code" in response.text
+    assert "Tap the QR code to copy its link." in response.text
     assert durable_url in response.text
+    assert f'href="{durable_url}"' not in response.text
+    assert f'data-copy-value="{durable_url}"' in response.text
     assert 'aria-label="OpenETR durable link QR code"' in response.text
-    assert response.text.index("Origin and Issuer") < response.text.index(
-        "Durable Link and QR Code"
-    ) < response.text.index("Control Events")
+    assert response.text.index("Verification QR Code") < response.text.index(
+        "Origin and Issuer"
+    ) < response.text.index("Control Events") < response.text.index(
+        "Protocol Details"
+    )
     assert "Transfer initiated" in response.text
     assert "npub1recipient" in response.text
     assert query_args == {

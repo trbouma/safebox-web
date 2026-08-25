@@ -1,0 +1,34 @@
+{% set origin = history.origin %}
+{% set profile = history.issuer_profile %}
+<details class="openetr-protocol-details">
+  <summary>Protocol Details</summary>
+  <div class="openetr-protocol-details-content">
+    <h3>Origin Event</h3>
+    <dl class="openetr-event-fields openetr-protocol-fields">
+      <dt>Object Digest</dt><dd><code>{{ history.digest }}</code></dd>
+      <dt>Origin Event ID</dt><dd><code>{{ origin.id }}</code></dd>
+      {% if origin.kind %}<dt>Origin Event Kind</dt><dd>{{ origin.kind }}</dd>{% endif %}
+      <dt>Issuer Public Key</dt><dd><code>{{ origin.author }}</code></dd>
+      {% if profile %}
+      <dt>Profile Event ID</dt><dd><code>{{ profile.event_id }}</code></dd>
+      <dt>Profile Event Kind</dt><dd>0</dd>
+      <dt>Profile Updated</dt><dd>{{ profile.created_at }}</dd>
+      {% endif %}
+    </dl>
+
+    {% for event in history.controls %}
+    <h3>{{ event.action_label }}</h3>
+    <dl class="openetr-event-fields openetr-protocol-fields">
+      <dt>Event ID</dt><dd><code>{{ event.id }}</code></dd>
+      <dt>Kind</dt><dd>{{ event.kind }}</dd>
+      <dt>Signer Public Key</dt><dd><code>{{ event.author }}</code></dd>
+      <dt>Prior Event ID</dt><dd><code>{{ event.prior_event_id }}</code></dd>
+    </dl>
+    {% endfor %}
+
+    {% if history.relays %}
+    <h3>Relay Query</h3>
+    <p class="openetr-source">{% for relay in history.relays %}<code>{{ relay }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+  </div>
+</details>
