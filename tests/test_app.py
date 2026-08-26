@@ -5557,27 +5557,43 @@ def test_scanned_nut18_request_opens_clear_payment_review() -> None:
     assert acorn.payment_request_sends == []
 
 
-def test_confirmed_scanned_nut18_request_sends_clear_payment() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_confirmed_scanned_nut18_request_runs_as_background_job(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
+    app.dependency_overrides[get_acorn] = lambda: acorn
 
-    response = client.post(
-        "/scan/payment-request",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "payment_request": TEST_NUT18_REQUEST,
-            "memo": "Meeting room",
-            "confirmed": "yes",
-        },
-    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/scan/payment-request",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "payment_request": TEST_NUT18_REQUEST,
+                "memo": "Meeting room",
+                "confirmed": "yes",
+            },
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_outgoing_payment_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
+        response = client.get("/pay/status")
 
     assert response.status_code == 200
-    assert "Clear payment request sent" in response.text
+    assert "Transfer completed" in response.text
     assert "Transferred: <strong>25 cmu-community" in response.text
     assert "Total Fees: <strong>3 cmu-community" in response.text
     assert "NUT-18 payment delivered privately through NIP-17" in response.text
+    assert TEST_NUT18_REQUEST not in response.text
+    assert job is not None and job["total_fees"] == 3
+    assert job["payment_kind"] == "clear-request"
+    assert job["recipient"] == "cmu-community"
     assert acorn.payment_request_sends == [
         {
             "payment_request": TEST_NUT18_REQUEST,

@@ -3105,12 +3105,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         display_recipient: str,
         amount: int,
         comment: str,
+        capture_tender: bool = True,
     ) -> RedirectResponse:
         npub = acorn.pubkey_bech32
-        tendered_amount, tendered_currency = _transaction_tender_snapshot(
-            request,
-            amount,
-        )
+        if capture_tender:
+            tendered_amount, tendered_currency = _transaction_tender_snapshot(
+                request,
+                amount,
+            )
+        else:
+            tendered_amount, tendered_currency = None, "SAT"
         cash_job = get_finalization_job(request.app.state.database_engine, npub)
         if cash_job and cash_job.get("status") == "RUNNING":
             return RedirectResponse("/transactions?finalization=running", status_code=303)
@@ -5505,6 +5509,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def pay_scanned_clear_request(
         request: Request,
         acorn: PaymentAcornDependency,
+        acorn_factory: PaymentAcornFactoryDependency,
         csrf_token: str = Form(...),
         payment_request: str = Form(...),
         memo: str = Form("Paid from Safebox Web"),
@@ -5549,68 +5554,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "The payment memo must be 200 characters or fewer.",
                 status_code=400,
             )
-        sender = getattr(acorn, "send_payment_request", None)
-        if sender is None:
-            return result_page(
-                "Clear payment unavailable",
-                "This Safebox installation cannot yet pay NUT-18 requests.",
-                status_code=503,
-            )
         try:
-            delivery = await asyncio.wait_for(
-                sender(str(payment_request).strip(), memo=payment_memo),
-                timeout=settings.payment_timeout_seconds,
-            )
+            decoded_request = decode_payment_request(str(payment_request).strip())
+            requested_amount = int(decoded_request.amount or 0)
+            if requested_amount <= 0:
+                raise PaymentRequestError(
+                    "The Clear payment request must specify a positive amount"
+                )
         except (PaymentRequestError, ValueError) as exc:
             return result_page(
                 "Clear payment request rejected",
                 str(exc),
                 status_code=422,
             )
-        except TimeoutError:
-            logger.warning("NUT-18 Clear payment timed out outcome=unknown")
-            return result_page(
-                "Clear payment status unresolved",
-                "The operation timed out after proof state may have changed. Do not retry blindly; review Clear Transactions first.",
-                status_code=504,
-            )
-        except Exception as exc:
-            logger.warning(
-                "NUT-18 Clear payment failed error_type=%s",
-                type(exc).__name__,
-            )
-            return result_page(
-                "Clear payment not confirmed",
-                "Safebox did not receive a confirmed result. Do not retry blindly; review Clear Transactions first.",
-                status_code=502,
-            )
-        if not isinstance(delivery, dict) or delivery.get("status") != "OK":
-            return result_page(
-                "Clear payment not confirmed",
-                "The payment did not return a confirmed successful result. Review Clear Transactions before retrying.",
-                status_code=502,
-            )
-        requested_amount = int(delivery.get("requested_amount") or 0)
-        receiver_fee = int(delivery.get("receiver_input_fee") or 0)
-        sender_fee = int(delivery.get("fee") or 0)
-        event_id = str(delivery.get("event_id") or "")
-        message = (
-            "NUT-18 payment delivered privately through NIP-17. "
-            "The recipient must accept it through the issuing Clear mint."
-        )
-        if event_id:
-            message += f" Event: {event_id}."
-        return HTMLResponse(
-            render_template(
-                "payment_result.html",
-                title="Clear payment request sent",
-                amount=f"{requested_amount:,}",
-                fees=f"{receiver_fee + sender_fee:,}",
-                unit=str(delivery.get("unit") or "units"),
-                recipient="NUT-18 request",
-                message=message,
-            ),
-            headers={"Cache-Control": "no-store"},
+        return start_outgoing_payment(
+            request,
+            acorn=acorn,
+            acorn_factory=acorn_factory,
+            payment_kind="clear-request",
+            recipient=str(payment_request).strip(),
+            display_recipient=str(decoded_request.unit or "units"),
+            amount=requested_amount,
+            comment=payment_memo,
+            capture_tender=False,
         )
 
     @app.post("/scan/open-url", response_class=HTMLResponse)
@@ -6264,7 +6230,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return HTMLResponse(
             render_template(
                 "payment_status.html",
-                title="Balance Transfer",
+                title=(
+                    "Clear Balance Transfer"
+                    if job.get("payment_kind") == "clear-request"
+                    else "Balance Transfer"
+                ),
                 job=job,
                 preferred_language=preferred_language,
             )

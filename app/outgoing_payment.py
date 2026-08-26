@@ -1,4 +1,4 @@
-"""Session-bound outgoing Lightning payments executed outside request workers."""
+"""Session-bound outgoing payments executed outside request workers."""
 
 from __future__ import annotations
 
@@ -43,6 +43,13 @@ def _public_payment_error(exc: Exception, payment_kind: str) -> str:
         marker in normalized for marker in invalid_address_markers
     ):
         return INVALID_LIGHTNING_ADDRESS_MESSAGE
+    if payment_kind == "clear-request":
+        if isinstance(exc, ValueError):
+            return f"Clear payment request rejected: {detail}"
+        return (
+            "The Clear transfer did not return a confirmed result. Do not retry "
+            "blindly; review Clear Transactions first."
+        )
     return f"{type(exc).__name__}: {detail}"
 
 
@@ -66,6 +73,12 @@ def _payment_error_code(
         )
     ):
         return "invalid_lightning_address"
+    if payment_kind == "clear-request":
+        if isinstance(exc, ValueError):
+            return "clear_payment_request_rejected"
+        if outcome_uncertain:
+            return "clear_payment_outcome_uncertain"
+        return "clear_payment_failed"
     if outcome_uncertain:
         return "payment_outcome_uncertain"
     if "stale proof" in detail or "already spent" in detail:
@@ -264,7 +277,47 @@ async def run_outgoing_payment_job(
 
     heartbeat = asyncio.create_task(maintain_lease())
     try:
-        update_outgoing_payment_job(engine, npub, owner_token, phase="PAYING")
+        update_outgoing_payment_job(
+            engine,
+            npub,
+            owner_token,
+            phase="SENDING" if payment_kind == "clear-request" else "PAYING",
+        )
+        if payment_kind == "clear-request":
+            sender = getattr(acorn, "send_payment_request", None)
+            if sender is None:
+                raise RuntimeError(
+                    "This Safebox installation cannot yet pay NUT-18 requests"
+                )
+            delivery = await sender(recipient, memo=comment)
+            if not isinstance(delivery, dict) or delivery.get("status") != "OK":
+                raise RuntimeError(
+                    "The Clear payment did not return a confirmed successful result"
+                )
+            receiver_fee = int(delivery.get("receiver_input_fee") or 0)
+            sender_fee = int(delivery.get("fee") or 0)
+            total_fees = receiver_fee + sender_fee
+            event_id = str(delivery.get("event_id") or "")
+            message = (
+                "NUT-18 payment delivered privately through NIP-17. The recipient "
+                "must accept it through the issuing Clear mint."
+            )
+            if event_id:
+                message += f" Event: {event_id}."
+            update_outgoing_payment_job(
+                engine,
+                npub,
+                owner_token,
+                status="COMPLETE",
+                phase="COMPLETE",
+                total_fees=total_fees,
+                mint_fees=sender_fee,
+                lightning_fee=None,
+                lightning_fee_reserve=None,
+                lightning_fee_return=None,
+                message=message,
+            )
+            return
         if payment_kind == "invoice":
             message, fees, *_details = await acorn.pay_multi_invoice(
                 lninvoice=recipient,
@@ -328,7 +381,7 @@ async def run_outgoing_payment_job(
         )
         history_recorded = bool(getattr(exc, "history_recorded", False))
         history_error = None
-        if not history_recorded:
+        if not history_recorded and payment_kind != "clear-request":
             try:
                 await acorn.add_tx_history(
                     tx_type="X",
@@ -395,5 +448,5 @@ def run_outgoing_payment_job_in_thread(
         logger.exception("outgoing payment thread failed npub=%s", npub)
         update_outgoing_payment_job(
             engine, npub, owner_token, status="FAILED", phase="REVIEW",
-            error=f"{type(exc).__name__}: {exc}",
+            error=_public_payment_error(exc, payment_kind),
         )

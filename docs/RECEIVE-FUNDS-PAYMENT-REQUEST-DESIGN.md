@@ -68,6 +68,20 @@ request to Safebox through its ordinary CSRF-protected form. The server:
    a review page; and
 6. sends only after explicit confirmation.
 
+Confirmation claims the same session-bound outgoing-payment job used for
+Lightning transfers and returns a status page immediately. A bounded background
+worker loads a fresh Acorn instance, revalidates the request against current
+Clear balances and mint fees, exports the proofs, and performs NIP-17 delivery.
+The user can leave the status page and return later. Concurrent submissions for
+the same Acorn are rejected by the existing per-component job lease.
+
+The job stores only coordination state, the requested amount, and a safe display
+unit. The encoded NUT-18 request is passed directly to the in-memory worker and
+is not copied into the job row or browser session. Acorn remains authoritative
+for relay-backed Clear proof state and Clear transaction history. An uncertain
+failure is reported as requiring review and must not be retried blindly because
+proof export may already have completed before delivery was interrupted.
+
 NUT-18 defines the requested amount as net of input fees. Acorn therefore adds
 enough proof value for the receiving mint to deduct its input fee while leaving
 the requested amount. It emits the standard NUT-18 payment payload as a private
@@ -104,7 +118,8 @@ the Lightning structure.
 - A scanned NUT-18 request is public capability material carried back by the
   confirmation form and fully decoded, fee-checked, and balance-checked again
   at the Acorn boundary before proofs are spent.
-- A completed request returns to the wallet for a freshly loaded balance.
+- The confirmation redirects to a server-rendered status resource; refresh is
+  an ordinary link and does not require browser polling or application state.
 
 ## Compatibility and migration
 
