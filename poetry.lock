@@ -3098,7 +3098,7 @@ post-quantum = ["liboqs-python (>=0.14.1,<0.17.0)"]
 type = "git"
 url = "https://github.com/trbouma/safebox-acorn.git"
 reference = "main"
-resolved_reference = "6ffa709a9f0ccb2369256519964f0af8094685f1"
+resolved_reference = "b962c2ecb3ab43e35cd53a56a0eb44dd54847b6b"
 
 [[package]]
 name = "secp256k1"

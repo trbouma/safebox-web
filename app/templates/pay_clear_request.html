@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Review this NUT-18 request before authorizing a Clear balance transfer.</p>
+<dl class="invoice-review">
+  <div><dt>Amount</dt><dd>{{ "{:,}".format(amount) }} {{ unit }}</dd></div>
+  <div><dt>Description</dt><dd>{{ description or "No description supplied" }}</dd></div>
+  <div><dt>Mint</dt><dd><code>{{ mint }}</code></dd></div>
+  <div><dt>Receiver mint fee</dt><dd>{{ "{:,}".format(receiver_input_fee) }} {{ unit }}</dd></div>
+  <div><dt>Proof value sent</dt><dd>{{ "{:,}".format(proof_amount) }} {{ unit }}</dd></div>
+  <div><dt>Use</dt><dd>{{ "Single use" if single_use else "Not marked single use" }}</dd></div>
+</dl>
+<p>The requested amount is net of the receiver's mint input fee. Safebox sends
+the additional proof value shown above so the recipient can receive the stated
+amount after mint confirmation.</p>
+<form method="post" action="/scan/payment-request" autocomplete="off"
+      data-progress-message="Clear payment in progress. Please wait and do not refresh this page."
+      data-progress-button="Sending Clear payment…">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="payment_request" value="{{ payment_request }}">
+  <label for="memo">Memo</label>
+  <input id="memo" name="memo" type="text" maxlength="200"
+         value="Paid from Safebox Web">
+  <label>
+    <input name="confirmed" type="checkbox" value="yes" required>
+    I confirm this Clear balance transfer and understand that it spends bearer
+    value and cannot be reversed.
+  </label>
+  <button type="submit">Send Clear Payment</button>
+</form>
+{% endblock %}

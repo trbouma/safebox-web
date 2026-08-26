@@ -30,14 +30,17 @@ from fastapi.testclient import TestClient
 
 from acorn import (
     Acorn,
+    PaymentRequest,
     RECORD_PRESENTATION_PREFIX,
     RecordTransferDescriptor,
     RecordTransferEnvelope,
     encode_record_presentation_descriptor,
     encode_record_transfer_descriptor,
+    encode_payment_request,
     encrypt_record_transfer_envelope,
     record_protection_key_from_entropy,
     record_protection_recovery_phrase,
+    nostr_nip17_transport,
 )
 import app.main as main_module
 import app.security as security_module
@@ -104,6 +107,18 @@ TEST_TRANSFER_DESCRIPTOR = encode_record_transfer_descriptor(
 TEST_PRESENTATION_DESCRIPTOR = (
     RECORD_PRESENTATION_PREFIX
     + TEST_TRANSFER_DESCRIPTOR.split(":", 2)[2]
+)
+TEST_NUT18_REQUEST = encode_payment_request(
+    PaymentRequest(
+        payment_id="request-123",
+        amount=25,
+        unit="cmu-community",
+        single_use=True,
+        mints=("https://clear.example",),
+        mint_list_preferred=False,
+        description="Boardroom credit",
+        transports=(nostr_nip17_transport("nprofile1example"),),
+    )
 )
 
 
@@ -194,6 +209,8 @@ class FakeLoadedAcorn:
         self.invoice_payments: list[dict] = []
         self.deposit_calls: list[int] = []
         self.payment_request_calls: list[dict] = []
+        self.payment_request_inspections: list[str] = []
+        self.payment_request_sends: list[dict] = []
         self.quote_checks: list[tuple[str, int]] = []
         self.record_put_calls: list[dict] = []
         self.record_delete_calls: list[dict] = []
@@ -601,6 +618,40 @@ class FakeLoadedAcorn:
     def create_payment_request(self, amount: int, **kwargs) -> str:
         self.payment_request_calls.append({"amount": amount, **kwargs})
         return "creqApytest-clear-payment-request"
+
+    async def inspect_payment_request(self, encoded_request: str) -> dict:
+        self.payment_request_inspections.append(encoded_request)
+        return {
+            "payment_request_id": "request-123",
+            "description": "Boardroom credit",
+            "single_use": True,
+            "requested_amount": 25,
+            "proof_amount": 26,
+            "receiver_input_fee": 1,
+            "mint": "https://clear.example",
+            "unit": "cmu-community",
+            "keyset": "keyset-a",
+            "recipient_pubkey": "22" * 32,
+            "relays": ["wss://relay.example"],
+            "transport": "nostr-nip17",
+        }
+
+    async def send_payment_request(self, encoded_request: str, **kwargs) -> dict:
+        self.payment_request_sends.append(
+            {"payment_request": encoded_request, **kwargs}
+        )
+        return {
+            "status": "OK",
+            "protocol": "cashu-nut18-nip17",
+            "event_id": "a" * 64,
+            "payment_request_id": "request-123",
+            "requested_amount": 25,
+            "proof_amount": 26,
+            "receiver_input_fee": 1,
+            "fee": 2,
+            "mint": "https://clear.example",
+            "unit": "cmu-community",
+        }
 
     async def check_quote(self, quote: str, amount: int):
         self.quote_checks.append((quote, amount))
@@ -5476,6 +5527,85 @@ def test_scanned_lnurl_pay_qr_derives_lightning_address() -> None:
     assert lnurl not in response.text
 
 
+def test_scanned_nut18_request_opens_clear_payment_review() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/scan/lightning",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_payment": TEST_NUT18_REQUEST,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Review Clear Payment Request" in response.text
+    assert "25 cmu-community" in response.text
+    assert "Boardroom credit" in response.text
+    assert "https://clear.example" in response.text
+    assert "Receiver mint fee" in response.text
+    assert "1 cmu-community" in response.text
+    assert "Proof value sent" in response.text
+    assert "26 cmu-community" in response.text
+    assert 'action="/scan/payment-request"' in response.text
+    assert f'value="{TEST_NUT18_REQUEST}"' in response.text
+    assert "Clear payment in progress" in response.text
+    assert acorn.payment_request_inspections == [TEST_NUT18_REQUEST]
+    assert acorn.payment_request_sends == []
+
+
+def test_confirmed_scanned_nut18_request_sends_clear_payment() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/scan/payment-request",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "payment_request": TEST_NUT18_REQUEST,
+            "memo": "Meeting room",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Clear payment request sent" in response.text
+    assert "Transferred: <strong>25 cmu-community" in response.text
+    assert "Total Fees: <strong>3 cmu-community" in response.text
+    assert "NUT-18 payment delivered privately through NIP-17" in response.text
+    assert acorn.payment_request_sends == [
+        {
+            "payment_request": TEST_NUT18_REQUEST,
+            "memo": "Meeting room",
+        }
+    ]
+
+
+def test_scanned_nut18_request_requires_explicit_confirmation() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/scan/payment-request",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "payment_request": TEST_NUT18_REQUEST,
+            "memo": "Meeting room",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Explicit confirmation is required" in response.text
+    assert acorn.payment_request_sends == []
+
+
 def test_scanned_arbitrary_lnurl_endpoint_is_not_treated_as_address() -> None:
     app = create_app(TEST_SETTINGS)
     app.dependency_overrides[get_payment_acorn] = lambda: FakeLoadedAcorn()
@@ -5537,6 +5667,8 @@ def test_scanner_browser_module_recognizes_presentation_before_transfer() -> Non
     )
     assert presentation_check < transfer_check
     assert "Record presentation acquired" in response.text
+    assert 'lowerValue.startsWith("creqa")' in response.text
+    assert "Clear payment request acquired" in response.text
     assert 'lowerValue.startsWith("https://")' in response.text
     assert "Website address acquired" in response.text
     assert "scanForm.requestSubmit()" in response.text

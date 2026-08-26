@@ -41,11 +41,13 @@ from sqlmodel import Session, select
 
 from acorn import (
     Acorn,
+    PaymentRequestError,
     RECORD_PRESENTATION_PREFIX,
     RECORD_TRANSFER_PREFIX,
     RecordTransferError,
     decode_record_presentation_descriptor,
     decode_record_transfer_descriptor,
+    decode_payment_request,
     generate_record_protection_key,
     record_protection_key_from_entropy,
     record_protection_key_from_recovery_phrase,
@@ -5388,6 +5390,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Cache-Control": "no-store"},
             )
 
+        if scanned_value.lower().startswith("creqa"):
+            try:
+                payment_request = decode_payment_request(scanned_value)
+                inspector = getattr(acorn, "inspect_payment_request", None)
+                if inspector is None:
+                    return scan_error(
+                        "This Safebox installation cannot yet inspect NUT-18 payment requests.",
+                        503,
+                    )
+                prepared = await asyncio.wait_for(
+                    inspector(scanned_value),
+                    timeout=settings.payment_timeout_seconds,
+                )
+            except (PaymentRequestError, ValueError) as exc:
+                return scan_error(str(exc))
+            except TimeoutError:
+                return scan_error(
+                    "The Clear mint did not respond while checking this payment request.",
+                    504,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "NUT-18 payment request inspection failed error_type=%s",
+                    type(exc).__name__,
+                )
+                return scan_error(
+                    "Safebox could not validate this Clear payment request.",
+                    502,
+                )
+            return HTMLResponse(
+                render_template(
+                    "pay_clear_request.html",
+                    title="Review Clear Payment Request",
+                    csrf_token=form_token.issue(),
+                    payment_request=scanned_value,
+                    amount=int(prepared["requested_amount"]),
+                    proof_amount=int(prepared["proof_amount"]),
+                    receiver_input_fee=int(prepared["receiver_input_fee"]),
+                    mint=str(prepared["mint"]),
+                    unit=str(prepared["unit"]),
+                    description=str(
+                        prepared.get("description")
+                        or payment_request.description
+                        or ""
+                    ),
+                    single_use=bool(payment_request.single_use),
+                ),
+                headers={"Cache-Control": "no-store"},
+            )
+
         recipient_input = str(lightning_payment).strip()
         lightning_payload = recipient_input
         if lightning_payload[:10].lower() == "lightning:":
@@ -5447,6 +5499,118 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 lightning_address=recipient,
                 clear_balances=clear_balances,
             )
+        )
+
+    @app.post("/scan/payment-request", response_class=HTMLResponse)
+    async def pay_scanned_clear_request(
+        request: Request,
+        acorn: PaymentAcornDependency,
+        csrf_token: str = Form(...),
+        payment_request: str = Form(...),
+        memo: str = Form("Paid from Safebox Web"),
+        confirmed: str | None = Form(None),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+
+        def result_page(
+            title: str,
+            message: str,
+            *,
+            status_code: int,
+        ) -> HTMLResponse:
+            return HTMLResponse(
+                _page(
+                    title,
+                    f'<p class="error">{escape(message)}</p>'
+                    '<p><a class="nav-button" href="/scan/lightning">Return to Scanner</a></p>'
+                    '<p><a class="nav-button" href="/clear">Review Clear Transactions</a></p>',
+                ),
+                status_code=status_code,
+                headers={"Cache-Control": "no-store"},
+            )
+
+        if not form_token.verify(csrf_token):
+            return result_page(
+                "Clear payment request expired",
+                "The form token is invalid or expired. Scan the request again.",
+                status_code=403,
+            )
+        if confirmed != "yes":
+            return result_page(
+                "Clear payment not authorized",
+                "Explicit confirmation is required before spending a Clear balance.",
+                status_code=400,
+            )
+        payment_memo = str(memo or "Paid from Safebox Web").strip()
+        if len(payment_memo) > 200:
+            return result_page(
+                "Clear payment not authorized",
+                "The payment memo must be 200 characters or fewer.",
+                status_code=400,
+            )
+        sender = getattr(acorn, "send_payment_request", None)
+        if sender is None:
+            return result_page(
+                "Clear payment unavailable",
+                "This Safebox installation cannot yet pay NUT-18 requests.",
+                status_code=503,
+            )
+        try:
+            delivery = await asyncio.wait_for(
+                sender(str(payment_request).strip(), memo=payment_memo),
+                timeout=settings.payment_timeout_seconds,
+            )
+        except (PaymentRequestError, ValueError) as exc:
+            return result_page(
+                "Clear payment request rejected",
+                str(exc),
+                status_code=422,
+            )
+        except TimeoutError:
+            logger.warning("NUT-18 Clear payment timed out outcome=unknown")
+            return result_page(
+                "Clear payment status unresolved",
+                "The operation timed out after proof state may have changed. Do not retry blindly; review Clear Transactions first.",
+                status_code=504,
+            )
+        except Exception as exc:
+            logger.warning(
+                "NUT-18 Clear payment failed error_type=%s",
+                type(exc).__name__,
+            )
+            return result_page(
+                "Clear payment not confirmed",
+                "Safebox did not receive a confirmed result. Do not retry blindly; review Clear Transactions first.",
+                status_code=502,
+            )
+        if not isinstance(delivery, dict) or delivery.get("status") != "OK":
+            return result_page(
+                "Clear payment not confirmed",
+                "The payment did not return a confirmed successful result. Review Clear Transactions before retrying.",
+                status_code=502,
+            )
+        requested_amount = int(delivery.get("requested_amount") or 0)
+        receiver_fee = int(delivery.get("receiver_input_fee") or 0)
+        sender_fee = int(delivery.get("fee") or 0)
+        event_id = str(delivery.get("event_id") or "")
+        message = (
+            "NUT-18 payment delivered privately through NIP-17. "
+            "The recipient must accept it through the issuing Clear mint."
+        )
+        if event_id:
+            message += f" Event: {event_id}."
+        return HTMLResponse(
+            render_template(
+                "payment_result.html",
+                title="Clear payment request sent",
+                amount=f"{requested_amount:,}",
+                fees=f"{receiver_fee + sender_fee:,}",
+                unit=str(delivery.get("unit") or "units"),
+                recipient="NUT-18 request",
+                message=message,
+            ),
+            headers={"Cache-Control": "no-store"},
         )
 
     @app.post("/scan/open-url", response_class=HTMLResponse)

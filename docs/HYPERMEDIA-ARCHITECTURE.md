@@ -201,12 +201,15 @@ The Lightning-payment scanner is a second bounded enhancement. Its same-origin
 script controls the camera and copies decoded QR text into an ordinary HTML
 form. It does not classify recipients, initiate payments, access the session
 cookie, or call Acorn. The browser submits the acquired value to a
-CSRF-protected route, where Safebox classifies and validates either a Lightning
-address or a fixed-amount mainnet BOLT11 invoice. Addresses enter the existing
-payment-review form. Invoices receive a separate review representation backed
-by a short-lived encrypted state token; the server rechecks the decoded amount
-and expiry before invoking Acorn. Manual entry remains available when
-JavaScript, camera access, or QR decoding is unavailable.
+CSRF-protected route, where Safebox classifies and validates a Lightning
+address, a fixed-amount mainnet BOLT11 invoice, or a NUT-18 Clear payment
+request. Addresses enter the existing payment-review form. Invoices receive a
+separate review representation backed by a short-lived encrypted state token.
+NUT-18 requests receive a server-rendered review of their amount, CMU, mint,
+and fee requirement, followed by a second CSRF-protected confirmation. Acorn
+revalidates the request against current Clear proof state before spending.
+Manual entry remains available when JavaScript, camera access, or QR decoding
+is unavailable.
 
 ## State and trust boundary
 

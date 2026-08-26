@@ -1,6 +1,6 @@
 # Receive Funds: Cash Payments and Clear Transfers
 
-Status: Lightning cash and initial NUT-18 Clear receive methods implemented
+Status: Lightning cash and bidirectional NUT-18 Clear request methods implemented
 
 ## Purpose
 
@@ -54,6 +54,26 @@ structure, and records it in the existing pending Clear receipt pipeline. The
 user then opens Clear Balances and explicitly accepts the transfer. It becomes
 confirmed only after the issuing mint accepts and refreshes its proofs.
 
+## Scanning and paying a Clear request
+
+The shared scanner recognizes the `creqA...` prefix and submits the acquired
+request to Safebox through its ordinary CSRF-protected form. The server:
+
+1. decodes and validates the NUT-18 CBOR request;
+2. requires a supported Nostr NIP-17 transport;
+3. matches the requested unit and mint policy against one confirmed Clear
+   balance and one sufficient keyset;
+4. reads that keyset's current mint input fee;
+5. shows the amount, description, mint, receiver fee, and total proof value in
+   a review page; and
+6. sends only after explicit confirmation.
+
+NUT-18 defines the requested amount as net of input fees. Acorn therefore adds
+enough proof value for the receiving mint to deduct its input fee while leaving
+the requested amount. It emits the standard NUT-18 payment payload as a private
+NIP-17 kind `14` message. The browser never decodes CBOR, selects proofs, or
+constructs the payment event.
+
 ## Route boundary
 
 The canonical routes are:
@@ -62,6 +82,8 @@ The canonical routes are:
 GET  /receive-funds
 POST /receive-funds
 POST /receive-funds/check
+POST /scan/lightning
+POST /scan/payment-request
 ```
 
 The submitted `payment_method` is server validated. `lightning` and `clear`
@@ -79,8 +101,9 @@ the Lightning structure.
 - Each form submits through ordinary HTTP navigation.
 - JavaScript may display progress and disable duplicate submission, but it does
   not create requests, hold proofs, poll mints, or decide finality.
-- Method-specific state is authenticated and carried by the representation or
-  persisted at the protocol-owned boundary, not in browser application state.
+- A scanned NUT-18 request is public capability material carried back by the
+  confirmation form and fully decoded, fee-checked, and balance-checked again
+  at the Acorn boundary before proofs are spent.
 - A completed request returns to the wallet for a freshly loaded balance.
 
 ## Compatibility and migration
