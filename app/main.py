@@ -4993,7 +4993,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "The form token is invalid or expired. Enter the amount again.",
                 403,
             )
-        if payment_method not in {"lightning", "clear"}:
+        selected_asset = _decode_clear_payment_asset(payment_method)
+        if payment_method == "clear":
+            # Preserve the original two-field form contract for compatible
+            # clients while the browser UI uses one unified selector.
+            selected_asset = _decode_clear_payment_asset(clear_asset)
+            if selected_asset is None:
+                return receive_error("Select a valid Clear balance.")
+        elif payment_method != "lightning" and selected_asset is None:
             return receive_error(
                 "That transfer-request method is not available.",
                 400,
@@ -5001,14 +5008,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             amount_sats = int(str(amount).strip())
         except ValueError:
-            return receive_error("The amount must be a whole number of sats.")
+            return receive_error(
+                "The amount must be a whole number in the selected unit."
+            )
         if amount_sats <= 0:
             return receive_error("The amount must be greater than zero.")
 
-        if payment_method == "clear":
-            selected_asset = _decode_clear_payment_asset(clear_asset)
-            if selected_asset is None:
-                return receive_error("Select a valid Clear balance.")
+        if selected_asset is not None:
             try:
                 clear_balances = await _payment_clear_balances(request, acorn)
             except Exception as exc:

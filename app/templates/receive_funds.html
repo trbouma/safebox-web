@@ -2,32 +2,20 @@
 {% block content %}
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 {{ balance_status | safe }}
-<p>Home mint: <code>{{ home_mint }}</code></p>
 <p>Create a transfer request for the balance you want to receive.</p>
 <form method="post" action="/receive-funds" autocomplete="off"
       data-progress-message="Creating a transfer request. Please wait."
       data-progress-button="Creating request…">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <fieldset>
-    <legend>Transfer method</legend>
-    <label>
-      <input name="payment_method" type="radio" value="lightning" checked>
-      Lightning through the Acorn home mint
-    </label>
-    <label>
-      <input name="payment_method" type="radio" value="clear"
-             {% if not clear_balances %}disabled{% endif %}>
-      Clear balance using a NUT-18 payment request
-    </label>
-  </fieldset>
-  {% if clear_balances %}
-  <label for="clear_asset">Clear balance</label>
-  <select id="clear_asset" name="clear_asset">
+  <label for="payment_method">Balance to receive</label>
+  <select id="payment_method" name="payment_method">
+    <option value="lightning">Lightning · SAT · {{ home_mint }}</option>
     {% for balance in clear_balances %}
     <option value="{{ balance.asset_id }}">{{ balance.display_name }} · {{ balance.unit }} · {{ balance.mint }}</option>
     {% endfor %}
   </select>
-  <label for="description">Clear request description</label>
+  {% if clear_balances %}
+  <label for="description">Description (Clear requests only)</label>
   <input id="description" name="description" type="text" maxlength="200"
          value="Safebox Clear balance request">
   {% endif %}
@@ -36,7 +24,7 @@
   <button type="submit">Create Transfer Request</button>
 </form>
 {% if not clear_balances %}
-<p class="advisory">A Clear payment request becomes available after this Acorn
-holds a confirmed Clear balance.</p>
+<p class="advisory">Additional Clear units appear in the selector after this
+Acorn holds a confirmed Clear balance.</p>
 {% endif %}
 {% endblock %}

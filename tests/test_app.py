@@ -6010,14 +6010,15 @@ def test_receive_funds_form_displays_home_mint_and_amount_field() -> None:
         "Create a transfer request for the balance you want to receive."
         in response.text
     )
+    assert '<select id="payment_method" name="payment_method">' in response.text
     assert (
-        'name="payment_method" type="radio" value="lightning" checked'
-        in response.text
+        '<option value="lightning">Lightning · SAT · '
+        'https://mint.example.com</option>' in response.text
     )
     assert "Creating a transfer request. Please wait." in response.text
     assert "Creating request…" in response.text
     assert "Create Transfer Request" in response.text
-    assert "Clear balance using a NUT-18 payment request" in response.text
+    assert "Additional Clear units appear in the selector" in response.text
 
 
 def test_receive_funds_form_lists_confirmed_clear_balances() -> None:
@@ -6037,8 +6038,13 @@ def test_receive_funds_form_lists_confirmed_clear_balances() -> None:
     response = client.get("/receive-funds")
 
     assert response.status_code == 200
-    assert 'name="payment_method" type="radio" value="clear"' in response.text
-    assert 'name="clear_asset"' in response.text
+    assert '<select id="payment_method" name="payment_method">' in response.text
+    asset_id = main_module._encode_clear_payment_asset(
+        "https://clear.example",
+        "cmu-community",
+    )
+    assert f'<option value="{asset_id}">' in response.text
+    assert 'name="clear_asset"' not in response.text
     assert "cmu-community" in response.text
     assert "https://clear.example" in response.text
 
@@ -6086,8 +6092,7 @@ def test_receive_funds_creates_nut18_clear_request() -> None:
         data={
             "csrf_token": valid_csrf_token(),
             "amount": "25",
-            "payment_method": "clear",
-            "clear_asset": asset_id,
+            "payment_method": asset_id,
             "description": "Room booking credit",
         },
     )

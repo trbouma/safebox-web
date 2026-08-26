@@ -19,6 +19,12 @@ Receive Funds
 The canonical hypermedia resource is `/receive-funds`. The older `/deposit`
 paths redirect to it for compatibility.
 
+The receive form presents one balance selector. Lightning SAT through the Acorn
+home mint is the first choice, followed by each confirmed Clear mint/unit balance
+available to the component. Selecting a balance determines the server-side
+request protocol; users do not have to choose a protocol first and an asset in a
+second control.
+
 ## Current Lightning method
 
 The available method asks the Acorn home mint for a Lightning deposit quote.
