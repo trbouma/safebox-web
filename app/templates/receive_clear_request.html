@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Receive <strong>{{ amount }} {{ display_name }}</strong> from the accepted
+Clear mint.</p>
+<dl class="invoice-review">
+  <div><dt>CMU</dt><dd><code>{{ unit }}</code></dd></div>
+  <div><dt>Mint</dt><dd><code>{{ mint }}</code></dd></div>
+  <div><dt>Description</dt><dd>{{ description }}</dd></div>
+</dl>
+<div class="invoice-qr" aria-label="NUT-18 Clear payment request QR code">
+  {{ request_svg | safe }}
+</div>
+<label for="clear-payment-request">Payment request</label>
+<textarea id="clear-payment-request" readonly spellcheck="false">{{ payment_request }}</textarea>
+<p>This single-use NUT-18 request asks the sender to deliver enough proofs to
+cover the requested amount after mint input fees. Compatible wallets can scan
+the QR code and send the Clear balance through the listed NIP-17 transport.</p>
+<p>After the transfer arrives, open Clear Balances and receive the pending
+transfer. It becomes confirmed only after the issuing mint accepts its proofs.</p>
+<p><a class="nav-button" href="/clear">Open Clear Balances</a></p>
+{% endblock %}

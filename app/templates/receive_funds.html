@@ -14,11 +14,29 @@
       <input name="payment_method" type="radio" value="lightning" checked>
       Lightning through the Acorn home mint
     </label>
+    <label>
+      <input name="payment_method" type="radio" value="clear"
+             {% if not clear_balances %}disabled{% endif %}>
+      Clear balance using a NUT-18 payment request
+    </label>
   </fieldset>
-  <label for="amount">Amount in sats</label>
+  {% if clear_balances %}
+  <label for="clear_asset">Clear balance</label>
+  <select id="clear_asset" name="clear_asset">
+    {% for balance in clear_balances %}
+    <option value="{{ balance.asset_id }}">{{ balance.display_name }} · {{ balance.unit }} · {{ balance.mint }}</option>
+    {% endfor %}
+  </select>
+  <label for="description">Clear request description</label>
+  <input id="description" name="description" type="text" maxlength="200"
+         value="Safebox Clear balance request">
+  {% endif %}
+  <label for="amount">Amount in the selected unit</label>
   <input id="amount" name="amount" type="number" min="1" step="1" required>
   <button type="submit">Create Transfer Request</button>
 </form>
-<p class="advisory">Direct transfer requests for a particular Clear Mint Unit
-will be offered separately when a compatible Clear mint is configured.</p>
+{% if not clear_balances %}
+<p class="advisory">A Clear payment request becomes available after this Acorn
+holds a confirmed Clear balance.</p>
+{% endif %}
 {% endblock %}

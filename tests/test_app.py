@@ -193,6 +193,7 @@ class FakeLoadedAcorn:
         self.ecash_transfers: list[dict] = []
         self.invoice_payments: list[dict] = []
         self.deposit_calls: list[int] = []
+        self.payment_request_calls: list[dict] = []
         self.quote_checks: list[tuple[str, int]] = []
         self.record_put_calls: list[dict] = []
         self.record_delete_calls: list[dict] = []
@@ -596,6 +597,10 @@ class FakeLoadedAcorn:
             invoice="lnbc21n1pytestinvoice",
             quote="pytest-deposit-quote",
         )
+
+    def create_payment_request(self, amount: int, **kwargs) -> str:
+        self.payment_request_calls.append({"amount": amount, **kwargs})
+        return "creqApytest-clear-payment-request"
 
     async def check_quote(self, quote: str, amount: int):
         self.quote_checks.append((quote, amount))
@@ -5864,7 +5869,30 @@ def test_receive_funds_form_displays_home_mint_and_amount_field() -> None:
     assert "Creating a transfer request. Please wait." in response.text
     assert "Creating request…" in response.text
     assert "Create Transfer Request" in response.text
-    assert "Clear Mint Unit" in response.text
+    assert "Clear balance using a NUT-18 payment request" in response.text
+
+
+def test_receive_funds_form_lists_confirmed_clear_balances() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    acorn.clear_balances = [
+        {
+            "mint": "https://clear.example",
+            "unit": "cmu-community",
+            "amount": 150,
+            "proof_count": 4,
+        }
+    ]
+    app.dependency_overrides[get_deposit_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.get("/receive-funds")
+
+    assert response.status_code == 200
+    assert 'name="payment_method" type="radio" value="clear"' in response.text
+    assert 'name="clear_asset"' in response.text
+    assert "cmu-community" in response.text
+    assert "https://clear.example" in response.text
 
 
 def test_receive_funds_rejects_unavailable_payment_method() -> None:
@@ -5878,12 +5906,60 @@ def test_receive_funds_rejects_unavailable_payment_method() -> None:
         data={
             "csrf_token": valid_csrf_token(),
             "amount": "21",
-            "payment_method": "clear-cmu",
+            "payment_method": "bank-transfer",
         },
     )
 
     assert response.status_code == 400
-    assert "transfer-request method is not available yet" in response.text
+    assert "transfer-request method is not available" in response.text
+    assert acorn.deposit_calls == []
+
+
+def test_receive_funds_creates_nut18_clear_request() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    acorn.clear_balances = [
+        {
+            "mint": "https://clear.example",
+            "unit": "cmu-community",
+            "amount": 150,
+            "proof_count": 4,
+        }
+    ]
+    app.dependency_overrides[get_deposit_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    asset_id = main_module._encode_clear_payment_asset(
+        "https://clear.example",
+        "cmu-community",
+    )
+
+    response = client.post(
+        "/receive-funds",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "amount": "25",
+            "payment_method": "clear",
+            "clear_asset": asset_id,
+            "description": "Room booking credit",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Clear Payment Request" in response.text
+    assert "creqApytest-clear-payment-request" in response.text
+    assert "25 cmu-community" in response.text
+    assert "https://clear.example" in response.text
+    assert "Room booking credit" in response.text
+    assert "single-use NUT-18 request" in response.text
+    assert acorn.payment_request_calls == [
+        {
+            "amount": 25,
+            "unit": "cmu-community",
+            "single_use": True,
+            "description": "Room booking credit",
+            "mint": "https://clear.example",
+        }
+    ]
     assert acorn.deposit_calls == []
 
 

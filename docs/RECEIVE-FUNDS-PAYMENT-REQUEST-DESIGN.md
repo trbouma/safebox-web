@@ -1,6 +1,6 @@
 # Receive Funds: Cash Payments and Clear Transfers
 
-Status: Lightning cash payment method implemented; Clear CMU transfer method proposed
+Status: Lightning cash and initial NUT-18 Clear receive methods implemented
 
 ## Purpose
 
@@ -30,10 +30,10 @@ checking and finalizing the payment.
 No polling or browser-side wallet logic is introduced. The server remains the
 authority for form validation and Acorn performs mint and proof mutations.
 
-## Proposed Clear CMU transfer method
+## Clear CMU transfer method
 
-The same page will later discover the Clear Mint Units (CMUs) the connected
-Acorn can receive and offer them as transfer units. Selecting one creates a
+The page discovers confirmed Clear Mint Unit (CMU) balances held by the
+connected Acorn and offers them as eligible receive units. Selecting one creates a
 Cashu NUT-18 transfer request with:
 
 - the requested amount;
@@ -41,14 +41,18 @@ Cashu NUT-18 transfer request with:
 - a strict accepted-mint list;
 - a receiver-generated request ID;
 - single-use behavior; and
-- a Safebox-supported transport.
+- a Nostr NIP-17 transport addressed to the Acorn component key.
 
-The resulting `creqA...` request can be displayed as a QR code or transmitted
-through an explicitly supported transport. It is not a Lightning invoice.
+The resulting `creqA...` request is displayed as a QR code and copyable text.
+It is not a Lightning invoice. The amount is the net amount the receiver asks
+to obtain after mint input fees, as defined by NUT-18.
 
-When proofs arrive, Safebox validates the request ID, CMU, proof keyset, mint,
-amount, and replay state. The transfer remains pending until Acorn
-refreshes the proofs through the issuing Clear mint.
+Compatible senders deliver the NUT-18 payment payload as a NIP-17 kind `14`
+message inside its private gift-wrap transport. Acorn recognizes the standard
+`id`, `memo`, `mint`, `unit`, and `proofs` payload, validates its bearer proof
+structure, and records it in the existing pending Clear receipt pipeline. The
+user then opens Clear Balances and explicitly accepts the transfer. It becomes
+confirmed only after the issuing mint accepts and refreshes its proofs.
 
 ## Route boundary
 
@@ -60,11 +64,9 @@ POST /receive-funds
 POST /receive-funds/check
 ```
 
-The submitted `payment_method` is server validated. `lightning` is currently
-implemented. The field remains a compatibility name for the current cash
-payment form. A later Clear transfer method should dispatch to a separate
-service-layer function while returning representations through this same route
-family.
+The submitted `payment_method` is server validated. `lightning` and `clear`
+dispatch to separate protocol operations while returning representations
+through this same route family.
 
 The existing `DepositQuoteState` and `DepositQuoteCipher` remain internal names
 for the Lightning-specific quote state. A future generalized request-state
@@ -90,16 +92,20 @@ the Lightning structure.
 - Transaction history uses the generalized description `safebox web funds
   received` for newly finalized Lightning requests.
 
-## Implementation sequence for Clear
+## Current boundary
 
-1. Complete canonical CMU and keyset-ID support in Clear and Acorn.
-2. Add shared NUT-18 request and payload codecs.
-3. Discover eligible CMUs for the connected Acorn.
-4. Render the selected CMU and logical mint clearly before confirmation.
-5. Generate the NUT-18 request and QR representation.
-6. Receive the transfer payload through a supported transport.
-7. Validate and refresh the proofs through Acorn.
-8. Mark a single-use request complete only after successful finalization.
+- Safebox requests one exact CMU from one exact mint. It does not combine
+  balances or treat similarly named units from different mints as equivalent.
+- The request uses a strict mint list and currently advertises only Nostr
+  NIP-17 transport.
+- The sender must support NUT-18 and supply enough proofs for the receiver to
+  obtain the requested net amount after input fees.
+- Receipt and finalization use Acorn's relay-backed Clear state. The Web app
+  does not hold bearer proofs in browser application state.
+- This first implementation carries the generated request ID into the pending
+  receipt, but does not yet maintain a durable outstanding-request registry or
+  automatically mark a single-use request complete. Replay resistance remains
+  anchored in proof refresh and mint double-spend enforcement.
 
 ## References
 

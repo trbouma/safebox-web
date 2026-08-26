@@ -2822,6 +2822,7 @@ def _receive_funds_form(
     csrf_token: str,
     error: str | None = None,
     balance_status: str | None = None,
+    clear_balances: list[dict] | None = None,
 ) -> str:
     if balance_status is None:
         balance_status = (
@@ -2834,6 +2835,7 @@ def _receive_funds_form(
         csrf_token=csrf_token,
         error=error,
         balance_status=balance_status,
+        clear_balances=clear_balances or [],
     )
 
 
@@ -3008,6 +3010,28 @@ def _lightning_payment_request_page(
         csrf_token=csrf_token,
         message=message,
         invoice_svg=_invoice_svg(state.invoice),
+    )
+
+
+def _clear_payment_request_page(
+    *,
+    payment_request: str,
+    amount: int,
+    mint: str,
+    unit: str,
+    display_name: str,
+    description: str,
+) -> str:
+    return render_template(
+        "receive_clear_request.html",
+        title="Clear Payment Request",
+        payment_request=payment_request,
+        amount=int(amount),
+        mint=mint,
+        unit=unit,
+        display_name=display_name,
+        description=description,
+        request_svg=_qr_svg(payment_request, include_acorn=True),
     )
 
 
@@ -4913,6 +4937,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             acorn,
             settings.wallet_load_timeout_seconds,
         )
+        try:
+            clear_balances = await _payment_clear_balances(request, acorn)
+        except Exception as exc:
+            logger.info(
+                "receive-funds Clear balances unavailable error_type=%s",
+                type(exc).__name__,
+            )
+            clear_balances = []
         return _receive_funds_form(
             acorn.get_balance(),
             acorn.home_mint,
@@ -4923,6 +4955,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 verification,
                 verification_error,
             ),
+            clear_balances=clear_balances,
         )
 
     @app.post("/receive-funds", response_class=HTMLResponse)
@@ -4932,6 +4965,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         csrf_token: str = Form(...),
         amount: str = Form(...),
         payment_method: str = Form("lightning"),
+        clear_asset: str = Form(""),
+        description: str = Form("Safebox Clear balance request"),
     ):
         settings = request.app.state.settings
         form_token = CsrfProtector(settings)
@@ -4952,9 +4987,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "The form token is invalid or expired. Enter the amount again.",
                 403,
             )
-        if payment_method != "lightning":
+        if payment_method not in {"lightning", "clear"}:
             return receive_error(
-                "That transfer-request method is not available yet.",
+                "That transfer-request method is not available.",
                 400,
             )
         try:
@@ -4963,6 +4998,61 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return receive_error("The amount must be a whole number of sats.")
         if amount_sats <= 0:
             return receive_error("The amount must be greater than zero.")
+
+        if payment_method == "clear":
+            selected_asset = _decode_clear_payment_asset(clear_asset)
+            if selected_asset is None:
+                return receive_error("Select a valid Clear balance.")
+            try:
+                clear_balances = await _payment_clear_balances(request, acorn)
+            except Exception as exc:
+                logger.warning(
+                    "Clear request balance lookup failed error_type=%s",
+                    type(exc).__name__,
+                )
+                return receive_error("Clear balances are temporarily unavailable.", 504)
+            selected = next(
+                (
+                    balance
+                    for balance in clear_balances
+                    if (
+                        str(balance.get("mint") or "").rstrip("/"),
+                        str(balance.get("unit") or ""),
+                    )
+                    == selected_asset
+                ),
+                None,
+            )
+            if selected is None:
+                return receive_error("That Clear balance is no longer available.", 409)
+            request_description = str(description or "").strip()
+            if not request_description or len(request_description) > 200:
+                return receive_error("Description must be 1 to 200 characters.")
+            try:
+                payment_request = acorn.create_payment_request(
+                    amount_sats,
+                    unit=selected_asset[1],
+                    single_use=True,
+                    description=request_description,
+                    mint=selected_asset[0],
+                )
+            except Exception as exc:
+                logger.warning(
+                    "NUT-18 Clear request creation failed error_type=%s",
+                    type(exc).__name__,
+                )
+                return receive_error("Safebox could not create the Clear payment request.", 502)
+            return HTMLResponse(
+                _clear_payment_request_page(
+                    payment_request=payment_request,
+                    amount=amount_sats,
+                    mint=selected_asset[0],
+                    unit=selected_asset[1],
+                    display_name=str(selected.get("display_name") or selected_asset[1]),
+                    description=request_description,
+                ),
+                headers={"Cache-Control": "no-store"},
+            )
 
         try:
             quote = await asyncio.wait_for(

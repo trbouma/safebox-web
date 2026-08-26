@@ -28,6 +28,7 @@ _PARENT_NAVIGATION = {
     "clear_acceptance_status.html": ("/balances", "Back to Balances"),
     "control_history.html": (None, "Back to Record"),
     "receive_funds.html": ("/balances", "Back to Balances"),
+    "receive_clear_request.html": ("/receive-funds", "Back to Receive Funds"),
     "receive_funds_request.html": ("/receive-funds", "Back to Receive Funds"),
     "deferred_recovery.html": ("/recovery", "Back to Recovery"),
     "deferred_recovery_warning.html": ("/wallet", "Back to Wallet"),
