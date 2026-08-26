@@ -8027,6 +8027,8 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
     ) < response.text.index("Protocol Details")
     durable_url = f"https://openetr.org/etr/{digest}"
     assert "Verification QR Code" in response.text
+    assert 'class="record-fingerprint openetr-verification-fingerprint"' in response.text
+    assert "Fingerprint:</span> <code>1EA23F2B</code>" in response.text
     assert "Tap the QR code to copy its link." in response.text
     assert durable_url in response.text
     assert f'href="{durable_url}"' not in response.text

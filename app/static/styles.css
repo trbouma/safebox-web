@@ -229,6 +229,7 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .openetr-warning { color: var(--advisory); }
 .openetr-durable-link { margin: 0 0 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); text-align: center; }
 .openetr-durable-link h2 { margin-top: 0; }
+.openetr-verification-fingerprint { justify-content: center; margin: .5rem 0 .75rem; }
 .openetr-durable-qr-button { display: block; width: min(100%, 24rem); margin: 0 auto; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .openetr-durable-qr-button:hover { background: transparent; transform: none; }
 .openetr-durable-qr-button:focus-visible { outline: .2rem solid var(--accent); outline-offset: .25rem; }
