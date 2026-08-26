@@ -219,6 +219,14 @@ submission. Acorn stores the received record before requesting deletion of the
 temporary transfer blob; JavaScript performs camera acquisition only and does
 not implement transfer cryptography or persistence.
 
+The scanner may also acquire an absolute HTTPS website address. It does not
+navigate immediately. Safebox returns a review representation showing the
+destination host and complete address; an explicit CSRF-protected **Open
+Website** form revalidates the destination and then redirects the browser.
+Plain HTTP, embedded credentials, malformed URLs, and non-web schemes are
+rejected. The QR decoder acquires the string, while the server owns
+classification, validation, confirmation, and navigation.
+
 The sender's QR representation also contains a CSRF-protected **Stop Sharing**
 form. After explicit confirmation, Safebox delegates deletion to Acorn using
 the transfer-scoped authority contained in the descriptor and returns a new

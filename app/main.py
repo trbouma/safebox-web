@@ -448,6 +448,34 @@ def _normalize_lightning_address(value: str) -> str | None:
     return f"{local_part}@{domain.lower()}"
 
 
+def _normalize_scanned_https_url(value: str) -> str | None:
+    """Return a conservative absolute HTTPS URL for confirmed navigation."""
+
+    destination = str(value or "").strip()
+    if (
+        not destination
+        or len(destination) > 2048
+        or any(character.isspace() or ord(character) < 32 for character in destination)
+        or "\\" in destination
+    ):
+        return None
+    try:
+        parsed = urlsplit(destination)
+        parsed_port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.netloc
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or (parsed_port is not None and not 1 <= parsed_port <= 65535)
+    ):
+        return None
+    return destination
+
+
 async def _resolve_safebox_lightning_recipient(
     lightning_address: str,
     *,
@@ -5131,6 +5159,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return scan_error("The form token is invalid or expired. Scan again.", 403)
 
         scanned_value = str(lightning_payment).strip()
+        scanned_https_url = _normalize_scanned_https_url(scanned_value)
+        if scanned_https_url is not None:
+            return HTMLResponse(
+                render_template(
+                    "scanned_https_review.html",
+                    title="Review Website",
+                    csrf_token=form_token.issue(),
+                    destination_url=scanned_https_url,
+                    destination_host=urlsplit(scanned_https_url).hostname,
+                ),
+                headers={"Cache-Control": "no-store"},
+            )
+
         if scanned_value.lower().startswith(RECORD_PRESENTATION_PREFIX):
             try:
                 # Validate the visible capability tag and compact descriptor
@@ -5317,6 +5358,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 clear_balances=clear_balances,
             )
         )
+
+    @app.post("/scan/open-url", response_class=HTMLResponse)
+    async def open_scanned_https_url(
+        request: Request,
+        credentials: CredentialsDependency,
+        csrf_token: str = Form(...),
+        destination_url: str = Form(...),
+    ) -> Response:
+        del credentials
+        settings = request.app.state.settings
+        form_token = CsrfProtector(settings)
+        if not form_token.verify(csrf_token):
+            return HTMLResponse(
+                _page(
+                    "Website not opened",
+                    '<p class="error">The confirmation expired. Scan the website code again.</p>'
+                    '<p><a class="nav-button" href="/scan/lightning">Return to scanner</a></p>',
+                ),
+                status_code=403,
+            )
+        destination = _normalize_scanned_https_url(destination_url)
+        if destination is None:
+            return HTMLResponse(
+                _page(
+                    "Website not opened",
+                    '<p class="error">The destination is not a valid HTTPS website address.</p>'
+                    '<p><a class="nav-button" href="/scan/lightning">Return to scanner</a></p>',
+                ),
+                status_code=400,
+            )
+        return RedirectResponse(destination, status_code=303)
 
     @app.post("/pay/invoice", response_class=HTMLResponse)
     async def pay_lightning_invoice(

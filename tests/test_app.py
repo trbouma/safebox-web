@@ -5532,10 +5532,51 @@ def test_scanner_browser_module_recognizes_presentation_before_transfer() -> Non
     )
     assert presentation_check < transfer_check
     assert "Record presentation acquired" in response.text
+    assert 'lowerValue.startsWith("https://")' in response.text
+    assert "Website address acquired" in response.text
     assert "scanForm.requestSubmit()" in response.text
 
 
-def test_scanned_non_lightning_qr_is_rejected_without_payment() -> None:
+def test_scanned_https_url_requires_confirmation_before_redirect() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC,
+        bootstrap_relay="wss://relay.example.com",
+    )
+    client = TestClient(app, base_url="https://safebox.example")
+    destination = "https://example.com/help?topic=records"
+
+    response = client.post(
+        "/scan/lightning",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_payment": destination,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Open this website?" in response.text
+    assert "example.com" in response.text
+    assert destination.replace("&", "&amp;") in response.text
+    assert 'method="post" action="/scan/open-url"' in response.text
+    assert acorn.payments == []
+
+    confirmed = client.post(
+        "/scan/open-url",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "destination_url": destination,
+        },
+        follow_redirects=False,
+    )
+
+    assert confirmed.status_code == 303
+    assert confirmed.headers["location"] == destination
+
+
+def test_scanned_non_https_url_is_rejected_without_navigation() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -5545,13 +5586,27 @@ def test_scanned_non_lightning_qr_is_rejected_without_payment() -> None:
         "/scan/lightning",
         data={
             "csrf_token": valid_csrf_token(),
-            "lightning_payment": "https://example.com/not-a-lightning-address",
+            "lightning_payment": "http://example.com/not-secure",
         },
     )
 
     assert response.status_code == 400
     assert "does not contain a supported Lightning address or fixed-amount" in response.text
     assert acorn.payments == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        "http://example.com",
+        "javascript:alert(1)",
+        "https://user:secret@example.com/private",
+        "https://example.com\\@attacker.example/path",
+        "https://example.com/path with spaces",
+    ),
+)
+def test_scanned_https_url_normalizer_rejects_unsafe_destinations(payload: str) -> None:
+    assert main_module._normalize_scanned_https_url(payload) is None
 
 
 @pytest.mark.parametrize(

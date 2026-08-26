@@ -38,6 +38,8 @@ if (
         ? "Record presentation acquired. Opening the temporary view…"
         : lowerValue.startsWith("acorn:record-transfer:")
           ? "Record-sharing code acquired. Opening the transfer review…"
+          : lowerValue.startsWith("https://")
+            ? "Website address acquired. Opening the safety review…"
           : "Payment code acquired. Opening the payment review…";
       scanner.stop();
       startButton.hidden = false;

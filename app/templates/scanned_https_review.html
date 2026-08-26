@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="scan-url-review" aria-labelledby="scan-url-heading">
+  <h2 id="scan-url-heading">Open this website?</h2>
+  <p>The scanned QR code points outside Safebox. Review the destination before
+  continuing.</p>
+  <dl class="invoice-review">
+    <div><dt>Website</dt><dd>{{ destination_host }}</dd></div>
+    <div><dt>Address</dt><dd><code>{{ destination_url }}</code></dd></div>
+  </dl>
+  <form method="post" action="/scan/open-url" data-progress-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="destination_url" value="{{ destination_url }}">
+    <button type="submit" data-progress-label="Opening website…">Open Website</button>
+  </form>
+  <p><a class="nav-button" href="/scan/lightning">Cancel</a></p>
+</section>
+{% endblock %}
