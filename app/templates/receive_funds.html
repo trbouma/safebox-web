@@ -27,4 +27,16 @@
 <p class="advisory">Additional Clear units appear in the selector after this
 Acorn holds a confirmed Clear balance.</p>
 {% endif %}
+{% if pending_deposits %}
+<details>
+  <summary>Outstanding Lightning invoices ({{ pending_deposits | length }})</summary>
+  {% for pending in pending_deposits %}
+  <form method="post" action="/receive-funds/check">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="deposit_token" value="{{ pending.state_token }}">
+    <button type="submit">Resume {{ "{:,}".format(pending.amount) }} sats · {{ pending.mint }}</button>
+  </form>
+  {% endfor %}
+</details>
+{% endif %}
 {% endblock %}

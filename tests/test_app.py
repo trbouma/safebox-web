@@ -72,6 +72,11 @@ from app.main import create_app
 from app.funds_finalization import claim_finalization_job, get_finalization_job
 from app.clear_acceptance import get_clear_acceptance_job
 from app.outgoing_payment import get_outgoing_payment_job
+from app.deposit_finalization import (
+    claim_deposit_finalization_job,
+    deposit_quote_hash,
+    get_deposit_finalization_job,
+)
 from app.security import (
     CsrfProtector,
     DepositQuoteCipher,
@@ -212,6 +217,7 @@ class FakeLoadedAcorn:
         self.payment_request_inspections: list[str] = []
         self.payment_request_sends: list[dict] = []
         self.quote_checks: list[tuple[str, int]] = []
+        self.pending_deposits: list[dict] = []
         self.record_put_calls: list[dict] = []
         self.record_delete_calls: list[dict] = []
         self.record_delete_result = {
@@ -659,6 +665,56 @@ class FakeLoadedAcorn:
             self.balance += amount
             return True, "lnbc21n1pytestinvoice"
         return False, None
+
+    async def register_pending_deposit(
+        self,
+        *,
+        quote: str,
+        amount: int,
+        invoice: str,
+        mint: str,
+    ) -> dict:
+        entry = {
+            "quote": quote,
+            "amount": amount,
+            "invoice": invoice,
+            "mint": mint,
+            "status": "pending",
+            "created_at": 1787790000,
+        }
+        self.pending_deposits = [
+            existing
+            for existing in self.pending_deposits
+            if existing["quote"] != quote
+        ]
+        self.pending_deposits.append(entry)
+        return entry
+
+    async def get_pending_deposits(self) -> list[dict]:
+        return list(self.pending_deposits)
+
+    async def finalize_pending_deposit(self, quote: str) -> dict:
+        entry = next(
+            (item for item in self.pending_deposits if item["quote"] == quote),
+            None,
+        )
+        if entry is None:
+            return {"status": "NOT_FOUND"}
+        self.quote_checks.append((quote, int(entry["amount"])))
+        if not self.deposit_paid:
+            return {**entry, "status": "PENDING"}
+        self.balance += int(entry["amount"])
+        self.history_entries.append(
+            {
+                "tx_type": "C",
+                "amount": int(entry["amount"]),
+                "comment": "acorn lightning invoice received",
+            }
+        )
+        self.pending_deposits = [
+            item for item in self.pending_deposits if item["quote"] != quote
+        ]
+        return {**entry, "status": "COMPLETE"}
 
     async def add_tx_history(self, **entry) -> None:
         self.history_entries.append(entry)
@@ -3484,6 +3540,12 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
                 "PRAGMA table_info(web_worker_heartbeat)"
             )
         }
+        deposit_finalization_job_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(deposit_finalization_job)"
+            )
+        }
     assert {
         "alembic_version",
         "claimed_handle",
@@ -3494,9 +3556,10 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "funds_finalization_job",
         "clear_acceptance_job",
         "outgoing_payment_job",
+        "deposit_finalization_job",
         "web_worker_heartbeat",
     }.issubset(tables)
-    assert revision == ("20260824_0010",)
+    assert revision == ("20260827_0011",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -3594,6 +3657,20 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "updated_at",
         "lease_expires_at",
     } == outgoing_payment_job_columns
+    assert {
+        "npub",
+        "quote_hash",
+        "owner_token",
+        "owner_worker_id",
+        "amount",
+        "mint",
+        "status",
+        "phase",
+        "error",
+        "started_at",
+        "updated_at",
+        "lease_expires_at",
+    } == deposit_finalization_job_columns
     assert {
         "worker_id",
         "started_at",
@@ -6139,20 +6216,30 @@ def test_legacy_deposit_routes_redirect_to_receive_funds(
     assert response.headers["location"] == canonical_path
 
 
-def test_receive_funds_creates_lightning_request_without_polling() -> None:
-    app = create_app(TEST_SETTINGS)
-    acorn = FakeLoadedAcorn(balance=500)
+def test_receive_funds_persists_and_monitors_lightning_request(tmp_path) -> None:
+    settings = replace(database_settings(tmp_path), payment_timeout_seconds=0.05)
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn(balance=500, deposit_paid=False)
     app.dependency_overrides[get_deposit_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.post(
-        "/receive-funds",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "amount": "21",
-            "payment_method": "lightning",
-        },
-    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/receive-funds",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "amount": "21",
+                "payment_method": "lightning",
+            },
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_deposit_finalization_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "PENDING":
+                break
+            time.sleep(0.01)
 
     assert response.status_code == 200
     assert "Lightning Payment Request" in response.text
@@ -6160,10 +6247,14 @@ def test_receive_funds_creates_lightning_request_without_polling() -> None:
     assert "lnbc21n1pytestinvoice" in response.text
     assert '<div class="invoice-qr"><svg' in response.text
     assert 'action="/receive-funds/check"' in response.text
-    assert "Checking and finalizing the received funds. Please wait" in response.text
-    assert "Checking transfer…" in response.text
+    assert "monitoring this request in the background" in response.text
+    assert "encrypted quote is retained" in response.text
+    assert "Refresh Transfer Status" in response.text
     assert acorn.deposit_calls == [21]
-    assert acorn.quote_checks == []
+    assert len(acorn.pending_deposits) == 1
+    assert acorn.pending_deposits[0]["mint"] == "https://mint.example.com"
+    assert job is not None and job["status"] == "PENDING"
+    assert job["quote_hash"] != "pytest-deposit-quote"
 
     token_match = re.search(
         r'name="deposit_token" value="([^"]+)"', response.text
@@ -6171,7 +6262,7 @@ def test_receive_funds_creates_lightning_request_without_polling() -> None:
     assert token_match is not None
     deposit_token = unescape(token_match.group(1))
     assert "pytest-deposit-quote" not in deposit_token
-    state = DepositQuoteCipher(TEST_SETTINGS).decode(deposit_token)
+    state = DepositQuoteCipher(settings).decode(deposit_token)
     assert state == DepositQuoteState(
         quote="pytest-deposit-quote",
         amount=21,
@@ -6180,11 +6271,51 @@ def test_receive_funds_creates_lightning_request_without_polling() -> None:
     )
 
 
-def test_paid_deposit_is_finalized_and_redirects_to_updated_wallet() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_multiple_outstanding_deposit_quotes_have_independent_jobs(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    npub = FakeLoadedAcorn.pubkey_bech32
+    with TestClient(app, base_url="https://safebox.example"):
+        first_hash = deposit_quote_hash("first-secret-quote")
+        second_hash = deposit_quote_hash("second-secret-quote")
+        first_claimed, _, _ = claim_deposit_finalization_job(
+            app.state.database_engine,
+            npub,
+            quote_hash=first_hash,
+            amount=21,
+            mint="https://mint.example.com",
+        )
+        second_claimed, _, _ = claim_deposit_finalization_job(
+            app.state.database_engine,
+            npub,
+            quote_hash=second_hash,
+            amount=34,
+            mint="https://mint.example.com",
+        )
+        first = get_deposit_finalization_job(
+            app.state.database_engine,
+            npub,
+            quote_hash=first_hash,
+        )
+        second = get_deposit_finalization_job(
+            app.state.database_engine,
+            npub,
+            quote_hash=second_hash,
+        )
+
+    assert first_claimed is True
+    assert second_claimed is True
+    assert first is not None and first["amount"] == 21
+    assert second is not None and second["amount"] == 34
+    assert "first-secret-quote" not in str(first)
+    assert "second-secret-quote" not in str(second)
+
+
+def test_paid_deposit_is_finalized_and_redirects_to_updated_wallet(tmp_path) -> None:
+    settings = replace(database_settings(tmp_path), payment_timeout_seconds=0.05)
+    app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=500, deposit_paid=True)
     app.dependency_overrides[get_deposit_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
     state = DepositQuoteState(
         quote="pytest-deposit-quote",
         amount=21,
@@ -6192,29 +6323,58 @@ def test_paid_deposit_is_finalized_and_redirects_to_updated_wallet() -> None:
         invoice="lnbc21n1pytestinvoice",
     )
 
-    response = client.post(
-        "/receive-funds/check",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "deposit_token": DepositQuoteCipher(TEST_SETTINGS).encode(state),
-        },
-        follow_redirects=False,
-    )
+    asyncio.run(acorn.register_pending_deposit(
+        quote=state.quote,
+        amount=state.amount,
+        invoice=state.invoice,
+        mint=state.mint,
+    ))
+    token = DepositQuoteCipher(settings).encode(state)
+    with TestClient(app, base_url="https://safebox.example") as client:
+        first = client.post(
+            "/receive-funds/check",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "deposit_token": token,
+            },
+            follow_redirects=False,
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_deposit_finalization_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
+        response = client.post(
+            "/receive-funds/check",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "deposit_token": token,
+            },
+            follow_redirects=False,
+        )
 
+    assert first.status_code == 200
+    assert job is not None and job["status"] == "COMPLETE"
     assert response.status_code == 303
     assert response.headers["location"] == "/wallet"
     assert acorn.quote_checks == [("pytest-deposit-quote", 21)]
     assert acorn.balance == 521
     assert acorn.history_entries == [
-        {"tx_type": "C", "amount": 21, "comment": "safebox web funds received"}
+        {"tx_type": "C", "amount": 21, "comment": "acorn lightning invoice received"}
     ]
+    assert acorn.pending_deposits == []
 
 
-def test_unpaid_deposit_keeps_same_invoice_available_for_recheck() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_unpaid_deposit_keeps_same_invoice_available_for_recheck(tmp_path) -> None:
+    settings = replace(database_settings(tmp_path), payment_timeout_seconds=0.05)
+    app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=500, deposit_paid=False)
     app.dependency_overrides[get_deposit_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
     state = DepositQuoteState(
         quote="pytest-deposit-quote",
         amount=21,
@@ -6222,18 +6382,37 @@ def test_unpaid_deposit_keeps_same_invoice_available_for_recheck() -> None:
         invoice="lnbc21n1pytestinvoice",
     )
 
-    response = client.post(
-        "/receive-funds/check",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "deposit_token": DepositQuoteCipher(TEST_SETTINGS).encode(state),
-        },
-    )
+    asyncio.run(acorn.register_pending_deposit(
+        quote=state.quote,
+        amount=state.amount,
+        invoice=state.invoice,
+        mint=state.mint,
+    ))
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/receive-funds/check",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "deposit_token": DepositQuoteCipher(settings).encode(state),
+            },
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_deposit_finalization_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "PENDING":
+                break
+            time.sleep(0.01)
 
-    assert response.status_code == 409
-    assert "has not confirmed settlement yet" in response.text
+    assert response.status_code == 200
+    assert "monitoring is running in the background" in response.text
     assert "lnbc21n1pytestinvoice" in response.text
     assert 'action="/receive-funds/check"' in response.text
+    assert job is not None and job["status"] == "PENDING"
+    assert len(acorn.pending_deposits) == 1
     assert acorn.history_entries == []
 
 

@@ -75,6 +75,7 @@ from app.dependencies import (
     CredentialsDependency,
     DatabaseSessionDependency,
     DepositAcornDependency,
+    DepositAcornFactoryDependency,
     LoadedAcornDependency,
     PaymentAcornDependency,
     PaymentAcornFactoryDependency,
@@ -96,6 +97,12 @@ from app.outgoing_payment import (
     claim_outgoing_payment_job,
     get_outgoing_payment_job,
     run_outgoing_payment_job_in_thread,
+)
+from app.deposit_finalization import (
+    claim_deposit_finalization_job,
+    deposit_quote_hash,
+    get_deposit_finalization_job,
+    run_deposit_finalization_job_in_thread,
 )
 from app.worker_liveness import (
     new_worker_id,
@@ -2825,6 +2832,7 @@ def _receive_funds_form(
     error: str | None = None,
     balance_status: str | None = None,
     clear_balances: list[dict] | None = None,
+    pending_deposits: list[dict] | None = None,
 ) -> str:
     if balance_status is None:
         balance_status = (
@@ -2838,6 +2846,7 @@ def _receive_funds_form(
         error=error,
         balance_status=balance_status,
         clear_balances=clear_balances or [],
+        pending_deposits=pending_deposits or [],
     )
 
 
@@ -3058,6 +3067,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.finalization_tasks = {}
         app.state.clear_acceptance_tasks = {}
         app.state.outgoing_payment_tasks = {}
+        app.state.deposit_finalization_tasks = {}
         app.state.background_job_executor = ThreadPoolExecutor(
             max_workers=runtime_settings.background_job_threads,
             thread_name_prefix="safebox-wallet-job",
@@ -3069,6 +3079,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 *app.state.finalization_tasks.values(),
                 *app.state.clear_acceptance_tasks.values(),
                 *app.state.outgoing_payment_tasks.values(),
+                *app.state.deposit_finalization_tasks.values(),
             ]
             await asyncio.to_thread(
                 app.state.background_job_executor.shutdown,
@@ -3159,6 +3170,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             task.add_done_callback(remove_completed_task)
         return RedirectResponse("/pay/status", status_code=303)
+
+    def start_deposit_finalization(
+        request: Request,
+        *,
+        acorn,
+        acorn_factory,
+        state: DepositQuoteState,
+    ) -> dict:
+        npub = acorn.pubkey_bech32
+        quote_digest = deposit_quote_hash(state.quote)
+        claimed, owner_token, job = claim_deposit_finalization_job(
+            request.app.state.database_engine,
+            npub,
+            quote_hash=quote_digest,
+            amount=state.amount,
+            mint=state.mint,
+            worker_id=request.app.state.worker_id,
+        )
+        if claimed:
+            task_key = f"{npub}:{quote_digest}"
+            task = asyncio.wrap_future(
+                request.app.state.background_job_executor.submit(
+                    run_deposit_finalization_job_in_thread,
+                    engine=request.app.state.database_engine,
+                    acorn_factory=acorn_factory,
+                    npub=npub,
+                    quote=state.quote,
+                    quote_hash=quote_digest,
+                    owner_token=owner_token,
+                    wait_seconds=request.app.state.settings.payment_timeout_seconds,
+                    load_timeout_seconds=(
+                        request.app.state.settings.wallet_load_timeout_seconds
+                    ),
+                )
+            )
+            request.app.state.deposit_finalization_tasks[task_key] = task
+
+            def remove_completed_task(completed: asyncio.Task) -> None:
+                current = request.app.state.deposit_finalization_tasks.get(task_key)
+                if current is completed:
+                    request.app.state.deposit_finalization_tasks.pop(task_key, None)
+
+            task.add_done_callback(remove_completed_task)
+        return job
 
     @app.exception_handler(HTTPException)
     async def browser_session_error(request: Request, exc: HTTPException):
@@ -4951,6 +5006,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 type(exc).__name__,
             )
             clear_balances = []
+        pending_deposits = []
+        pending_reader = getattr(acorn, "get_pending_deposits", None)
+        if pending_reader is not None:
+            try:
+                pending_entries = await asyncio.wait_for(
+                    pending_reader(),
+                    timeout=settings.wallet_load_timeout_seconds,
+                )
+                pending_deposits = [
+                    {
+                        **entry,
+                        "state_token": DepositQuoteCipher(settings).encode(
+                            DepositQuoteState(
+                                quote=str(entry["quote"]),
+                                amount=int(entry["amount"]),
+                                mint=str(entry["mint"]),
+                                invoice=str(entry["invoice"]),
+                            )
+                        ),
+                    }
+                    for entry in pending_entries
+                ]
+            except Exception as exc:
+                logger.warning(
+                    "pending deposit list unavailable error_type=%s",
+                    type(exc).__name__,
+                )
         return _receive_funds_form(
             acorn.get_balance(),
             acorn.home_mint,
@@ -4962,12 +5044,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 verification_error,
             ),
             clear_balances=clear_balances,
+            pending_deposits=pending_deposits,
         )
 
     @app.post("/receive-funds", response_class=HTMLResponse)
     async def create_payment_request(
         request: Request,
         acorn: DepositAcornDependency,
+        acorn_factory: DepositAcornFactoryDependency,
         csrf_token: str = Form(...),
         amount: str = Form(...),
         payment_method: str = Form("lightning"),
@@ -5105,6 +5189,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             mint=str(acorn.home_mint).rstrip("/"),
             invoice=invoice,
         )
+        registrar = getattr(acorn, "register_pending_deposit", None)
+        if registrar is None:
+            return receive_error(
+                "This Safebox installation cannot persist Lightning invoices "
+                "for background finalization.",
+                503,
+            )
+        try:
+            await asyncio.wait_for(
+                registrar(
+                    quote=state.quote,
+                    amount=state.amount,
+                    invoice=state.invoice,
+                    mint=state.mint,
+                ),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except Exception as exc:
+            logger.warning(
+                "deposit quote persistence failed mint=%s error_type=%s",
+                state.mint,
+                type(exc).__name__,
+            )
+            return receive_error(
+                "The invoice was not shown because its recovery state could not "
+                "be verified on the Acorn relay. No payment should be sent.",
+                503,
+            )
+        start_deposit_finalization(
+            request,
+            acorn=acorn,
+            acorn_factory=acorn_factory,
+            state=state,
+        )
         state_token = DepositQuoteCipher(settings).encode(state)
         return _lightning_payment_request_page(
             state,
@@ -5116,6 +5234,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def check_payment_request(
         request: Request,
         acorn: DepositAcornDependency,
+        acorn_factory: DepositAcornFactoryDependency,
         csrf_token: str = Form(...),
         deposit_token: str = Form(...),
     ):
@@ -5150,66 +5269,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=409,
             )
 
-        try:
-            success, _ = await asyncio.wait_for(
-                acorn.check_quote(state.quote, state.amount),
-                timeout=settings.payment_timeout_seconds,
+        job = get_deposit_finalization_job(
+            request.app.state.database_engine,
+            acorn.pubkey_bech32,
+            quote_hash=deposit_quote_hash(state.quote),
+        )
+        if job and job.get("status") == "COMPLETE":
+            return RedirectResponse("/wallet", status_code=303)
+        if not job or job.get("status") != "RUNNING":
+            job = start_deposit_finalization(
+                request,
+                acorn=acorn,
+                acorn_factory=acorn_factory,
+                state=state,
             )
-        except TimeoutError:
-            logger.warning("deposit confirmation timed out mint=%s", state.mint)
-            return HTMLResponse(
-                _lightning_payment_request_page(
-                    state,
-                    deposit_token,
-                    form_token.issue(),
-                    "Transfer confirmation timed out. Do not create or complete "
-                    "another request; wait and check this request again.",
-                ),
-                status_code=504,
+        message = "Transfer monitoring is running in the background."
+        if job and job.get("status") == "PENDING":
+            message = (
+                "The mint has not confirmed settlement yet. Background "
+                "monitoring has resumed."
             )
-        except Exception as exc:
-            logger.warning(
-                "deposit confirmation failed mint=%s error_type=%s",
-                state.mint,
-                type(exc).__name__,
-            )
-            return HTMLResponse(
-                _lightning_payment_request_page(
-                    state,
-                    deposit_token,
-                    form_token.issue(),
-                    "Safebox could not confirm the transfer. Do not create or "
-                    "complete another request; wait and check this request again.",
-                ),
-                status_code=502,
-            )
-
-        if not success:
-            return HTMLResponse(
-                _lightning_payment_request_page(
-                    state,
-                    deposit_token,
-                    form_token.issue(),
-                    "The mint has not confirmed settlement yet. If the invoice was paid recently, "
-                    "wait briefly and check this invoice again.",
-                ),
-                status_code=409,
-            )
-
-        try:
-            await acorn.add_tx_history(
-                tx_type="C",
-                amount=state.amount,
-                comment="safebox web funds received",
-            )
-        except Exception as exc:
-            logger.warning(
-                "deposit confirmed but transaction history write failed "
-                "mint=%s error_type=%s",
-                state.mint,
-                type(exc).__name__,
-            )
-        return RedirectResponse("/wallet", status_code=303)
+        elif job and job.get("status") in {"FAILED", "INTERRUPTED"}:
+            message = str(job.get("error") or "Finalization can be resumed safely.")
+        return HTMLResponse(
+            _lightning_payment_request_page(
+                state,
+                deposit_token,
+                form_token.issue(),
+                message,
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/deposit", include_in_schema=False)
     async def legacy_deposit_form() -> RedirectResponse:

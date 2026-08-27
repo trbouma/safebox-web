@@ -30,11 +30,32 @@ second control.
 The available method asks the Acorn home mint for a Lightning deposit quote.
 The returned BOLT11 invoice is one representation of a broader payment request.
 Safebox displays it as QR and text, stores the encrypted quote state in a
-short-lived hidden form token, and waits for an explicit user action before
-checking and finalizing the payment.
+short-lived hidden form token, and asks Acorn to persist the quote, amount,
+invoice, and exact issuing mint in encrypted relay-backed wallet state before
+the invoice is shown. A bounded in-memory job then checks and finalizes the
+quote without holding the HTTP request open.
 
-No polling or browser-side wallet logic is introduced. The server remains the
-authority for form validation and Acorn performs mint and proof mutations.
+The browser does not poll or contain wallet logic. It may leave the page and
+later return to **Receive Funds**, where every outstanding invoice has a
+server-rendered **Resume** action. The resume action reconstructs a fresh Acorn
+from the still-valid encrypted session and restarts finalization from the
+relay-backed quote. Acorn always checks the mint recorded with that quote; a
+later home-mint preference change cannot redirect an old quote to a different
+mint.
+
+Safebox's database contains only non-secret worker coordination: component
+public key, SHA-256 quote identifier, amount, mint, status, phase, lease, and
+timestamps. It does not contain the raw quote, invoice, nsec, or proofs. Each
+quote has an independent job row, so multiple outstanding invoices can be
+monitored or resumed without one unpaid invoice blocking another. The raw quote
+is passed only to the in-memory worker and remains encrypted in authoritative
+Acorn relay state until finalization completes.
+
+Finalization is idempotent at the Acorn boundary. Proofs are persisted and
+verified before the quote journal advances; transaction history uses a stable
+mint-and-quote marker; and the outstanding quote is removed only after the
+credit history is durable. Unpaid, unreachable, or interrupted quotes remain
+available for a later check.
 
 ## Clear CMU transfer method
 
@@ -121,6 +142,8 @@ the Lightning structure.
 - Each form submits through ordinary HTTP navigation.
 - JavaScript may display progress and disable duplicate submission, but it does
   not create requests, hold proofs, poll mints, or decide finality.
+- Lightning monitoring runs in a server-side bounded executor. Status refresh
+  and restart recovery remain ordinary hypermedia forms.
 - A scanned NUT-18 request is public capability material carried back by the
   confirmation form and fully decoded, fee-checked, and balance-checked again
   at the Acorn boundary before proofs are spent.
@@ -133,8 +156,8 @@ the Lightning structure.
 - Legacy deposit POST routes use method-preserving redirects.
 - Existing encrypted Lightning quote tokens remain valid because their schema
   and purpose are unchanged.
-- Transaction history uses the generalized description `safebox web funds
-  received` for newly finalized Lightning requests.
+- Newly finalized Lightning requests use an idempotent Acorn transaction marker
+  bound to their mint and quote.
 
 ## Current boundary
 

@@ -208,6 +208,36 @@ def get_deposit_acorn(acorn: LoadedAcornDependency) -> Acorn:
 DepositAcornDependency = Annotated[Acorn, Depends(get_deposit_acorn)]
 
 
+def get_deposit_acorn_factory(
+    acorn: DepositAcornDependency,
+    settings: SettingsDependency,
+) -> AcornFactory:
+    """Clone the authenticated deposit component for an in-memory job."""
+
+    nsec = getattr(acorn, "privkey_bech32", None)
+    bootstrap_relay = getattr(acorn, "home_relay", None)
+    blossom_home_server = settings.blossom_home_server
+
+    def create() -> Acorn:
+        if not nsec or not bootstrap_relay:
+            return acorn
+        return Acorn(
+            nsec=nsec,
+            home_relay=bootstrap_relay,
+            relays=[bootstrap_relay],
+            blossom_home_server=blossom_home_server,
+            blossom_servers=[blossom_home_server],
+        )
+
+    return create
+
+
+DepositAcornFactoryDependency = Annotated[
+    AcornFactory,
+    Depends(get_deposit_acorn_factory),
+]
+
+
 def get_receive_acorn(acorn: LoadedAcornDependency) -> Acorn:
     """Make the incoming-ecash mutation boundary explicit."""
 

@@ -181,6 +181,32 @@ check.
 The complete incident-to-UX narrative and live interoperability evidence are
 recorded in the [Funds Arrival and Finalization Milestone](FUNDS-ARRIVAL-AND-FINALIZATION-MILESTONE-2026-08-13.md).
 
+## Attached-Acorn incoming Lightning invoices
+
+Direct invoices created from **Receive Funds** use a distinct per-quote job,
+because invoice settlement may happen after the page closes and because one
+Acorn may have several invoices outstanding at once. Before Safebox reveals an
+invoice, Acorn writes and verifies an encrypted relay record containing the
+quote, amount, invoice, issuing mint, and lifecycle stage. This relay record—not
+the web database—is the recovery authority.
+
+The web coordination table is keyed by a SHA-256 digest of the quote. It stores
+the component public key, amount, mint, status, phase, worker ownership, and
+timestamps, but never the raw quote, invoice, private key, or proofs. Each
+claiming web worker creates a fresh Acorn in the bounded executor and polls the
+exact issuing mint for a limited interval of at most 30 seconds, preventing
+unpaid invoices from monopolizing the shared worker pool. Paid quotes are minted into verified
+relay-backed proofs, written once to transaction history with a stable marker,
+and removed from the outstanding journal. Unpaid or interrupted quotes remain
+resumable from the **Receive Funds** page.
+
+The job cannot resume autonomously after all user sessions disappear: that is
+an intentional consequence of not storing user private keys in the application
+database. Reconnection supplies the key in memory and lets Safebox recover the
+quote from Acorn's encrypted relay state. Multiple quotes have independent job
+rows and executor task keys, so an older unpaid invoice does not overwrite or
+block a newer one.
+
 ## Attached-Acorn background Clear acceptance
 
 Clear acceptance uses a separate wallet-scoped lease and bounded-executor job but

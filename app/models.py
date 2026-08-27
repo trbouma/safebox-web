@@ -193,3 +193,22 @@ class OutgoingPaymentJob(SQLModel, table=True):
     started_at: datetime = Field(default_factory=utc_now, nullable=False)
     updated_at: datetime = Field(default_factory=utc_now, nullable=False)
     lease_expires_at: datetime = Field(nullable=False, index=True)
+
+
+class DepositFinalizationJob(SQLModel, table=True):
+    """Non-secret coordination state for one attached-Acorn deposit poller."""
+
+    __tablename__ = "deposit_finalization_job"
+
+    quote_hash: str = Field(primary_key=True)
+    npub: str = Field(nullable=False, index=True)
+    owner_token: str = Field(nullable=False)
+    owner_worker_id: Optional[str] = Field(default=None, nullable=True, index=True)
+    amount: int = Field(nullable=False)
+    mint: str = Field(nullable=False)
+    status: str = Field(default="RUNNING", nullable=False, index=True)
+    phase: str = Field(default="STARTING", nullable=False)
+    error: Optional[str] = Field(default=None, nullable=True)
+    started_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    lease_expires_at: datetime = Field(nullable=False, index=True)
