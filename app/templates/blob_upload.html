@@ -1,26 +1,26 @@
 {% extends "base.html" %}
 {% block content %}
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
-<p>The Original Record is protected by Acorn and stored separately from its
+<p>The Record File is protected by Acorn and stored separately from its
 record metadata.</p>
 <p>Maximum file size: <strong>{{ max_blob_megabytes }} MiB</strong>.</p>
 <form method="post" action="/blob/upload" enctype="multipart/form-data"
       autocomplete="off"
-      data-progress-message="Protecting, storing, and verifying the Original Record. Please wait."
-      data-progress-button="Storing Original Record…">
+      data-progress-message="Protecting, storing, and verifying the Record File. Please wait."
+      data-progress-button="Storing Record File…">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label for="label">Record label</label>
   <input id="label" name="label" type="text" maxlength="200" required
          value="{{ label }}">
   <label for="description">Description</label>
   <textarea id="description" name="description" maxlength="4000">{{ description }}</textarea>
-  <label for="blob">Original Record</label>
+  <label for="blob">Record File</label>
   <input id="blob" name="blob" type="file" required>
   <label>
     <input type="checkbox" name="confirmed" value="yes" required>
-    Protect and store this Original Record. Safebox processes the file during
+    Protect and store this Record File. Safebox processes the file during
     this request but does not retain an application copy.
   </label>
-  <button type="submit">Store Original Record</button>
+  <button type="submit">Store Record File</button>
 </form>
 {% endblock %}

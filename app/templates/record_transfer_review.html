@@ -6,7 +6,7 @@
 <dl class="invoice-review">
   <div><dt>Suggested label</dt><dd>{{ transfer.label }}</dd></div>
   <div><dt>Record type</dt><dd>{{ transfer.record_type }}</dd></div>
-  <div><dt>Original Record</dt><dd>{% if transfer.has_original %}included{% else %}not included{% endif %}</dd></div>
+  <div><dt>Record File</dt><dd>{% if transfer.has_original %}included{% else %}not included{% endif %}</dd></div>
   <div><dt>Expires</dt><dd>{{ expires_at }}</dd></div>
 </dl>
 <form method="post" action="/record/import" data-progress-form>

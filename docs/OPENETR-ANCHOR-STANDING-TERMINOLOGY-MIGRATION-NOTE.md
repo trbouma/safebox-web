@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed migration for Safebox Web.
+Migration in progress for Safebox Web. Anchor/signer projection changes and
+the Record File terminology migration have been implemented; recognition
+adapters remain future work.
 
 This note records the changes needed to align Safebox Web with the revised
 OpenETR distinction between Anchor Events, control, recognition, standing, and
@@ -72,7 +74,7 @@ an Anchor Event, not as proof that the signer has recognized issuer authority.
 
 ### Record-file terminology
 
-Safebox currently uses **Original Record** as the general name for an exact
+Safebox previously used **Original Record** as the general name for an exact
 attachment protected by Acorn. Under the revised model, storing, hashing,
 signing, or anchoring bytes does not independently make them an original.
 
@@ -86,7 +88,10 @@ The recommended ordinary user-facing term is **Record File**:
 | Delete record and Original Record | Delete record and Record File |
 | No Original Record is available | No Record File is available |
 
-The short **Fingerprint** label can remain unchanged.
+Use **Record File Fingerprint** where the label appears without an already
+obvious Record File context. The shorter **Fingerprint** label may remain only
+inside a section where the object being fingerprinted cannot be mistaken for
+record metadata, a signer key, or a control graph.
 
 More precise terms can be used where the distinction matters:
 
@@ -197,7 +202,7 @@ to one or more candidate graphs.
 
 Recommended presentation order:
 
-1. fingerprint and durable verification QR code;
+1. Record File Fingerprint and durable verification QR code;
 2. concise integrity and protocol-validity status;
 3. candidate Anchor Event and signer information;
 4. the human-readable anchor statement;
@@ -258,7 +263,7 @@ minimum wire projection, provided it follows the current specifications.
 
 ## Documentation migration
 
-The following Safebox Web materials require a terminology and claims review:
+The terminology and claims review covered the following Safebox Web materials:
 
 - `docs/OPENETR-ISSUE-VERIFY-DESIGN-NOTE.md`;
 - `website/graduated-disclosure.md`;
@@ -297,7 +302,7 @@ candidate anchors for different purposes.
 - Update protocol-detail labels.
 - Add plain-language integrity, recognition, and standing boundaries.
 
-### Phase 3: Record terminology
+### Phase 3: Record terminology — implemented
 
 - Replace generic Original Record language with Record File.
 - Reserve Digital Original for a controlled object with recognized standing.

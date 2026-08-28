@@ -93,7 +93,7 @@ interaction into either blind trust or a heavyweight credential exchange.
 
 ## The Uniform Digest Anchor
 
-When Acorn stores an Original Record, it preserves the exact artifact bytes and
+When Acorn stores a Record File, it preserves the exact artifact bytes and
 encrypts them before blob storage. The plaintext digest becomes the stable
 **Uniform Digest Anchor (UDA)** for verification and attestations.
 
@@ -123,7 +123,7 @@ It can answer questions like:
 - Was it transferred, presented, encumbered, redeemed, or terminated?
 - What evidence should a verifier consider?
 
-Safebox Web can retrieve the Original Record through Acorn, hash the exact
+Safebox Web can retrieve the Record File through Acorn, hash the exact
 bytes, and pass that digest into OpenETR verification. The verifier can then
 combine the digest with signed control events and recognition inputs.
 

@@ -251,7 +251,7 @@ sharing. The presenter confirms a server-side form, Acorn creates an
 authenticated presentation-only envelope, and Safebox renders an
 `acorn:record-presentation:` QR descriptor. After scanning, the server retrieves
 and validates the package and returns a read-only representation containing the
-record, its Original Record, and available Control History. The response has no
+record, its Record File, and available Control History. The response has no
 import form or import affordance. Acorn also rejects import if a presentation
 descriptor is relabelled as a transfer, because the capability is authenticated
 inside the encrypted envelope.
@@ -331,7 +331,7 @@ use transient system temporary storage and therefore does not claim that
 plaintext exists only in RAM, only that Safebox Web retains no application or
 database copy of the uploaded bytes.
 
-PKPASS Original Record preview is a specialized server-rendered representation
+PKPASS Record File preview is a specialized server-rendered representation
 of the same attachment boundary. Safebox Web uses Acorn's effective MIME result
 to recognize `application/vnd.apple.pkpass`, reads the Wallet pass package only
 to render a bounded HTML preview, and keeps the install/open action as an

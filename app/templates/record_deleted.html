@@ -5,14 +5,14 @@
 {% else %}
 <p role="status"><strong>Deletion was requested for {{ label }}.</strong></p>
 {% if blob_requested and blob_deleted %}
-<p>The configured storage server accepted the Original Record deletion request.</p>
+<p>The configured storage server accepted the Record File deletion request.</p>
 {% elif blob_requested %}
-<p class="error">The record deletion was requested, but Safebox could not confirm deletion of the Original Record.</p>
+<p class="error">The record deletion was requested, but Safebox could not confirm deletion of the Record File.</p>
 {% endif %}
 {% if hidden_count %}
-<p>The original record was no longer visible on {{ hidden_count }} queried relay{% if hidden_count != 1 %}s{% endif %}.</p>
+<p>The record was no longer visible on {{ hidden_count }} queried relay{% if hidden_count != 1 %}s{% endif %}.</p>
 {% else %}
-<p>Safebox could not confirm that the original record is already hidden by the queried relay.</p>
+<p>Safebox could not confirm that the record is already hidden by the queried relay.</p>
 {% endif %}
 {% if index_error %}
 <p class="error">The wallet record index could not be updated and may remain stale temporarily.</p>

@@ -108,7 +108,7 @@ asked to recognize it.
 In Safebox, a record can have several layers:
 
 - a private record controlled by the user's Acorn key;
-- an encrypted Original Record stored through Grove or another Blossom server;
+- an encrypted Record File stored through Grove or another Blossom server;
 - relay-backed metadata and recovery state;
 - native signatures, bindings, status, and presentations defined by the
   artifact's own scheme;
@@ -150,7 +150,7 @@ evidence graphs.
 
 Safebox can preserve and render very different verifiable records without
 forcing them into one universal credential format. Each scheme keeps the
-verification rules that give its claims meaning. The exact Original Record
+verification rules that give its claims meaning. The exact Record File
 also receives a **Uniform Digest Anchor (UDA)** that other protocols can use
 without needing to understand every field inside it.
 
@@ -166,7 +166,7 @@ that the presented bytes match the UDA, then apply the artifact's native
 verification, then evaluate any OpenETR evidence relevant to its own purpose.
 
 ```text
-exact Original Record
+exact Record File
     -> Uniform Digest Anchor
        +-> native claim verification
        +-> OpenETR notarization and provenance

@@ -1727,7 +1727,7 @@ def _blob_upload_form(
 ) -> str:
     return render_template(
         "blob_upload.html",
-        title="Store an Original Record",
+        title="Store a Record File",
         csrf_token=csrf_token,
         max_blob_megabytes=f"{max_blob_bytes / (1024 * 1024):g}",
         label=label,
@@ -1962,7 +1962,7 @@ def _resolve_upload_effective_mime(
     upload: UploadFile | None,
     blob_data: bytes | None = None,
 ) -> EffectiveMimeResolution:
-    """Resolve the artifact MIME type for an uploaded Original Record."""
+    """Resolve the artifact MIME type for an uploaded Record File."""
 
     if upload is None:
         return EffectiveMimeResolution(None, "missing", "none")
@@ -2062,11 +2062,11 @@ def _original_record_type_notice(record_value, blob_type: str | None) -> str | N
     if filename.lower().endswith(".pkpass") and effective_mime == PKPASS_MIME_TYPE:
         source = "recognized"
     filename_text = f" for {filename}" if filename else ""
-    return f"Safebox {source} Original Record type{filename_text}: {effective_mime}."
+    return f"Safebox {source} Record File type{filename_text}: {effective_mime}."
 
 
 def _effective_blob_media_type(media_type: str | None, record_value=None) -> str:
-    """Prefer explicit Original Record metadata when byte sniffing is ambiguous."""
+    """Prefer explicit Record File metadata when byte sniffing is ambiguous."""
 
     normalized = _normalize_media_type(media_type) or "application/octet-stream"
     if record_value is not None:
@@ -7903,7 +7903,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         else:
             return upload_error(
-                "That record label already exists. Use the record editor to preserve or replace its Original Record.",
+                "That record label already exists. Use the record editor to preserve or replace its Record File.",
                 409,
             )
 
@@ -7949,7 +7949,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except TimeoutError:
             return upload_error(
-                "Saving the Original Record timed out and its outcome is uncertain. Check the record list before retrying.",
+                "Saving the Record File timed out and its outcome is uncertain. Check the record list before retrying.",
                 504,
             )
         except ValueError as exc:
@@ -7962,7 +7962,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 exc_info=True,
             )
             return upload_error(
-                "Safebox could not store and verify the Original Record.",
+                "Safebox could not store and verify the Record File.",
                 502,
             )
 
@@ -7984,7 +7984,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             return HTMLResponse(
                 _page(
-                    "Original Record",
+                    "Record File",
                     f'<p class="error">{escape(str(exc))}</p>'
                     '<p><a href="/records">Return to records</a></p>',
                 ),
@@ -8002,8 +8002,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except TimeoutError:
             return HTMLResponse(
                 _page(
-                    "Original Record",
-                    '<p class="error">Timed out while retrieving the Original Record.</p>'
+                    "Record File",
+                    '<p class="error">Timed out while retrieving the Record File.</p>'
                     '<p><a href="/records">Return to records</a></p>',
                 ),
                 status_code=504,
@@ -8015,8 +8015,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return HTMLResponse(
                 _page(
-                    "Original Record",
-                    '<p class="error">Unable to retrieve the Original Record.</p>'
+                    "Record File",
+                    '<p class="error">Unable to retrieve the Record File.</p>'
                     '<p><a href="/records">Return to records</a></p>',
                 ),
                 status_code=502,
@@ -8024,8 +8024,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not blob_data:
             return HTMLResponse(
                 _page(
-                    "Original Record",
-                    '<p class="error">This record has no retrievable Original Record.</p>'
+                    "Record File",
+                    '<p class="error">This record has no retrievable Record File.</p>'
                     '<p><a href="/records">Return to records</a></p>',
                 ),
                 status_code=404,

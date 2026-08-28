@@ -31,7 +31,7 @@ Safebox Web provides the human workflows:
 - reviewing balances and proof health;
 - receiving and sending value;
 - storing and reading private records;
-- attaching protected original records;
+- attaching protected Record Files;
 - sharing or presenting records by QR; and
 - claiming handles and using Lightning address flows.
 
@@ -52,7 +52,7 @@ In that situation, Safebox Web can fall back to local services:
 
 - a local Acorn execution environment for keys, funds, records, and recovery;
 - a local Spurline relay for signed events and wallet state;
-- a local Grove service for protected original records and larger blobs; and
+- a local Grove service for protected Record Files and larger blobs; and
 - later, nearby community infrastructure or mesh transport when wider
   connectivity is unavailable.
 

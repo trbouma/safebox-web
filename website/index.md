@@ -9,7 +9,7 @@ description: A local-first application for user-controlled value, verifiable rec
 
 <p class="safebox-tagline">A local-first application for user-controlled value, verifiable records, and continuity.</p>
 
-<p class="safebox-intro">Safebox Web brings Cash and Clear balances together with private, previewable Original Records while keeping value, evidence, and control portable across apps and infrastructure.</p>
+<p class="safebox-intro">Safebox Web brings Cash and Clear balances together with private, previewable Record Files while keeping value, evidence, and control portable across apps and infrastructure.</p>
 
 <figure class="safebox-phone" markdown>
   <div class="safebox-phone-frame">
@@ -45,7 +45,7 @@ model. Fungible proof records are aggregated within an exact equivalence
 domain and displayed as a balance. Non-fungible records remain individually
 visible because their content, provenance, and control history matter.
 
-The same application can safeguard exact Original Records and present them
+The same application can safeguard exact Record Files and present them
 according to what they are. Apple Wallet passes, W3C Verifiable Credentials,
 EUDI PIDs, and mobile driving licences can now receive semantic inline previews
 without asking the underlying blob store to understand any of those formats.
@@ -54,7 +54,7 @@ without asking the underlying blob store to understand any of those formats.
 | --- | --- | --- |
 | **Cash** | Mint-confirmed balance, pending arrivals, payments, and history | Cashu proofs, mint state, and the user's Acorn |
 | **Clear** | Separate balances for organization-issued units and transfer history | The issuing organization, Clear mint, and CMU policy |
-| **Verifiable Records** | Exact originals, effective type, semantic previews, and digest fingerprints | Native signature schemes, recognized issuers, attesters, and verifier policy |
+| **Verifiable Records** | Exact Record Files, effective type, semantic previews, and Record File Fingerprints | Native signature schemes, recognized issuers, attesters, and verifier policy |
 
 [Understand Cash and Clear](cash-and-clear.md){ .md-button .md-button--primary }
 [Explore verifiable records](records-and-wallet-passes.md){ .md-button .md-button--primary }
@@ -111,7 +111,7 @@ the controlled key, relay-backed records, or recovery path.
 ## Any artifact, one consistent record path
 
 Safebox does not need one storage model per credential or document standard.
-Every Original Record follows the same path:
+Every Record File follows the same path:
 
 ```text
 exact original bytes

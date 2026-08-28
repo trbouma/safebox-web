@@ -1,11 +1,11 @@
 # PKPASS Preview Feature
 
 Status: Implemented  
-Scope: Safebox Web Original Record rendering
+Scope: Safebox Web Record File rendering
 
 ## Summary
 
-Safebox Web can render Apple Wallet `.pkpass` Original Records as a
+Safebox Web can render Apple Wallet `.pkpass` Record Files as a
 server-rendered preview instead of treating them only as opaque downloads.
 
 The feature is driven by Acorn's effective MIME metadata. A `.pkpass` file is a
@@ -21,7 +21,7 @@ installation.
 
 ## User Experience
 
-On a record detail page, a PKPASS Original Record may show:
+On a record detail page, a PKPASS Record File may show:
 
 - the pass organization, description, and serial number;
 - logo, icon, strip, or thumbnail artwork embedded in the pass package;
@@ -72,7 +72,7 @@ The PKPASS preview remains a server-rendered hypermedia representation:
 
 - the browser requests `/record`;
 - Safebox Web reconstructs the request-scoped Acorn;
-- Acorn retrieves and decrypts the Original Record;
+- Acorn retrieves and decrypts the Record File;
 - Safebox Web interprets the effective MIME and renders a complete HTML page;
 - the pass-open action remains an ordinary authenticated link to `/record/blob`.
 
@@ -103,7 +103,7 @@ encrypted blob is a PDF, JPEG, ZIP, PKPASS, or any future artifact type.
 PKPASS preview creates a useful bridge to OpenETR-style control and
 verification, but the preview itself is not the verification anchor.
 
-The anchor is the digest of the exact Original Record bytes retrieved through
+The anchor is the digest of the exact Record File bytes retrieved through
 Acorn. For a Wallet pass:
 
 ```text
@@ -127,7 +127,7 @@ That keeps the concerns separate:
 
 Parsed pass fields such as passenger name, event title, barcode text, and
 serial number are display and policy inputs. They must not replace the full
-Original Record digest when identifying the artifact under verification.
+Record File digest when identifying the artifact under verification.
 
 ## Security Notes
 

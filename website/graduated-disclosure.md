@@ -63,7 +63,7 @@ action is therefore **Check**.
 
 Check can show:
 
-- the digest identifying the exact Original Record;
+- the digest identifying the exact Record File;
 - the signed origin statement;
 - available issuer or signer information;
 - relevant control, attestation, replacement, or termination events; and
@@ -96,7 +96,7 @@ The Safebox **Present** action creates a temporary QR-mediated capability. A
 verifier can:
 
 1. view the human-readable record;
-2. inspect its Original Record where available;
+2. inspect its Record File where available;
 3. review its Control History;
 4. follow the durable OpenETR verifier link; and
 5. decide whether the signer is recognized for the claimed role.

@@ -5,8 +5,8 @@ not been imported into your Acorn.</p>
 <pre>{{ payload }}</pre>
 {% if presentation.has_original %}
 <section class="blob-record" aria-labelledby="presented-original-heading">
-  <h2 id="presented-original-heading">Original Record</h2>
-  {% if blob_fingerprint %}<p>Fingerprint: <code>{{ blob_fingerprint }}</code></p>{% endif %}
+  <h2 id="presented-record-file-heading">Record File</h2>
+  {% if blob_fingerprint %}<p>Record File Fingerprint: <code>{{ blob_fingerprint }}</code></p>{% endif %}
   {% if blob_preview == "image" %}
   <figure class="blob-preview"><img src="{{ blob_data_url }}" alt="Presented image"></figure>
   {% elif blob_preview == "pdf" %}
@@ -25,18 +25,18 @@ not been imported into your Acorn.</p>
   <p>No inline preview is available for Apple Wallet passes.</p>
   <p><a class="nav-button" href="{{ blob_data_url }}" download="presented-record.pkpass">Open/Add Wallet Pass</a></p>
   {% else %}
-  <p>No inline preview is available for this Original Record.</p>
+  <p>No inline preview is available for this Record File.</p>
   {% endif %}
 </section>
 {% endif %}
 <section aria-labelledby="presentation-history-heading">
   <h2 id="presentation-history-heading">Control History</h2>
   {% if not control_history %}
-  <p>No Original Record fingerprint is available for a Control History lookup.</p>
+  <p>No Record File Fingerprint is available for a Control History lookup.</p>
   {% elif control_history.error %}
   <p class="error">{{ control_history.error }}</p>
   {% elif not control_history.candidate_graphs %}
-  <p>No OpenETR Anchor Event was found for this Original Record.</p>
+  <p>No OpenETR Anchor Event was found for this Record File.</p>
   {% else %}
   {% include "_openetr_durable_link.html" %}
   {% for graph in control_history.candidate_graphs %}

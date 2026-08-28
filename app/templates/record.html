@@ -5,8 +5,8 @@
 <pre>{{ payload }}</pre>
 {% if has_blob %}
 <section class="blob-record" aria-labelledby="blob-heading">
-  <h2 id="blob-heading">Original Record</h2>
-  <p>The Original Record is protected by Acorn and stored separately from its record metadata.</p>
+  <h2 id="blob-heading">Record File</h2>
+  <p>The Record File is protected by Acorn and stored separately from its record metadata.</p>
   {% if blob_type_notice %}
   <p class="record-type-notice">{{ blob_type_notice }}</p>
   {% endif %}
@@ -21,7 +21,7 @@
       <path d="M4 14v-1.2a8 8 0 0 1 16 0c0 1.2 0 2.4-.2 3.6"></path>
       <path d="M7 6.2A8 8 0 0 1 18.5 8"></path>
     </svg>
-    <span>Fingerprint:</span> <code>{{ blob_fingerprint }}</code>
+    <span>Record File Fingerprint:</span> <code>{{ blob_fingerprint }}</code>
   </p>
   {% endif %}
   {% if blob_preview == "image" %}
@@ -217,7 +217,7 @@
   </details>
   {% else %}
   <button class="record-capability" type="button" disabled
-          title="An Original Record with a valid fingerprint is required">Check</button>
+          title="A Record File with a valid fingerprint is required">Check</button>
   {% endif %}
   <a class="record-capability" href="{{ present_url }}">Present</a>
   <a class="record-capability" href="{{ share_url }}">Share</a>
@@ -230,14 +230,14 @@
 <p><a class="nav-button" href="{{ edit_url }}">Edit this record</a></p>
 <section class="danger-zone" aria-labelledby="delete-record-heading">
   <h2 id="delete-record-heading">Delete this record</h2>
-  <p>This requests deletion of the record{% if has_blob %} and its Original Record{% endif %}.</p>
+  <p>This requests deletion of the record{% if has_blob %} and its Record File{% endif %}.</p>
   <p>Relay deletion is advisory, and infrastructure operators may retain copies or backups.</p>
   <form method="post" action="/record/delete">
     <input type="hidden" name="csrf_token" value="{{ delete_csrf_token }}">
     <input type="hidden" name="label" value="{{ label }}">
     <label><input type="checkbox" name="confirmed" value="yes" required>
       I understand that this action cannot be undone through Safebox.</label>
-    <button class="danger-button" type="submit">Delete this record{% if has_blob %} and Original Record{% endif %}</button>
+    <button class="danger-button" type="submit">Delete this record{% if has_blob %} and Record File{% endif %}</button>
   </form>
 </section>
 {% endblock %}

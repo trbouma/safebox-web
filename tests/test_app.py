@@ -7732,7 +7732,7 @@ def test_blob_upload_follow_redirect_renders_saved_record() -> None:
     assert response.status_code == 200
     assert str(response.url).endswith("/record?label=Private+Notes&saved=1")
     assert "Record saved and verified." in response.text
-    assert "Safebox stored Original Record type for notes.txt: text/plain." in response.text
+    assert "Safebox stored Record File type for notes.txt: text/plain." in response.text
     assert '<a class="record-capability" href="/record/blob?label=Private+Notes">Original</a>' in response.text
 
 
@@ -7794,7 +7794,7 @@ def test_pkpass_blob_upload_follow_redirect_renders_preview() -> None:
     assert "Record saved and verified." in response.text
     assert "Open/Add Wallet Pass" in response.text
     assert "Wallet pass preview" in response.text
-    assert "Safebox recognized Original Record type for Example.pkpass" in response.text
+    assert "Safebox recognized Record File type for Example.pkpass" in response.text
 
 
 def test_effective_mime_resolver_identifies_verifiable_credential_json() -> None:
@@ -7907,7 +7907,7 @@ def test_mdoc_upload_follow_redirect_records_effective_mime() -> None:
     assert str(response.url).endswith("/record?label=Example+mDL&saved=1")
     assert "Record saved and verified." in response.text
     assert (
-        "Safebox stored Original Record type for example_mdl.mdoc: "
+        "Safebox stored Record File type for example_mdl.mdoc: "
         "application/mdoc+cbor."
     ) in response.text
     assert 'aria-label="mDL preview"' in response.text
@@ -8076,7 +8076,7 @@ def test_verifiable_credential_upload_follow_redirect_renders_record() -> None:
     assert response.status_code == 200
     assert str(response.url).endswith("/record?label=W3C+Degree&saved=1")
     assert "Record saved and verified." in response.text
-    assert "Safebox stored Original Record type for w3c_degree.json: application/vc." in response.text
+    assert "Safebox stored Record File type for w3c_degree.json: application/vc." in response.text
     assert 'aria-label="Credential preview"' in response.text
     assert "<h3>Example Degree Credential</h3>" in response.text
     assert (
@@ -8121,7 +8121,7 @@ def test_record_detail_shows_determined_original_record_type() -> None:
     assert response.status_code == 200
     assert "Record saved and verified." in response.text
     assert (
-        "Safebox stored Original Record type for credential.json: application/vc."
+        "Safebox stored Record File type for credential.json: application/vc."
         in response.text
     )
 
@@ -8259,7 +8259,7 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
 
     assert detail.status_code == 200
     assert 'class="record-fingerprint"' in detail.text
-    assert "Fingerprint:</span> <code>1EA23F2B</code>" in detail.text
+    assert "Record File Fingerprint:</span> <code>1EA23F2B</code>" in detail.text
     assert '<nav class="record-capabilities" aria-label="Record actions">' in detail.text
     assert 'href="/record/blob?label=Private+Notes">Original</a>' in detail.text
     assert 'href="/record/share?label=Private+Notes">Share</a>' in detail.text
@@ -8312,7 +8312,7 @@ def test_pkpass_blob_download_uses_wallet_pass_headers_from_metadata() -> None:
     assert "Hanzo Main" in detail.text
     assert "downloads.timoliver.com.au" in detail.text
     assert (
-        "Safebox recognized Original Record type for Example.pkpass: application/vnd.apple.pkpass."
+        "Safebox recognized Record File type for Example.pkpass: application/vnd.apple.pkpass."
         in detail.text
     )
     assert 'src="data:image/png;base64,' in detail.text
@@ -8512,7 +8512,7 @@ def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
     durable_url = f"https://openetr.org/etr/{digest}"
     assert "Verification QR Code" in response.text
     assert 'class="record-fingerprint openetr-verification-fingerprint"' in response.text
-    assert "Fingerprint:</span> <code>1EA23F2B</code>" in response.text
+    assert "Record File Fingerprint:</span> <code>1EA23F2B</code>" in response.text
     assert "Tap the QR code to copy its link." in response.text
     assert durable_url in response.text
     assert f'href="{durable_url}"' not in response.text
@@ -8610,7 +8610,7 @@ def test_blob_record_delete_form_requires_explicit_confirmation() -> None:
     )
 
     assert 'action="/record/delete"' in detail.text
-    assert "Delete this record and Original Record" in detail.text
+    assert "Delete this record and Record File" in detail.text
     assert response.status_code == 400
     assert "Explicit deletion confirmation is required" in response.text
     assert acorn.record_delete_calls == []
@@ -8643,7 +8643,7 @@ def test_blob_record_delete_removes_record_and_requests_blob_cleanup() -> None:
 
     assert response.status_code == 200
     assert "Deletion was requested for Report" in response.text
-    assert "accepted the Original Record deletion request" in response.text
+    assert "accepted the Record File deletion request" in response.text
     assert acorn.record_delete_calls == [
         {
             "label": "Report",
@@ -8675,8 +8675,8 @@ def test_blob_record_delete_reports_partial_blob_cleanup() -> None:
     )
 
     assert response.status_code == 200
-    assert "could not confirm deletion of the Original Record" in response.text
-    assert "could not confirm that the original record is already hidden" in response.text
+    assert "could not confirm deletion of the Record File" in response.text
+    assert "could not confirm that the record is already hidden" in response.text
 
 
 def test_unsafe_blob_type_cannot_be_forced_inline() -> None:
@@ -8732,7 +8732,7 @@ def test_record_edit_form_loads_and_escapes_existing_payload() -> None:
     assert "<script>alert" not in response.text
     assert 'enctype="multipart/form-data"' in response.text
     assert 'name="attachment" type="file"' in response.text
-    assert "Original Record (optional)" in response.text
+    assert "Record File (optional)" in response.text
     assert "Select a file to attach it to this record" in response.text
 
 

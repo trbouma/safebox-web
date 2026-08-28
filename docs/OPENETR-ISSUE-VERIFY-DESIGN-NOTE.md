@@ -20,7 +20,7 @@ lifecycle are not prerequisites and are outside this initial scope.
 ## Purpose
 
 Safebox Web already lets an attached Acorn safeguard private records and their
-Original Record attachments. OpenETR adds a different capability: a portable,
+Record File attachments. OpenETR adds a different capability: a portable,
 signed control layer around an artifact.
 
 The integration should let a user answer two practical questions:
@@ -130,7 +130,7 @@ private records, and spendable funds can be used together.
 | --- | --- |
 | Browser | Submit ordinary forms and display complete issue or verification results |
 | Safebox Web | Authenticate the attached Acorn, enforce CSRF and confirmation, retrieve artifact bytes, invoke components, and render results |
-| Safebox Acorn | Safeguard the signing key and private record; retrieve, authenticate, and decrypt the Original Record |
+| Safebox Acorn | Safeguard the signing key and private record; retrieve, authenticate, and decrypt the Record File |
 | OpenETR component | Calculate the object identity, construct and sign events, publish and read back evidence, query the graph, and apply verifier policy |
 | Nostr relays | Carry signed OpenETR events; they are transport and availability infrastructure, not recognition authorities |
 | Recognition layer | Decide what effect to give the signed evidence under a community, institutional, contractual, or legal rule book |
@@ -163,18 +163,18 @@ artifact. For an Acorn record with an encrypted Blossom attachment:
 
 - the encrypted Blossom object digest is not the OpenETR object digest;
 - the Acorn private-record event id is not the OpenETR object digest;
-- the Original Record plaintext digest is the appropriate object anchor; and
+- the Record File plaintext digest is the appropriate object anchor; and
 - verification must hash the exact bytes being presented, not a filename,
   label, browser URL, or mutable metadata field.
 
-Acorn already authenticates and decrypts an Original Record before returning
+Acorn already authenticates and decrypts a Record File before returning
 its bytes. Safebox Web should pass those bounded bytes directly to the OpenETR
 component where its API permits. If an early OpenETR API requires a file path,
 Safebox Web may use an owner-only temporary file with guaranteed cleanup, but a
 bytes or stream API is the target because it avoids an unnecessary plaintext
 filesystem boundary.
 
-The existing eight-character Original Record fingerprint remains a recognition
+The existing eight-character Record File Fingerprint remains a recognition
 aid only. It must never substitute for the complete digest used by OpenETR.
 
 ## Signing-key decision
@@ -207,7 +207,7 @@ change which key exercises authority.
 
 The proposed hypermedia flow is:
 
-1. The user opens an existing private record that has an Original Record.
+1. The user opens an existing private record that has a Record File.
 2. The record representation offers **Issue with OpenETR**.
 3. A GET request retrieves and hashes the artifact and presents a confirmation
    page. It does not publish anything.
@@ -247,7 +247,7 @@ privacy, abuse, and temporary-storage controls are defined.
 The proposed flow is:
 
 1. The user selects **Verify with OpenETR** from an existing record.
-2. Safebox Web retrieves and decrypts the Original Record through Acorn.
+2. Safebox Web retrieves and decrypts the Record File through Acorn.
 3. The OpenETR component calculates its complete digest and object id.
 4. It queries the configured relays for origin and control events anchored by
    the object-wide `o` tag and traverses exact prior-event `e` links.
@@ -362,7 +362,7 @@ clear indeterminate outcomes rather than browser-managed workflow state.
 The integration must:
 
 - reject issue requests without an authenticated attached Acorn;
-- require an Original Record with a supported, bounded byte size;
+- require a Record File with a supported, bounded byte size;
 - recompute the complete digest immediately before signing;
 - never log the `nsec`, session cookie, RPK, artifact bytes, or sensitive event
   metadata;
@@ -452,7 +452,7 @@ other personal artifact digest.
 
 Safebox Web now contains a deliberately small `app.openetr` adapter as an
 intermediate integration step. It does not depend on the OpenETR Python package
-and it does not sign or publish anything. For an Acorn Original Record, the
+and it does not sign or publish anything. For an Acorn Record File, the
 record page uses the complete plaintext SHA-256 value already authenticated by
 Acorn as the object-wide `o` identifier. An on-demand hypermedia link then
 queries the operator-configured relays for current origin kind `1415` and
@@ -469,7 +469,7 @@ The projection:
   `0` profile and presents selected recognition metadata;
 - combines the origin and issuer into one human-first presentation: issuer
   display name, name, description, and other populated profile claims appear
-  before the statement made about the Original Record at issuance, while event
+  before the statement made about the Record File at anchoring, while event
   identifiers, kinds, signer key, object digest, and profile-event metadata
   follow under protocol details;
 - derives an operator-configured durable verifier link from the complete

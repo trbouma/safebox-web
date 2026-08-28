@@ -30,7 +30,7 @@ notifications, NFC, and local browser conveniences can be introduced without
 moving workflow authority or Acorn state into the browser.
 
 A first read-only OpenETR integration now projects the signed origin and linked
-control-event history for an existing Original Record. The initial adapter
+control-event history for an existing Record File. The initial adapter
 implements only kinds `1415` and `1416`, the object-wide `o` query, exact
 prior-event `e` traversal, and signature validation; it does not import OpenETR
 or publish events. Future issuance and fuller independent verification remain
@@ -91,7 +91,7 @@ This implementation intentionally provides:
   receiver-side storage, sender-initiated Stop Sharing, and post-import
   temporary-blob cleanup;
 - QR-mediated record presentation for temporary viewing of a record, its
-  Original Record, and Control History without an import action, with
+  Record File, and Control History without an import action, with
   recipient **Done** and presenter **Stop Presenting** cleanup;
 - an explicit verification escalation model: routine presentation verification
   uses a temporary view and durable QR evidence, while deep verification lets
@@ -99,7 +99,7 @@ This implementation intentionally provides:
   cryptographic, recognition, and policy checks without implying a control
   transfer;
 - an on-demand, server-rendered OpenETR origin and control-history projection
-  for Original Records;
+  for Record Files;
 - receiver-created payment requests, currently finalized through Lightning
   deposits at the Acorn home mint;
 - confirmed Lightning-address payments through Acorn;
