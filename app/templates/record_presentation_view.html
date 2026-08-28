@@ -35,23 +35,16 @@ not been imported into your Acorn.</p>
   <p>No Original Record fingerprint is available for a Control History lookup.</p>
   {% elif control_history.error %}
   <p class="error">{{ control_history.error }}</p>
-  {% elif not control_history.origin %}
-  <p>No OpenETR origin event was found for this Original Record.</p>
+  {% elif not control_history.candidate_graphs %}
+  <p>No OpenETR Anchor Event was found for this Original Record.</p>
   {% else %}
   {% include "_openetr_durable_link.html" %}
-  {% with history=control_history %}{% include "_origin_issuer.html" %}{% endwith %}
-  <h3>Control Events</h3>
-  {% for event in control_history.controls %}
-  <article class="openetr-event">
-    <h3>{{ event.action_label }}</h3>
-    <dl class="openetr-event-fields openetr-human-fields">
-      <dt>Created</dt><dd>{{ event.created_at }}</dd>
-      {% if event.participant %}<dt>Participant</dt><dd><code>{{ event.participant }}</code></dd>{% endif %}
-      {% if event.content %}<dt>Statement</dt><dd>{{ event.content }}</dd>{% endif %}
-    </dl>
-  </article>
-  {% else %}<p>No related control events were found.</p>{% endfor %}
-  {% with history=control_history %}{% include "_openetr_protocol_details.html" %}{% endwith %}
+  {% for graph in control_history.candidate_graphs %}
+  <section class="openetr-candidate-graph" aria-label="Candidate anchor graph {{ loop.index }}">
+    {% if control_history.candidate_graphs|length > 1 %}<h3>Candidate {{ loop.index }}</h3>{% endif %}
+    {% with history=control_history, graph=graph, graph_number=loop.index %}{% include "_openetr_candidate_graph.html" %}{% endwith %}
+  </section>
+  {% endfor %}
   {% endif %}
 </section>
 <form method="post" action="/record/presentation/done" data-progress-form>

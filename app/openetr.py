@@ -18,14 +18,14 @@ from monstr.encrypt import Keys
 from monstr.event.event import Event
 
 
-ORIGIN_KIND = 1415
+ANCHOR_KIND = 1415
 CONTROL_KIND = 1416
 PROFILE_KIND = 0
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 HEX_PUBKEY_PATTERN = re.compile(r"[0-9a-f]{64}")
 
 ACTION_LABELS = {
-    "issue": "Origin issued",
+    "issue": "Anchor recorded",
     "initiate": "Transfer initiated",
     "accept": "Transfer accepted",
     "terminate": "Control terminated",
@@ -81,10 +81,10 @@ def _event_view(event: Event) -> dict[str, Any]:
         "author_hex": event.pub_key,
         "created_at": _display_time(event.created_at),
         "kind": event.kind,
-        "action": action or ("issue" if event.kind == ORIGIN_KIND else "unknown"),
+        "action": action or ("issue" if event.kind == ANCHOR_KIND else "unknown"),
         "action_label": ACTION_LABELS.get(
             action,
-            "Origin issued" if event.kind == ORIGIN_KIND else "Control event",
+            "Anchor recorded" if event.kind == ANCHOR_KIND else "Control event",
         ),
         "content": event.content or "",
         "prior_event_id": _tag_value(event, "e"),
@@ -117,7 +117,7 @@ def _profile_url(value: Any) -> str | None:
     return candidate
 
 
-def build_issuer_profile(
+def build_signer_profile(
     pubkey_hex: str,
     events: Iterable[Event],
 ) -> dict[str, Any] | None:
@@ -167,7 +167,12 @@ def build_openetr_history(
     events: Iterable[Event],
     relays: Iterable[str],
 ) -> dict[str, Any]:
-    """Build a conservative view of signed events linked to one origin."""
+    """Build independent candidate graphs for every valid anchor event.
+
+    Chronology is not treated as authority. A control event is assigned only
+    when its exact prior-event reference resolves to one candidate graph and
+    any explicit root reference agrees with that graph.
+    """
 
     normalized_digest = str(digest or "").strip().lower()
     if not SHA256_PATTERN.fullmatch(normalized_digest):
@@ -177,7 +182,7 @@ def build_openetr_history(
     invalid_count = 0
     seen_ids: set[str] = set()
     for event in events:
-        if event.id in seen_ids or event.kind not in {ORIGIN_KIND, CONTROL_KIND}:
+        if event.id in seen_ids or event.kind not in {ANCHOR_KIND, CONTROL_KIND}:
             continue
         if (_tag_value(event, "o") or "").lower() != normalized_digest:
             continue
@@ -188,39 +193,64 @@ def build_openetr_history(
         matching.append(event)
 
     matching.sort(key=lambda item: (_timestamp(item.created_at), item.id))
-    origins = [item for item in matching if item.kind == ORIGIN_KIND]
+    anchors = [item for item in matching if item.kind == ANCHOR_KIND]
     controls = [item for item in matching if item.kind == CONTROL_KIND]
-    selected_origin = origins[0] if origins else None
 
-    related_controls: list[Event] = []
-    orphan_controls: list[Event] = []
-    if selected_origin is not None:
-        chain_ids = {selected_origin.id}
-        remaining = list(controls)
-        while remaining:
-            progressed = False
-            for event in list(remaining):
-                prior_id = _tag_value(event, "e")
-                origin_id = _tag_value(event, "origin")
-                if prior_id in chain_ids and origin_id in {None, selected_origin.id}:
-                    related_controls.append(event)
-                    chain_ids.add(event.id)
-                    remaining.remove(event)
-                    progressed = True
-            if not progressed:
-                orphan_controls.extend(remaining)
-                break
-    else:
-        orphan_controls = controls
+    graph_events: list[set[str]] = [{anchor.id} for anchor in anchors]
+    graph_controls: list[list[Event]] = [[] for _anchor in anchors]
+    anchor_indexes = {anchor.id: index for index, anchor in enumerate(anchors)}
+    remaining = list(controls)
+    while remaining:
+        progressed = False
+        for event in list(remaining):
+            prior_id = _tag_value(event, "e")
+            explicit_anchor_id = _tag_value(event, "origin")
+            candidate_indexes = [
+                index
+                for index, event_ids in enumerate(graph_events)
+                if prior_id in event_ids
+            ]
+            if explicit_anchor_id is not None:
+                explicit_index = anchor_indexes.get(explicit_anchor_id)
+                if explicit_index is None or explicit_index not in candidate_indexes:
+                    continue
+                candidate_indexes = [explicit_index]
+            if len(candidate_indexes) != 1:
+                continue
+            graph_index = candidate_indexes[0]
+            graph_controls[graph_index].append(event)
+            graph_events[graph_index].add(event.id)
+            remaining.remove(event)
+            progressed = True
+        if not progressed:
+            break
+
+    candidate_graphs: list[dict[str, Any]] = []
+    for anchor, related_controls in zip(anchors, graph_controls, strict=True):
+        candidate_graphs.append(
+            {
+                "anchor": _event_view(anchor),
+                "signer_profile": None,
+                "signer_profile_error": None,
+                "controls": [_event_view(item) for item in related_controls],
+                "warnings": [],
+                "recognition": {"status": "not_evaluated", "basis": None},
+                "standing": {
+                    "status": "not_evaluated",
+                    "value": None,
+                    "purpose": None,
+                },
+            }
+        )
 
     warnings: list[str] = []
-    if len(origins) > 1:
+    if len(anchors) > 1:
         warnings.append(
-            f"{len(origins)} origin events were found; the earliest signed origin is shown."
+            f"{len(anchors)} candidate Anchor Events were found. No candidate was selected as authoritative."
         )
-    if orphan_controls:
+    if remaining:
         warnings.append(
-            f"{len(orphan_controls)} control event(s) did not form a complete chain from the shown origin."
+            f"{len(remaining)} control event(s) could not be linked unambiguously to a candidate Anchor Event."
         )
     if invalid_count:
         warnings.append(
@@ -230,13 +260,11 @@ def build_openetr_history(
     return {
         "digest": normalized_digest,
         "relays": tuple(relays),
-        "origin": _event_view(selected_origin) if selected_origin else None,
-        "controls": [_event_view(item) for item in related_controls],
-        "origin_count": len(origins),
+        "candidate_graphs": candidate_graphs,
+        "unlinked_events": [_event_view(item) for item in remaining],
+        "invalid_event_count": invalid_count,
         "warnings": warnings,
         "error": None,
-        "issuer_profile": None,
-        "issuer_profile_error": None,
     }
 
 
@@ -247,7 +275,7 @@ async def query_openetr_history(
     timeout: float = 5.0,
     limit: int = 100,
 ) -> dict[str, Any]:
-    """Query current OpenETR origin and control kinds from configured relays."""
+    """Query current OpenETR anchor and control kinds from configured relays."""
 
     relay_list = [str(relay).strip() for relay in relays if str(relay).strip()]
     if not relay_list:
@@ -265,8 +293,8 @@ async def query_openetr_history(
         query_timeout=timeout,
         timeout=timeout,
     ) as client:
-        origin_events = await client.query(
-            {**event_filter, "kinds": [ORIGIN_KIND]},
+        anchor_events = await client.query(
+            {**event_filter, "kinds": [ANCHOR_KIND]},
             emulate_single=True,
             wait_connect=True,
             timeout=timeout,
@@ -279,29 +307,34 @@ async def query_openetr_history(
         )
         history = build_openetr_history(
             normalized_digest,
-            [*origin_events, *control_events],
+            [*anchor_events, *control_events],
             relay_list,
         )
-        if history["origin"] is not None:
+        candidate_graphs = history["candidate_graphs"]
+        if candidate_graphs:
+            signer_pubkeys = sorted(
+                {graph["anchor"]["author_hex"] for graph in candidate_graphs}
+            )
             try:
                 profile_events = await client.query(
                     {
                         "kinds": [PROFILE_KIND],
-                        "authors": [history["origin"]["author_hex"]],
-                        "limit": 10,
+                        "authors": signer_pubkeys,
+                        "limit": max(10, len(signer_pubkeys) * 3),
                     },
                     emulate_single=True,
                     wait_connect=True,
                     timeout=timeout,
                 )
             except Exception:
-                history["issuer_profile_error"] = (
-                    "Issuer profile metadata is temporarily unavailable."
-                )
+                for graph in candidate_graphs:
+                    graph["signer_profile_error"] = (
+                        "Signer profile metadata is temporarily unavailable."
+                    )
             else:
-                history["issuer_profile"] = build_issuer_profile(
-                    history["origin"]["author_hex"],
-                    profile_events,
-                )
+                for graph in candidate_graphs:
+                    graph["signer_profile"] = build_signer_profile(
+                        graph["anchor"]["author_hex"], profile_events
+                    )
 
     return history

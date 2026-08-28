@@ -1,0 +1,28 @@
+{% with graph_number=graph_number, graph=graph %}{% include "_anchor_signer.html" %}{% endwith %}
+
+<h3>Control Events</h3>
+{% for event in graph.controls %}
+<article class="openetr-event">
+  <h3>{{ event.action_label }}</h3>
+  <dl class="openetr-event-fields openetr-human-fields">
+    <dt>Created</dt><dd>{{ event.created_at }}</dd>
+    {% if event.participant %}<dt>Participant</dt><dd><code>{{ event.participant }}</code></dd>{% endif %}
+    {% if event.content %}<dt>Statement</dt><dd>{{ event.content }}</dd>{% endif %}
+  </dl>
+</article>
+{% else %}
+<p>No related control events were found for this candidate Anchor Event.</p>
+{% endfor %}
+
+<dl class="openetr-event-fields openetr-human-fields openetr-evaluation-status">
+  <dt>Recognition</dt><dd>Not evaluated</dd>
+  <dt>Standing</dt><dd>Not evaluated</dd>
+</dl>
+<p class="openetr-evidence-note">Cryptographic validity does not by itself
+establish that the signer is a recognized authority or that this record has
+standing for a particular purpose.</p>
+
+{% for warning in graph.warnings %}
+<p class="openetr-warning"><strong>Note:</strong> {{ warning }}</p>
+{% endfor %}
+{% with history=history, graph=graph %}{% include "_openetr_protocol_details.html" %}{% endwith %}

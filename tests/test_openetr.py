@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from app.openetr import (
+    ANCHOR_KIND,
     CONTROL_KIND,
-    ORIGIN_KIND,
     PROFILE_KIND,
-    build_issuer_profile,
     build_openetr_history,
+    build_signer_profile,
 )
 
 
@@ -36,9 +36,9 @@ def event(
 
 def test_openetr_history_follows_exact_prior_event_chain() -> None:
     digest = "ab" * 32
-    origin = event(
+    anchor = event(
         "01" * 32,
-        kind=ORIGIN_KIND,
+        kind=ANCHOR_KIND,
         created_at=100,
         tags=[["o", digest], ["action", "issue"]],
         content="Issued record",
@@ -49,8 +49,8 @@ def test_openetr_history_follows_exact_prior_event_chain() -> None:
         created_at=200,
         tags=[
             ["o", digest],
-            ["e", origin.id],
-            ["origin", origin.id],
+            ["e", anchor.id],
+            ["origin", anchor.id],
             ["action", "initiate"],
             ["p", "22" * 32],
         ],
@@ -62,7 +62,7 @@ def test_openetr_history_follows_exact_prior_event_chain() -> None:
         tags=[
             ["o", digest],
             ["e", initiated.id],
-            ["origin", origin.id],
+            ["origin", anchor.id],
             ["action", "accept"],
         ],
         pubkey="22" * 32,
@@ -70,25 +70,34 @@ def test_openetr_history_follows_exact_prior_event_chain() -> None:
 
     history = build_openetr_history(
         digest,
-        [accepted, origin, initiated],
+        [accepted, anchor, initiated],
         ["wss://relay.openetr.org"],
     )
 
-    assert history["origin"]["id"] == origin.id
-    assert [item["id"] for item in history["controls"]] == [
+    assert len(history["candidate_graphs"]) == 1
+    graph = history["candidate_graphs"][0]
+    assert graph["anchor"]["id"] == anchor.id
+    assert graph["anchor"]["action_label"] == "Anchor recorded"
+    assert [item["id"] for item in graph["controls"]] == [
         initiated.id,
         accepted.id,
     ]
-    assert history["controls"][0]["action_label"] == "Transfer initiated"
-    assert history["controls"][0]["participant"].startswith("npub1")
+    assert graph["controls"][0]["action_label"] == "Transfer initiated"
+    assert graph["controls"][0]["participant"].startswith("npub1")
+    assert graph["recognition"] == {"status": "not_evaluated", "basis": None}
+    assert graph["standing"] == {
+        "status": "not_evaluated",
+        "value": None,
+        "purpose": None,
+    }
     assert history["warnings"] == []
 
 
 def test_openetr_history_excludes_invalid_and_unlinked_events() -> None:
     digest = "cd" * 32
-    origin = event(
+    anchor = event(
         "04" * 32,
-        kind=ORIGIN_KIND,
+        kind=ANCHOR_KIND,
         created_at=100,
         tags=[["o", digest]],
     )
@@ -102,15 +111,78 @@ def test_openetr_history_excludes_invalid_and_unlinked_events() -> None:
         "06" * 32,
         kind=CONTROL_KIND,
         created_at=300,
-        tags=[["o", digest], ["e", origin.id], ["action", "accept"]],
+        tags=[["o", digest], ["e", anchor.id], ["action", "accept"]],
         valid=False,
     )
 
-    history = build_openetr_history(digest, [origin, orphan, invalid], ["wss://relay.example"])
+    history = build_openetr_history(digest, [anchor, orphan, invalid], ["wss://relay.example"])
 
-    assert history["controls"] == []
-    assert any("complete chain" in warning for warning in history["warnings"])
+    assert history["candidate_graphs"][0]["controls"] == []
+    assert [item["id"] for item in history["unlinked_events"]] == [orphan.id]
+    assert any("linked unambiguously" in warning for warning in history["warnings"])
     assert any("cryptographic validation" in warning for warning in history["warnings"])
+    assert history["invalid_event_count"] == 1
+
+
+def test_openetr_history_retains_independent_candidate_anchor_graphs() -> None:
+    digest = "ef" * 32
+    first_anchor = event(
+        "11" * 32,
+        kind=ANCHOR_KIND,
+        created_at=100,
+        tags=[["o", digest], ["action", "issue"]],
+        pubkey="11" * 32,
+        content="First candidate",
+    )
+    second_anchor = event(
+        "22" * 32,
+        kind=ANCHOR_KIND,
+        created_at=200,
+        tags=[["o", digest], ["action", "issue"]],
+        pubkey="22" * 32,
+        content="Second candidate",
+    )
+    first_control = event(
+        "33" * 32,
+        kind=CONTROL_KIND,
+        created_at=300,
+        tags=[
+            ["o", digest],
+            ["e", first_anchor.id],
+            ["origin", first_anchor.id],
+            ["action", "attest"],
+        ],
+    )
+    second_control = event(
+        "44" * 32,
+        kind=CONTROL_KIND,
+        created_at=400,
+        tags=[
+            ["o", digest],
+            ["e", second_anchor.id],
+            ["origin", second_anchor.id],
+            ["action", "attest"],
+        ],
+    )
+
+    history = build_openetr_history(
+        digest,
+        [second_control, second_anchor, first_control, first_anchor],
+        ["wss://relay.example"],
+    )
+
+    assert [graph["anchor"]["id"] for graph in history["candidate_graphs"]] == [
+        first_anchor.id,
+        second_anchor.id,
+    ]
+    assert [item["id"] for item in history["candidate_graphs"][0]["controls"]] == [
+        first_control.id
+    ]
+    assert [item["id"] for item in history["candidate_graphs"][1]["controls"]] == [
+        second_control.id
+    ]
+    assert "earliest" not in " ".join(history["warnings"]).lower()
+    assert "No candidate was selected as authoritative" in history["warnings"][0]
 
 
 def test_openetr_history_rejects_non_sha256_object_identifier() -> None:
@@ -118,7 +190,7 @@ def test_openetr_history_rejects_non_sha256_object_identifier() -> None:
         build_openetr_history("not-a-digest", [], ["wss://relay.example"])
 
 
-def test_issuer_profile_uses_latest_valid_kind_zero_from_same_signer() -> None:
+def test_signer_profile_uses_latest_valid_kind_zero_from_same_signer() -> None:
     pubkey = "33" * 32
     older = event(
         "07" * 32,
@@ -150,7 +222,7 @@ def test_issuer_profile_uses_latest_valid_kind_zero_from_same_signer() -> None:
         content='{"name":"wrong"}',
     )
 
-    profile = build_issuer_profile(pubkey, [older, latest, wrong_signer])
+    profile = build_signer_profile(pubkey, [older, latest, wrong_signer])
 
     assert profile is not None
     assert profile["event_id"] == latest.id
@@ -162,7 +234,7 @@ def test_issuer_profile_uses_latest_valid_kind_zero_from_same_signer() -> None:
     assert profile["picture"] == "https://example.com/profile.png"
 
 
-def test_issuer_profile_rejects_invalid_or_unsafe_metadata() -> None:
+def test_signer_profile_rejects_invalid_or_unsafe_metadata() -> None:
     pubkey = "55" * 32
     profile_event = event(
         "10" * 32,
@@ -176,10 +248,10 @@ def test_issuer_profile_rejects_invalid_or_unsafe_metadata() -> None:
         ),
     )
 
-    profile = build_issuer_profile(pubkey, [profile_event])
+    profile = build_signer_profile(pubkey, [profile_event])
 
     assert profile is not None
     assert profile["name"] == "Issuer"
     assert profile["website"] is None
     assert profile["picture"] is None
-    assert build_issuer_profile("not-a-key", [profile_event]) is None
+    assert build_signer_profile("not-a-key", [profile_event]) is None

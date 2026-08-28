@@ -1,5 +1,11 @@
 # OpenETR Issue and Verify Integration Design Note
 
+> **Terminology migration:** OpenETR now distinguishes Anchor Events, signer
+> evidence, recognition, standing, and Digital Originals. The corresponding
+> Safebox Web terminology, projection, compatibility, and implementation
+> changes are defined in the
+> [OpenETR Anchor, Recognition, and Standing Migration Note](OPENETR-ANCHOR-STANDING-TERMINOLOGY-MIGRATION-NOTE.md).
+
 ## Status
 
 This note is a proposed design. It does not describe functionality currently

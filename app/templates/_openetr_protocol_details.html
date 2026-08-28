@@ -1,14 +1,14 @@
-{% set origin = history.origin %}
-{% set profile = history.issuer_profile %}
+{% set anchor = graph.anchor %}
+{% set profile = graph.signer_profile %}
 <details class="openetr-protocol-details">
   <summary>Protocol Details</summary>
   <div class="openetr-protocol-details-content">
-    <h3>Origin Event</h3>
+    <h3>Anchor Event</h3>
     <dl class="openetr-event-fields openetr-protocol-fields">
       <dt>Object Digest</dt><dd><code>{{ history.digest }}</code></dd>
-      <dt>Origin Event ID</dt><dd><code>{{ origin.id }}</code></dd>
-      {% if origin.kind %}<dt>Origin Event Kind</dt><dd>{{ origin.kind }}</dd>{% endif %}
-      <dt>Issuer Public Key</dt><dd><code>{{ origin.author }}</code></dd>
+      <dt>Anchor Event ID</dt><dd><code>{{ anchor.id }}</code></dd>
+      {% if anchor.kind %}<dt>Anchor Event Kind</dt><dd>{{ anchor.kind }}</dd>{% endif %}
+      <dt>Anchor Signer Public Key</dt><dd><code>{{ anchor.author }}</code></dd>
       {% if profile %}
       <dt>Profile Event ID</dt><dd><code>{{ profile.event_id }}</code></dd>
       <dt>Profile Event Kind</dt><dd>0</dd>
@@ -16,7 +16,7 @@
       {% endif %}
     </dl>
 
-    {% for event in history.controls %}
+    {% for event in graph.controls %}
     <h3>{{ event.action_label }}</h3>
     <dl class="openetr-event-fields openetr-protocol-fields">
       <dt>Event ID</dt><dd><code>{{ event.id }}</code></dd>

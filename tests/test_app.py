@@ -7420,13 +7420,25 @@ def test_scanned_presentation_displays_record_and_history_without_import(monkeyp
         return {
             "digest": digest,
             "relays": tuple(relays),
-            "origin": {
-                "id": "01" * 32,
-                "author": "npub1issuer",
-                "created_at": "2026-08-10 12:00 UTC",
-                "content": "Attested original",
-            },
-            "controls": [],
+            "candidate_graphs": [
+                {
+                    "anchor": {
+                        "id": "01" * 32,
+                        "author": "npub1signer",
+                        "created_at": "2026-08-10 12:00 UTC",
+                        "content": "Attested record",
+                        "kind": 1415,
+                    },
+                    "signer_profile": None,
+                    "signer_profile_error": None,
+                    "controls": [],
+                    "warnings": [],
+                    "recognition": {"status": "not_evaluated", "basis": None},
+                    "standing": {"status": "not_evaluated", "value": None, "purpose": None},
+                }
+            ],
+            "unlinked_events": [],
+            "invalid_event_count": 0,
             "warnings": [],
             "error": None,
         }
@@ -7449,7 +7461,7 @@ def test_scanned_presentation_displays_record_and_history_without_import(monkeyp
     assert "Presented Credential" in response.text
     assert "verified copy" in response.text
     assert "Control History" in response.text
-    assert "Attested original" in response.text
+    assert "Attested record" in response.text
     assert "Verification QR Code" in response.text
     assert 'data-copy-value="https://openetr.org/etr/' in response.text
     assert "https://openetr.org/etr/" in response.text
@@ -8404,7 +8416,7 @@ def test_record_offers_control_history_button_without_querying(monkeypatch) -> N
     assert queried is True
 
 
-def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
+def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
     digest = "1ea23f2b" + "0" * 56
     query_args = {}
 
@@ -8413,15 +8425,16 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
         return {
             "digest": the_digest,
             "relays": tuple(relays),
-            "origin": {
-                "id": "01" * 32,
-                "author": "npub1issuer",
-                "author_hex": "11" * 32,
-                "created_at": "2026-08-10 12:00 UTC",
-                "content": "Issued warehouse receipt",
-                "kind": 1415,
-            },
-            "controls": [
+            "candidate_graphs": [{
+                "anchor": {
+                    "id": "01" * 32,
+                    "author": "npub1signer",
+                    "author_hex": "11" * 32,
+                    "created_at": "2026-08-10 12:00 UTC",
+                    "content": "Anchored warehouse receipt",
+                    "kind": 1415,
+                },
+                "controls": [
                 {
                     "id": "02" * 32,
                     "author": "npub1controller",
@@ -8432,10 +8445,10 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
                     "content": "Transfer to recipient",
                     "kind": 1416,
                 }
-            ],
-            "issuer_profile": {
+                ],
+                "signer_profile": {
                 "event_id": "03" * 32,
-                "author": "npub1issuer",
+                "author": "npub1signer",
                 "created_at": "2026-08-10 11:00 UTC",
                 "display_name": "Warehouse Authority",
                 "name": "warehouse",
@@ -8444,8 +8457,14 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
                 "lightning_address": None,
                 "website": "https://example.com",
                 "picture": None,
-            },
-            "issuer_profile_error": None,
+                },
+                "signer_profile_error": None,
+                "warnings": [],
+                "recognition": {"status": "not_evaluated", "basis": None},
+                "standing": {"status": "not_evaluated", "value": None, "purpose": None},
+            }],
+            "unlinked_events": [],
+            "invalid_event_count": 0,
             "warnings": [],
             "error": None,
         }
@@ -8469,24 +8488,26 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
     assert '<section class="openetr-history-content"' in response.text
     assert '<details class="openetr-history"' not in response.text
     assert 'href="/record?label=Receipt">Back to Record</a>' in response.text
-    assert "Origin and Issuer" in response.text
+    assert "Anchor and Signer" in response.text
     assert digest in response.text
-    assert "Issued warehouse receipt" in response.text
-    assert "Issuer Profile" not in response.text
-    assert "<dt>Issuer</dt>" in response.text
+    assert "Anchored warehouse receipt" in response.text
+    assert "Signer Profile" not in response.text
+    assert "<dt>Signer</dt>" in response.text
     assert "Warehouse Authority" in response.text
     assert "Issues and attests warehouse receipts." in response.text
     assert "NIP-05" in response.text
     assert "warehouse@example.com" in response.text
     assert "does not independently establish" in response.text
+    assert "Recognition</dt><dd>Not evaluated" in response.text
+    assert "Standing</dt><dd>Not evaluated" in response.text
     assert "Protocol Details" in response.text
-    assert "Origin Event ID" in response.text
-    assert "Origin Event Kind" in response.text
-    assert "Issuer Public Key" in response.text
+    assert "Anchor Event ID" in response.text
+    assert "Anchor Event Kind" in response.text
+    assert "Anchor Signer Public Key" in response.text
     assert "Profile Event ID" in response.text
     assert "Profile Event Kind" in response.text
     assert response.text.index("Warehouse Authority") < response.text.index(
-        "Issued warehouse receipt"
+        "Anchored warehouse receipt"
     ) < response.text.index("Protocol Details")
     durable_url = f"https://openetr.org/etr/{digest}"
     assert "Verification QR Code" in response.text
@@ -8498,7 +8519,7 @@ def test_record_renders_openetr_origin_and_control_events(monkeypatch) -> None:
     assert f'data-copy-value="{durable_url}"' in response.text
     assert 'aria-label="OpenETR durable link QR code"' in response.text
     assert response.text.index("Verification QR Code") < response.text.index(
-        "Origin and Issuer"
+        "Anchor and Signer"
     ) < response.text.index("Control Events") < response.text.index(
         "Protocol Details"
     )

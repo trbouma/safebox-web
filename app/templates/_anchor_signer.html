@@ -1,0 +1,33 @@
+{% set anchor = graph.anchor %}
+{% set profile = graph.signer_profile %}
+<section class="openetr-event openetr-anchor-signer" aria-labelledby="openetr-anchor-signer-heading-{{ graph_number }}">
+  <h2 id="openetr-anchor-signer-heading-{{ graph_number }}">Anchor and Signer</h2>
+
+  {% if profile %}
+  <dl class="openetr-event-fields openetr-human-fields">
+    {% if profile.display_name %}<dt>Signer</dt><dd>{{ profile.display_name }}</dd>{% endif %}
+    {% if profile.name %}<dt>Name</dt><dd>{{ profile.name }}</dd>{% endif %}
+    {% if profile.about %}<dt>About</dt><dd>{{ profile.about }}</dd>{% endif %}
+    {% if profile.nip05 %}<dt>NIP-05</dt><dd>{{ profile.nip05 }}</dd>{% endif %}
+    {% if profile.lightning_address %}<dt>Lightning</dt><dd>{{ profile.lightning_address }}</dd>{% endif %}
+    {% if profile.website %}<dt>Website</dt><dd><a href="{{ profile.website }}" rel="noreferrer noopener" target="_blank">{{ profile.website }}</a></dd>{% endif %}
+    {% if profile.picture %}<dt>Image</dt><dd><a href="{{ profile.picture }}" rel="noreferrer noopener" target="_blank">Open Image</a></dd>{% endif %}
+  </dl>
+  {% elif graph.signer_profile_error %}
+  <p class="openetr-warning"><strong>Signer profile:</strong> {{ graph.signer_profile_error }}</p>
+  {% else %}
+  <p class="openetr-source">No valid kind 0 profile for the signer was returned by the configured relays.</p>
+  {% endif %}
+
+  <dl class="openetr-event-fields openetr-human-fields">
+    <dt>Anchored</dt><dd>{{ anchor.created_at }}</dd>
+    {% if anchor.content %}<dt>Statement</dt><dd>{{ anchor.content }}</dd>{% endif %}
+  </dl>
+
+  {% if profile %}
+  <p class="openetr-evidence-note">Signer information is self-published Nostr
+  profile metadata signed by the same key as the Anchor Event. It may help
+  identify or recognize the signer, but it does not independently establish
+  the signer's authority.</p>
+  {% endif %}
+</section>

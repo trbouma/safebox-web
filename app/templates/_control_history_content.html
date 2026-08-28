@@ -5,30 +5,31 @@
   <p>This Original Record does not contain a valid SHA-256 object digest.</p>
   {% elif openetr_history.error %}
   <p class="error">{{ openetr_history.error }}</p>
-  {% elif not openetr_history.origin %}
-  <p>No OpenETR origin event was found for this Original Record.</p>
+  {% elif not openetr_history.candidate_graphs %}
+  <p>No OpenETR Anchor Event was found for this Original Record.</p>
   {% else %}
   {% include "_openetr_durable_link.html" %}
   <p class="openetr-evidence-note">These are cryptographically valid signed
   events returned by the configured OpenETR relay infrastructure. Recognition
   of the signer and the effect of an event remain separate questions.</p>
-  {% with history=openetr_history %}{% include "_origin_issuer.html" %}{% endwith %}
-  <h2>Control Events</h2>
-  {% for event in openetr_history.controls %}
-  <article class="openetr-event">
-    <h3>{{ event.action_label }}</h3>
-    <dl class="openetr-event-fields openetr-human-fields">
-      <dt>Created</dt><dd>{{ event.created_at }}</dd>
-      {% if event.participant %}<dt>Participant</dt><dd><code>{{ event.participant }}</code></dd>{% endif %}
-      {% if event.content %}<dt>Statement</dt><dd>{{ event.content }}</dd>{% endif %}
-    </dl>
-  </article>
-  {% else %}
-  <p>No related control events were found.</p>
+  {% for graph in openetr_history.candidate_graphs %}
+  <section class="openetr-candidate-graph" aria-label="Candidate anchor graph {{ loop.index }}">
+    {% if openetr_history.candidate_graphs|length > 1 %}<h2>Candidate {{ loop.index }}</h2>{% endif %}
+    {% with history=openetr_history, graph=graph, graph_number=loop.index %}{% include "_openetr_candidate_graph.html" %}{% endwith %}
+  </section>
   {% endfor %}
   {% for warning in openetr_history.warnings %}
   <p class="openetr-warning"><strong>Note:</strong> {{ warning }}</p>
   {% endfor %}
-  {% with history=openetr_history %}{% include "_openetr_protocol_details.html" %}{% endwith %}
+  {% if openetr_history.unlinked_events %}
+  <details class="openetr-protocol-details">
+    <summary>Unlinked Protocol Events</summary>
+    <div class="openetr-protocol-details-content">
+      {% for event in openetr_history.unlinked_events %}
+      <p><code>{{ event.id }}</code> (kind {{ event.kind }})</p>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
   {% endif %}
 </section>

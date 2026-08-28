@@ -5428,8 +5428,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     control_history = {
                         "digest": str(blob_sha256),
                         "relays": settings.openetr_relays,
-                        "origin": None,
-                        "controls": [],
+                        "candidate_graphs": [],
+                        "unlinked_events": [],
+                        "invalid_event_count": 0,
                         "warnings": [],
                         "error": "Control history is temporarily unavailable.",
                     }
@@ -8473,8 +8474,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 openetr_history = {
                     "digest": str(record_value.origsha256).strip().lower(),
                     "relays": settings.openetr_relays,
-                    "origin": None,
-                    "controls": [],
+                    "candidate_graphs": [],
+                    "unlinked_events": [],
+                    "invalid_event_count": 0,
                     "warnings": [],
                     "error": "OpenETR history is temporarily unavailable.",
                 }
