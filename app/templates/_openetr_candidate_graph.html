@@ -15,12 +15,14 @@
 {% endfor %}
 
 <dl class="openetr-event-fields openetr-human-fields openetr-evaluation-status">
+  <dt>Consequential State</dt><dd>Not derived</dd>
   <dt>Recognition</dt><dd>Not evaluated</dd>
-  <dt>Standing</dt><dd>Not evaluated</dd>
+  <dt>Effect</dt><dd>Not evaluated</dd>
 </dl>
-<p class="openetr-evidence-note">Cryptographic validity does not by itself
-establish that the signer is a recognized authority or that this record has
-standing for a particular purpose.</p>
+<p class="openetr-evidence-note">The displayed events are valid evidence, but
+this view has not yet applied a versioned OpenETR state-derivation engine.
+Cryptographic validity does not by itself establish that the signer is a
+recognized authority or that this record has effect for a particular purpose.</p>
 
 {% for warning in graph.warnings %}
 <p class="openetr-warning"><strong>Note:</strong> {{ warning }}</p>

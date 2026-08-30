@@ -24,35 +24,37 @@ The current Safebox Web OpenETR projection was built around an earlier model:
 The revised OpenETR model makes narrower and more defensible claims:
 
 - kind `1415` is an **Anchor Event**;
-- an Anchor Event establishes an initial signed control state, not original
-  standing;
+- a valid Anchor Event establishes initial consequential state for a candidate
+  control graph;
 - the signer is cryptographically identifiable, but is not necessarily a
   recognized issuer or authority;
 - one object digest may have multiple candidate Anchor Events;
-- recognition determines what standing a relying party gives an object or
-  graph; and
-- a **Digital Original** is a controlled digital object with recognized
-  standing as an original.
+- a **Digital Original** is a Digital Object for which consequential state can
+  be derived from valid end-verifiable events under OpenETR protocol rules;
+- recognition determines whether a relying party accepts that state for a
+  purpose, and applicable rules determine its effect.
 
 The central migration principle is:
 
-> Protocol validity is evidence. Recognition and standing determine what that
-> evidence means for a particular purpose.
+> Content identifies the object. Events establish consequential state.
+> Recognition and applicable rules determine accepted meaning and effect.
 
-## The four questions Safebox must keep separate
+## The five questions Safebox must keep separate
 
-Safebox Web should present four distinct layers:
+Safebox Web should present five distinct layers:
 
 | Layer | Question | What Safebox can currently establish |
 | --- | --- | --- |
 | Integrity | Do the displayed bytes match the expected digest? | Yes, through the exact file digest and fingerprint. |
 | Protocol validity | Are the OpenETR events structurally and cryptographically valid? | Yes, within the implemented event and chain checks. |
+| Consequential state | What state follows when OpenETR rules are applied to the valid event set? | Candidate graph, controller, guards, and lifecycle state. |
 | Recognition | Does the relying party recognize the signer, assertion, graph, or authority for this purpose? | Not yet evaluated by a formal recognition adapter. |
 | Standing and effect | What status or consequence follows from recognition? | Not yet evaluated by Safebox Web. |
 
-A valid signature proves that a key signed exact event bytes. It does not prove
-that the signer is an authorized issuer, that the assertion is true, or that
-the controlled object has standing as an original.
+A valid signature proves that a key signed exact event bytes. Valid linked
+events can establish consequential state under OpenETR rules. They do not prove
+that the signer is an externally authorized issuer, that every assertion is
+true, or that a relying party must recognize the graph or give it effect.
 
 ## Terminology migration
 
@@ -60,7 +62,7 @@ the controlled object has standing as an original.
 
 | Current Safebox language | Target language | Reason |
 | --- | --- | --- |
-| Origin Event | Anchor Event | Anchoring starts a candidate control graph but does not establish original standing. |
+| Origin Event | Anchor Event | A valid anchor starts candidate consequential state without establishing universal recognition or effect. |
 | Origin and Issuer | Anchor and Signer | Signing is demonstrable; issuer status requires recognition or domain policy. |
 | Issuer profile | Signer profile | A Nostr kind `0` profile is self-published metadata about the signing key. |
 | Issuer Public Key | Anchor Signer Public Key | Avoids inferring authority from event authorship. |
@@ -99,24 +101,27 @@ More precise terms can be used where the distinction matters:
 bytes or file before anchoring
     -> Digital Object / exact artifact
 
-object represented in a valid control graph
-    -> Controlled Digital Object
-
-controlled object recognized as the operative original for a purpose
+object represented in a valid control graph with derived consequential state
     -> Digital Original
+
+Digital Original accepted as operative for a purpose
+    -> Recognized Digital Original
 ```
 
-Safebox should use **Digital Original** only when a recognition policy actually
-returns that standing and identifies the applicable purpose or context.
+Safebox should use **Digital Original** only when a Record File participates in
+a valid OpenETR graph from which consequential state can be derived. Where a
+recognition policy has evaluated that state, Safebox should qualify the result
+as a **recognized Digital Original** and identify the applicable purpose or
+context.
 
 ## Required projection change
 
 ### Current behavior
 
-The current `build_openetr_history()` implementation gathers matching kind
-`1415` events, sorts them, selects the earliest event, and follows only the
-control chain rooted in that event. Additional kind `1415` events are reduced
-to a warning.
+The previous `build_openetr_history()` implementation gathered matching kind
+`1415` events, sorted them, selected the earliest event, and followed only the
+control chain rooted in that event. The candidate-graph migration removed that
+selection behavior and now preserves every valid candidate anchor.
 
 This behavior is no longer sufficient. The earliest event is a chronology
 fact, not an authority or recognition decision.
@@ -135,11 +140,20 @@ and construct an independent candidate graph for each one:
             "signer_profile": {...},
             "controls": [...],
             "warnings": [...],
+            "consequential_state": {
+                "status": "not_derived",
+                "protocol_version": None,
+                "controller": None,
+                "lifecycle": None,
+                "standing": None,
+                "active_guards": [],
+                "basis_event_ids": [],
+            },
             "recognition": {
                 "status": "not_evaluated",
                 "basis": None,
             },
-            "standing": {
+            "effect": {
                 "status": "not_evaluated",
                 "value": None,
                 "purpose": None,
@@ -150,6 +164,12 @@ and construct an independent candidate graph for each one:
     "invalid_event_count": 0,
 }
 ```
+
+Candidate graph construction is implemented. Full consequential-state
+derivation remains a separate migration step. Until a versioned derivation
+engine has applied OpenETR rules, Safebox should not infer controller,
+lifecycle, guards, or Digital Original status merely from the presence of
+events.
 
 Safebox must not silently choose an authoritative graph. A future recognition
 adapter may select or rank a candidate, but its result must include the
@@ -207,15 +227,16 @@ Recommended presentation order:
 3. candidate Anchor Event and signer information;
 4. the human-readable anchor statement;
 5. related Control Events;
-6. recognition status;
-7. standing status; and
-8. collapsible protocol details.
+6. consequential-state result and protocol version;
+7. recognition status;
+8. effect status; and
+9. collapsible protocol details.
 
 For the initial implementation, Safebox should say:
 
-> The fingerprint identifies this exact Record File, and the displayed events
-> are cryptographically valid. Recognition and standing have not been
-> evaluated.
+> The Record File Fingerprint identifies these exact bytes. The displayed
+> events are cryptographically valid. Consequential state has not yet been
+> derived, and recognition and effect have not been evaluated.
 
 If multiple anchors exist, the interface should say how many candidate graphs
 were found and render each separately. It should not say that the earliest one
@@ -241,9 +262,10 @@ the revised OpenETR model:
 | Present | Temporarily inspect the exact Record File and compare it with candidate graph evidence. |
 | Share | Receive and retain the exact Record File for deeper native-format, cryptographic, recognition, or policy review. |
 
-None of these actions independently assigns Digital Original standing. A
-recognition context decides whether the controlled object has that standing and
-what effect follows.
+None of these interface actions independently changes consequential state.
+Digital Original status comes from the valid OpenETR event graph, not from
+viewing, presenting, or sharing the Record File. Recognition and applicable
+rules determine accepted standing and effect.
 
 ## Compatibility rules
 
@@ -278,7 +300,8 @@ The terminology and claims review covered the following Safebox Web materials:
 Documentation should explicitly include:
 
 ```text
-Digital object + control + recognition = possible Digital Original
+Digital object + end-verifiable events + protocol rules = Digital Original
+Digital Original + recognition + applicable rules = recognized effect
 ```
 
 It should also explain that recognition is contextual. Different institutions,
@@ -293,28 +316,41 @@ candidate anchors for different purposes.
 - Build and retain every candidate anchor graph.
 - Stop selecting the earliest anchor as authoritative.
 - Rename issuer projection fields to signer fields.
-- Add explicit `not_evaluated` recognition and standing results.
+- Add explicit `not_evaluated` recognition and effect results.
 
 ### Phase 2: User-interface migration
 
 - Update the Check pane to render candidate graphs.
 - Change Origin and Issuer to Anchor and Signer.
 - Update protocol-detail labels.
-- Add plain-language integrity, recognition, and standing boundaries.
+- Add plain-language integrity, consequential-state, recognition, and effect boundaries.
 
 ### Phase 3: Record terminology — implemented
 
 - Replace generic Original Record language with Record File.
-- Reserve Digital Original for a controlled object with recognized standing.
+- Reserve Digital Original for a Record File with derived OpenETR consequential
+  state, and qualify recognized standing separately.
 - Update upload, view, presentation, sharing, deletion, and advisory text.
 
-### Phase 4: Documentation and public positioning
+### Phase 4: Consequential-state derivation
+
+- Apply versioned OpenETR rules to each candidate graph.
+- Derive controller, lifecycle, active guards, and basis event IDs.
+- Distinguish `derived`, `incomplete`, `ambiguous`, `invalid`, and
+  `not_derived` results.
+- Ensure the same relevant event set and rules produce the same state across
+  conforming implementations.
+- Treat databases, caches, and rendered pages as projections rather than the
+  authoritative source of consequential state.
+
+### Phase 5: Documentation and public positioning
 
 - Update the Safebox Web design notes and MkDocs pages.
-- Explain Digital Originality as standing rather than byte uniqueness.
+- Explain Digital Originality as consequential state rather than byte
+  uniqueness, while keeping recognition and effect separate.
 - Preserve Check, Present, and Share as the graduated-disclosure model.
 
-### Phase 5: Recognition adapters
+### Phase 6: Recognition adapters
 
 - Define a recognition-result interface.
 - Allow domain, community, institutional, contractual, or legal profiles to
@@ -335,8 +371,11 @@ The migration should include tests for:
 - unlinked control events that are not attached to the wrong graph;
 - invalid events excluded from candidate graphs;
 - compatibility with `action=issue`;
-- explicit recognition and standing `not_evaluated` output;
-- absence of claims that anchoring alone creates a Digital Original; and
+- deterministic consequential-state derivation from the same event set;
+- incomplete and conflicting event sets produce explicit non-derived or
+  ambiguous results;
+- explicit recognition and effect `not_evaluated` output;
+- absence of claims that anchoring compels recognition or external effect; and
 - updated Record File terminology in upload, view, presentation, share, and
   deletion workflows.
 
@@ -349,11 +388,12 @@ The migration is complete when:
 3. Safebox never treats chronology alone as recognition.
 4. A kind `0` profile is presented as signer metadata, not proof of issuer
    authority.
-5. Integrity, protocol validity, recognition, and standing are visibly
-   separate.
+5. Integrity, protocol validity, consequential state, recognition, and effect
+   are visibly separate.
 6. Generic stored attachments are called Record Files rather than Original
    Records.
-7. Digital Original is used only with an explicit recognition context.
+7. Digital Original is used only when consequential state can be derived;
+   recognized standing and effect are displayed as separate contextual results.
 8. Existing OpenETR event and durable-link interoperability remains intact.
 
 ## Non-goals
@@ -364,7 +404,8 @@ This migration does not:
 - create a universal recognition registry;
 - make Safebox Web a system of record;
 - assert that a signed statement is true;
-- turn a stored or anchored file into a Digital Original automatically; or
+- treat storage, hashing, or an arbitrary anchor as sufficient consequential
+  state without validating the OpenETR event graph; or
 - require the OpenETR implementation library as an application dependency.
 
 ## Source material

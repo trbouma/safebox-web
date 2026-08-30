@@ -234,8 +234,17 @@ def build_openetr_history(
                 "signer_profile_error": None,
                 "controls": [_event_view(item) for item in related_controls],
                 "warnings": [],
+                "consequential_state": {
+                    "status": "not_derived",
+                    "protocol_version": None,
+                    "controller": None,
+                    "lifecycle": None,
+                    "standing": None,
+                    "active_guards": [],
+                    "basis_event_ids": [],
+                },
                 "recognition": {"status": "not_evaluated", "basis": None},
-                "standing": {
+                "effect": {
                     "status": "not_evaluated",
                     "value": None,
                     "purpose": None,

@@ -7434,7 +7434,7 @@ def test_scanned_presentation_displays_record_and_history_without_import(monkeyp
                     "controls": [],
                     "warnings": [],
                     "recognition": {"status": "not_evaluated", "basis": None},
-                    "standing": {"status": "not_evaluated", "value": None, "purpose": None},
+                    "effect": {"status": "not_evaluated", "value": None, "purpose": None},
                 }
             ],
             "unlinked_events": [],
@@ -8461,7 +8461,7 @@ def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
                 "signer_profile_error": None,
                 "warnings": [],
                 "recognition": {"status": "not_evaluated", "basis": None},
-                "standing": {"status": "not_evaluated", "value": None, "purpose": None},
+                "effect": {"status": "not_evaluated", "value": None, "purpose": None},
             }],
             "unlinked_events": [],
             "invalid_event_count": 0,
@@ -8498,8 +8498,9 @@ def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
     assert "NIP-05" in response.text
     assert "warehouse@example.com" in response.text
     assert "does not independently establish" in response.text
+    assert "Consequential State</dt><dd>Not derived" in response.text
     assert "Recognition</dt><dd>Not evaluated" in response.text
-    assert "Standing</dt><dd>Not evaluated" in response.text
+    assert "Effect</dt><dd>Not evaluated" in response.text
     assert "Protocol Details" in response.text
     assert "Anchor Event ID" in response.text
     assert "Anchor Event Kind" in response.text

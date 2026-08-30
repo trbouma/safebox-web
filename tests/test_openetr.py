@@ -84,8 +84,17 @@ def test_openetr_history_follows_exact_prior_event_chain() -> None:
     ]
     assert graph["controls"][0]["action_label"] == "Transfer initiated"
     assert graph["controls"][0]["participant"].startswith("npub1")
+    assert graph["consequential_state"] == {
+        "status": "not_derived",
+        "protocol_version": None,
+        "controller": None,
+        "lifecycle": None,
+        "standing": None,
+        "active_guards": [],
+        "basis_event_ids": [],
+    }
     assert graph["recognition"] == {"status": "not_evaluated", "basis": None}
-    assert graph["standing"] == {
+    assert graph["effect"] == {
         "status": "not_evaluated",
         "value": None,
         "purpose": None,
