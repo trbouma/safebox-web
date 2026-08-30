@@ -31,8 +31,11 @@ The revised OpenETR model makes narrower and more defensible claims:
 - one object digest may have multiple candidate Anchor Events;
 - a **Digital Artifact** is persistent digital content whose unique content
   identity is established by a cryptographic digest;
-- a **Digital Original** is a Digital Artifact for which consequential state can
-  be derived from valid end-verifiable events under OpenETR protocol rules;
+- a **Controlled Object** is the protocol role occupied by a Digital Artifact
+  when candidate OpenETR events identify it as their subject; that role does
+  not itself assert valid state or a current controller;
+- a **Digital Original** is a Controlled Object for which consequential state
+  can be derived from valid end-verifiable events under OpenETR protocol rules;
 - recognition determines whether a relying party accepts that state for a
   purpose, and applicable rules determine its effect.
 
@@ -132,7 +135,10 @@ More precise terms can be used where the distinction matters:
 canonical bytes identified by digest
     -> Digital Artifact
 
-artifact represented in a valid control graph with derived consequential state
+artifact identified as the subject of candidate OpenETR events
+    -> Controlled Object
+
+Controlled Object represented in a valid control graph with derived consequential state
     -> Digital Original
 
 Digital Original accepted as operative for a purpose
@@ -331,7 +337,8 @@ The terminology and claims review covered the following Safebox Web materials:
 Documentation should explicitly include:
 
 ```text
-Digital Artifact + end-verifiable events + protocol rules = Digital Original
+Digital Artifact -> Controlled Object named by candidate events
+Controlled Object + valid events + protocol rules = Digital Original
 Digital Original + recognition + applicable rules = recognized effect
 ```
 
