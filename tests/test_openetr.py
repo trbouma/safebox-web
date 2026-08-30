@@ -9,8 +9,24 @@ from app.openetr import (
     CONTROL_KIND,
     PROFILE_KIND,
     build_openetr_history,
+    derive_consequential_state,
     build_signer_profile,
 )
+
+
+def test_consequential_state_derivation_boundary_is_explicitly_unimplemented() -> None:
+    digest = "ab" * 32
+    state = derive_consequential_state(digest, [])
+
+    assert state == {
+        "status": "not_derived",
+        "protocol_version": None,
+        "controller": None,
+        "lifecycle": None,
+        "standing": None,
+        "active_guards": [],
+        "basis_event_ids": [],
+    }
 
 
 def event(

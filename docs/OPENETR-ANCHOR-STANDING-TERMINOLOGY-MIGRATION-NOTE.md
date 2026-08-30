@@ -29,15 +29,46 @@ The revised OpenETR model makes narrower and more defensible claims:
 - the signer is cryptographically identifiable, but is not necessarily a
   recognized issuer or authority;
 - one object digest may have multiple candidate Anchor Events;
-- a **Digital Original** is a Digital Object for which consequential state can
+- a **Digital Artifact** is persistent digital content whose unique content
+  identity is established by a cryptographic digest;
+- a **Digital Original** is a Digital Artifact for which consequential state can
   be derived from valid end-verifiable events under OpenETR protocol rules;
 - recognition determines whether a relying party accepts that state for a
   purpose, and applicable rules determine its effect.
 
 The central migration principle is:
 
-> Content identifies the object. Events establish consequential state.
-> Recognition and applicable rules determine accepted meaning and effect.
+> Content makes an artifact identifiable. Consequential state makes it an
+> original. Recognition and applicable rules determine accepted meaning and
+> effect.
+
+## Safebox Web architectural directive
+
+Safebox Web is a producer, consumer, verifier, and projector of OpenETR
+end-verifiable events. It is not the authoritative owner of consequential
+state.
+
+The implementation boundary is:
+
+```text
+ARTIFACT
+canonical content + protocol-defined digest
+
+EVENTS
+portable signed OpenETR evidence
+
+PROJECTION
+consequential state derived under identified versioned rules
+```
+
+Storage location does not determine artifact identity. If two canonical byte
+sequences have the same protocol-defined digest, they represent the same
+Digital Artifact. Copying the content does not copy consequential state.
+
+Safebox Web may cache a projection for performance, but the projection must be
+reconstructable from the relevant valid events. Every displayed consequential
+state should eventually identify the event or event chain from which it was
+derived.
 
 ## The five questions Safebox must keep separate
 
@@ -47,7 +78,7 @@ Safebox Web should present five distinct layers:
 | --- | --- | --- |
 | Integrity | Do the displayed bytes match the expected digest? | Yes, through the exact file digest and fingerprint. |
 | Protocol validity | Are the OpenETR events structurally and cryptographically valid? | Yes, within the implemented event and chain checks. |
-| Consequential state | What state follows when OpenETR rules are applied to the valid event set? | Candidate graph, controller, guards, and lifecycle state. |
+| Consequential state | What state follows when OpenETR rules are applied to the valid event set? | Candidate graphs are available; versioned state derivation is not yet implemented. |
 | Recognition | Does the relying party recognize the signer, assertion, graph, or authority for this purpose? | Not yet evaluated by a formal recognition adapter. |
 | Standing and effect | What status or consequence follows from recognition? | Not yet evaluated by Safebox Web. |
 
@@ -98,10 +129,10 @@ record metadata, a signer key, or a control graph.
 More precise terms can be used where the distinction matters:
 
 ```text
-bytes or file before anchoring
-    -> Digital Object / exact artifact
+canonical bytes identified by digest
+    -> Digital Artifact
 
-object represented in a valid control graph with derived consequential state
+artifact represented in a valid control graph with derived consequential state
     -> Digital Original
 
 Digital Original accepted as operative for a purpose
@@ -300,7 +331,7 @@ The terminology and claims review covered the following Safebox Web materials:
 Documentation should explicitly include:
 
 ```text
-Digital object + end-verifiable events + protocol rules = Digital Original
+Digital Artifact + end-verifiable events + protocol rules = Digital Original
 Digital Original + recognition + applicable rules = recognized effect
 ```
 
@@ -334,6 +365,10 @@ candidate anchors for different purposes.
 
 ### Phase 4: Consequential-state derivation
 
+- Route all consequential-state projection through the single
+  `derive_consequential_state(artifact_id, events)` boundary. This seam is
+  implemented and deliberately returns `not_derived` until the versioned rules
+  below exist.
 - Apply versioned OpenETR rules to each candidate graph.
 - Derive controller, lifecycle, active guards, and basis event IDs.
 - Distinguish `derived`, `incomplete`, `ambiguous`, `invalid`, and
@@ -378,6 +413,17 @@ The migration should include tests for:
 - absence of claims that anchoring compels recognition or external effect; and
 - updated Record File terminology in upload, view, presentation, share, and
   deletion workflows.
+
+For every consequential feature, the implementation review should also ask:
+
+1. **What is the artifact?** Identify its canonical content cryptographically.
+2. **What happened?** Identify the end-verifiable event.
+3. **What state follows?** Derive it under the identified OpenETR rules.
+4. **Why should a verifier believe it?** Expose evidence that can be checked
+   independently of Safebox Web.
+
+If the final answer is only “because the Safebox Web database says so,” the
+feature has not implemented Consequential State Architecture.
 
 ## Acceptance criteria
 

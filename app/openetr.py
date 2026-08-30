@@ -36,6 +36,36 @@ ACTION_LABELS = {
 }
 
 
+def derive_consequential_state(
+    artifact_id: str,
+    events: Iterable[Event],
+) -> dict[str, Any]:
+    """Return the single OpenETR consequential-state projection.
+
+    This function is the application boundary for state derivation. The
+    current Safebox Web adapter can construct candidate event graphs, but it
+    does not yet implement a versioned OpenETR state machine. Returning an
+    explicit ``not_derived`` result prevents callers from treating chronology,
+    database state, or the mere presence of signed events as authoritative
+    consequential state.
+    """
+
+    normalized_artifact_id = str(artifact_id or "").strip().lower()
+    if not SHA256_PATTERN.fullmatch(normalized_artifact_id):
+        raise ValueError(
+            "OpenETR artifact digest must be a 64-character SHA-256 value"
+        )
+    return {
+        "status": "not_derived",
+        "protocol_version": None,
+        "controller": None,
+        "lifecycle": None,
+        "standing": None,
+        "active_guards": [],
+        "basis_event_ids": [],
+    }
+
+
 def _tag_value(event: Event, name: str) -> str | None:
     for tag in event.tags or []:
         if len(tag) >= 2 and tag[0] == name:
@@ -176,7 +206,7 @@ def build_openetr_history(
 
     normalized_digest = str(digest or "").strip().lower()
     if not SHA256_PATTERN.fullmatch(normalized_digest):
-        raise ValueError("OpenETR object digest must be a 64-character SHA-256 value")
+        raise ValueError("OpenETR artifact digest must be a 64-character SHA-256 value")
 
     matching: list[Event] = []
     invalid_count = 0
@@ -234,15 +264,10 @@ def build_openetr_history(
                 "signer_profile_error": None,
                 "controls": [_event_view(item) for item in related_controls],
                 "warnings": [],
-                "consequential_state": {
-                    "status": "not_derived",
-                    "protocol_version": None,
-                    "controller": None,
-                    "lifecycle": None,
-                    "standing": None,
-                    "active_guards": [],
-                    "basis_event_ids": [],
-                },
+                "consequential_state": derive_consequential_state(
+                    normalized_digest,
+                    [anchor, *related_controls],
+                ),
                 "recognition": {"status": "not_evaluated", "basis": None},
                 "effect": {
                     "status": "not_evaluated",
@@ -291,7 +316,7 @@ async def query_openetr_history(
         raise ValueError("At least one OpenETR relay is required")
     normalized_digest = str(digest or "").strip().lower()
     if not SHA256_PATTERN.fullmatch(normalized_digest):
-        raise ValueError("OpenETR object digest must be a 64-character SHA-256 value")
+        raise ValueError("OpenETR artifact digest must be a 64-character SHA-256 value")
 
     event_filter = {
         "#o": [normalized_digest],
