@@ -135,7 +135,7 @@ The same separation applies to W3C Verifiable Credentials, EUDI PIDs, and
 mobile driving licences. Credential proof,
 status, holder presentation, issuer recognition, and verifier policy answer
 important credential questions. OpenETR can go deeper when the credential
-refers to an artifact or controlled object whose origin and event history also
+refers to a Digital Artifact whose DCR and event history also
 need to be examined. Safebox can preserve the exact credential and Original
 Record while keeping those verification layers distinct.
 

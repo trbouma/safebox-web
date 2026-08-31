@@ -1,4 +1,4 @@
-# OpenETR Anchor, Recognition, and Standing Migration Note
+# OpenETR Artifact, DCR, Recognition, and Standing Migration Note
 
 ## Status
 
@@ -7,9 +7,10 @@ the Record File terminology migration have been implemented; recognition
 adapters remain future work.
 
 This note records the changes needed to align Safebox Web with the revised
-OpenETR distinction between Anchor Events, control, recognition, standing, and
-Digital Originals. It is a migration plan rather than a claim that every item
-has already been implemented.
+OpenETR distinction between Digital Artifacts, Digital Controllable Records,
+consequential state, recognition, standing, and Digital Originals. It is a
+migration plan rather than a claim that every item has already been
+implemented.
 
 ## Why this migration is needed
 
@@ -31,11 +32,12 @@ The revised OpenETR model makes narrower and more defensible claims:
 - one object digest may have multiple candidate Anchor Events;
 - a **Digital Artifact** is persistent digital content whose unique content
   identity is established by a cryptographic digest;
-- a **Controlled Object** is the protocol role occupied by a Digital Artifact
-  when candidate OpenETR events identify it as their subject; that role does
-  not itself assert valid state or a current controller;
-- a **Digital Original** is a Controlled Object for which consequential state
-  can be derived from valid end-verifiable events under OpenETR protocol rules;
+- a **Digital Controllable Record (DCR)** is one end-verifiable record or a
+  graph of related end-verifiable records through which consequential state
+  concerning a Digital Artifact can be established and transitioned;
+- a DCR is the protocol evidence structure, not the file;
+- a **Digital Original** is a Digital Artifact for which consequential state
+  has been established through a DCR under OpenETR protocol rules;
 - recognition determines whether a relying party accepts that state for a
   purpose, and applicable rules determine its effect.
 
@@ -57,10 +59,10 @@ The implementation boundary is:
 ARTIFACT
 canonical content + protocol-defined digest
 
-EVENTS
-portable signed OpenETR evidence
+DCR
+one signed end-verifiable record or graph of related records
 
-PROJECTION
+STATE PROJECTION
 consequential state derived under identified versioned rules
 ```
 
@@ -135,10 +137,10 @@ More precise terms can be used where the distinction matters:
 canonical bytes identified by digest
     -> Digital Artifact
 
-artifact identified as the subject of candidate OpenETR events
-    -> Controlled Object
+signed end-verifiable record or graph concerning the artifact
+    -> Digital Controllable Record
 
-Controlled Object represented in a valid control graph with derived consequential state
+Digital Artifact with consequential state derived from its valid DCR
     -> Digital Original
 
 Digital Original accepted as operative for a purpose
@@ -173,6 +175,16 @@ and construct an independent candidate graph for each one:
     "digest": "...",
     "candidate_graphs": [
         {
+            "artifact": {
+                "id": "...",
+                "identity_method": "sha256",
+            },
+            "digital_controllable_record": {
+                "status": "candidate",
+                "artifact_id": "...",
+                "record_count": 1,
+                "record_event_ids": ["..."],
+            },
             "anchor": {...},
             "signer_profile": {...},
             "controls": [...],
@@ -300,7 +312,8 @@ the revised OpenETR model:
 | Share | Receive and retain the exact Record File for deeper native-format, cryptographic, recognition, or policy review. |
 
 None of these interface actions independently changes consequential state.
-Digital Original status comes from the valid OpenETR event graph, not from
+Digital Original status comes from consequential state derived through the
+valid DCR, not from
 viewing, presenting, or sharing the Record File. Recognition and applicable
 rules determine accepted standing and effect.
 
@@ -337,8 +350,9 @@ The terminology and claims review covered the following Safebox Web materials:
 Documentation should explicitly include:
 
 ```text
-Digital Artifact -> Controlled Object named by candidate events
-Controlled Object + valid events + protocol rules = Digital Original
+Digital Artifact -> Digital Controllable Record made of candidate events
+Digital Controllable Record + protocol rules -> consequential state
+Digital Artifact + consequential state -> Digital Original
 Digital Original + recognition + applicable rules = recognized effect
 ```
 
@@ -373,7 +387,7 @@ candidate anchors for different purposes.
 ### Phase 4: Consequential-state derivation
 
 - Route all consequential-state projection through the single
-  `derive_consequential_state(artifact_id, events)` boundary. This seam is
+  `derive_consequential_state(artifact_id, dcr_records)` boundary. This seam is
   implemented and deliberately returns `not_derived` until the versioned rules
   below exist.
 - Apply versioned OpenETR rules to each candidate graph.
@@ -423,11 +437,17 @@ The migration should include tests for:
 
 For every consequential feature, the implementation review should also ask:
 
-1. **What is the artifact?** Identify its canonical content cryptographically.
-2. **What happened?** Identify the end-verifiable event.
-3. **What state follows?** Derive it under the identified OpenETR rules.
-4. **Why should a verifier believe it?** Expose evidence that can be checked
-   independently of Safebox Web.
+1. **What is the Digital Artifact?** Identify its canonical content and digest.
+2. **What is the DCR?** Identify the end-verifiable record or graph.
+3. **Who may produce those records, and what prior state constrains them?**
+4. **What state follows?** Derive it under the identified OpenETR rules.
+5. **Can another implementation reproduce it and inspect its evidence?**
+6. **Is recognition being confused with protocol state?**
+7. **Would the state survive if Safebox Web disappeared?**
+
+If the answer to “Why is this state true?” is only “because the Safebox Web
+database says so,” the feature is not aligned with Consequential State
+Architecture.
 
 If the final answer is only “because the Safebox Web database says so,” the
 feature has not implemented Consequential State Architecture.

@@ -1,11 +1,15 @@
 {% set anchor = graph.anchor %}
 {% set profile = graph.signer_profile %}
+{% set artifact = graph.artifact|default({"id": history.digest}) %}
+{% set dcr = graph.digital_controllable_record|default({"record_count": 1 + graph.controls|length, "status": "candidate"}) %}
 <details class="openetr-protocol-details">
   <summary>Protocol Details</summary>
   <div class="openetr-protocol-details-content">
     <h3>Anchor Event</h3>
     <dl class="openetr-event-fields openetr-protocol-fields">
-      <dt>Object Digest</dt><dd><code>{{ history.digest }}</code></dd>
+      <dt>Artifact Digest</dt><dd><code>{{ artifact.id }}</code></dd>
+      <dt>DCR Status</dt><dd>{{ dcr.status }}</dd>
+      <dt>DCR Record Count</dt><dd>{{ dcr.record_count }}</dd>
       <dt>Anchor Event ID</dt><dd><code>{{ anchor.id }}</code></dd>
       {% if anchor.kind %}<dt>Anchor Event Kind</dt><dd>{{ anchor.kind }}</dd>{% endif %}
       <dt>Anchor Signer Public Key</dt><dd><code>{{ anchor.author }}</code></dd>

@@ -9,9 +9,29 @@ from app.openetr import (
     CONTROL_KIND,
     PROFILE_KIND,
     build_openetr_history,
+    build_digital_controllable_record,
     derive_consequential_state,
     build_signer_profile,
 )
+
+
+def test_digital_controllable_record_is_separate_from_artifact_and_state() -> None:
+    digest = "aa" * 32
+    anchor = event(
+        "01" * 32,
+        kind=ANCHOR_KIND,
+        created_at=100,
+        tags=[["o", digest]],
+    )
+
+    dcr = build_digital_controllable_record(digest, [anchor])
+
+    assert dcr == {
+        "status": "candidate",
+        "artifact_id": digest,
+        "record_count": 1,
+        "record_event_ids": [anchor.id],
+    }
 
 
 def test_consequential_state_derivation_boundary_is_explicitly_unimplemented() -> None:
@@ -93,6 +113,16 @@ def test_openetr_history_follows_exact_prior_event_chain() -> None:
     assert len(history["candidate_graphs"]) == 1
     graph = history["candidate_graphs"][0]
     assert graph["anchor"]["id"] == anchor.id
+    assert graph["artifact"] == {
+        "id": digest,
+        "identity_method": "sha256",
+    }
+    assert graph["digital_controllable_record"] == {
+        "status": "candidate",
+        "artifact_id": digest,
+        "record_count": 3,
+        "record_event_ids": [anchor.id, initiated.id, accepted.id],
+    }
     assert graph["anchor"]["action_label"] == "Anchor recorded"
     assert [item["id"] for item in graph["controls"]] == [
         initiated.id,

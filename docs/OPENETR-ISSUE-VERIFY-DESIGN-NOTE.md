@@ -158,7 +158,7 @@ and [generic verifier policy](https://github.com/trbouma/openetr/blob/main/docs/
 
 ## Object identity and artifact bytes
 
-The OpenETR Controlled Object is anchored to the digest of the exact plaintext
+The OpenETR Digital Artifact is anchored to the digest of the exact plaintext
 artifact. For an Acorn record with an encrypted Blossom attachment:
 
 - the encrypted Blossom object digest is not the OpenETR object digest;

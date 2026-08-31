@@ -38,12 +38,14 @@ ACTION_LABELS = {
 
 def derive_consequential_state(
     artifact_id: str,
-    events: Iterable[Event],
+    dcr_records: Iterable[Event],
 ) -> dict[str, Any]:
     """Return the single OpenETR consequential-state projection.
 
     This function is the application boundary for state derivation. The
-    current Safebox Web adapter can construct candidate event graphs, but it
+    ``dcr_records`` is the candidate Digital Controllable Record: one signed
+    record or a graph of related signed records concerning the artifact. The
+    current Safebox Web adapter can construct candidate DCR graphs, but it
     does not yet implement a versioned OpenETR state machine. Returning an
     explicit ``not_derived`` result prevents callers from treating chronology,
     database state, or the mere presence of signed events as authoritative
@@ -63,6 +65,31 @@ def derive_consequential_state(
         "standing": None,
         "active_guards": [],
         "basis_event_ids": [],
+    }
+
+
+def build_digital_controllable_record(
+    artifact_id: str,
+    records: Iterable[Event],
+) -> dict[str, Any]:
+    """Build the inspectable DCR layer without asserting derived state.
+
+    The Digital Artifact is the digest-identified content. This returned
+    structure is the distinct signed evidence layer concerning that artifact.
+    It remains a candidate DCR until versioned OpenETR rules evaluate it.
+    """
+
+    normalized_artifact_id = str(artifact_id or "").strip().lower()
+    if not SHA256_PATTERN.fullmatch(normalized_artifact_id):
+        raise ValueError(
+            "OpenETR artifact digest must be a 64-character SHA-256 value"
+        )
+    record_list = list(records)
+    return {
+        "status": "candidate",
+        "artifact_id": normalized_artifact_id,
+        "record_count": len(record_list),
+        "record_event_ids": [record.id for record in record_list],
     }
 
 
@@ -257,8 +284,17 @@ def build_openetr_history(
 
     candidate_graphs: list[dict[str, Any]] = []
     for anchor, related_controls in zip(anchors, graph_controls, strict=True):
+        dcr_records = [anchor, *related_controls]
         candidate_graphs.append(
             {
+                "artifact": {
+                    "id": normalized_digest,
+                    "identity_method": "sha256",
+                },
+                "digital_controllable_record": build_digital_controllable_record(
+                    normalized_digest,
+                    dcr_records,
+                ),
                 "anchor": _event_view(anchor),
                 "signer_profile": None,
                 "signer_profile_error": None,
@@ -266,7 +302,7 @@ def build_openetr_history(
                 "warnings": [],
                 "consequential_state": derive_consequential_state(
                     normalized_digest,
-                    [anchor, *related_controls],
+                    dcr_records,
                 ),
                 "recognition": {"status": "not_evaluated", "basis": None},
                 "effect": {
