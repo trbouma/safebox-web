@@ -29,9 +29,9 @@ defines how future installability, offline presentation, service workers,
 notifications, NFC, and local browser conveniences can be introduced without
 moving workflow authority or Acorn state into the browser.
 
-A first read-only OpenETR integration now projects the signed origin and linked
-control-event history for an existing Record File. The initial adapter
-implements only kinds `1415` and `1416`, the object-wide `o` query, exact
+A first read-only OpenETR integration now projects candidate Anchor Events and
+their linked control-event history for an existing Record File. The initial
+adapter implements only kinds `1415` and `1416`, the object-wide `o` query, exact
 prior-event `e` traversal, and signature validation; it does not import OpenETR
 or publish events. Future issuance and fuller independent verification remain
 scoped by the
@@ -98,7 +98,7 @@ This implementation intentionally provides:
   an authorized verifier receive the exact record and apply its own native,
   cryptographic, recognition, and policy checks without implying a control
   transfer;
-- an on-demand, server-rendered OpenETR origin and control-history projection
+- an on-demand, server-rendered OpenETR anchor and control-history projection
   for Record Files;
 - receiver-created payment requests, currently finalized through Lightning
   deposits at the Acorn home mint;

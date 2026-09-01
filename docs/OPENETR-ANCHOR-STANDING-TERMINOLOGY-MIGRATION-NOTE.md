@@ -194,7 +194,6 @@ and construct an independent candidate graph for each one:
                 "protocol_version": None,
                 "controller": None,
                 "lifecycle": None,
-                "standing": None,
                 "active_guards": [],
                 "basis_event_ids": [],
             },

@@ -43,7 +43,6 @@ def test_consequential_state_derivation_boundary_is_explicitly_unimplemented() -
         "protocol_version": None,
         "controller": None,
         "lifecycle": None,
-        "standing": None,
         "active_guards": [],
         "basis_event_ids": [],
     }
@@ -130,12 +129,13 @@ def test_openetr_history_follows_exact_prior_event_chain() -> None:
     ]
     assert graph["controls"][0]["action_label"] == "Transfer initiated"
     assert graph["controls"][0]["participant"].startswith("npub1")
+    assert graph["controls"][0]["anchor_event_id"] == anchor.id
+    assert "origin_event_id" not in graph["controls"][0]
     assert graph["consequential_state"] == {
         "status": "not_derived",
         "protocol_version": None,
         "controller": None,
         "lifecycle": None,
-        "standing": None,
         "active_guards": [],
         "basis_event_ids": [],
     }

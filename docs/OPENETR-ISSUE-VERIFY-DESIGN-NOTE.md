@@ -11,8 +11,8 @@
 This note is a proposed design. It does not describe functionality currently
 available in Safebox Web.
 
-The first integration should be intentionally narrow: issue an OpenETR origin
-event for an existing Acorn record artifact, and independently verify the
+The first integration should be intentionally narrow: issue an OpenETR Anchor
+Event for an existing Acorn record artifact, and independently verify the
 artifact against OpenETR signed evidence. Record transmission, WebSockets,
 transfer negotiation, background subscriptions, and the wider control-event
 lifecycle are not prerequisites and are outside this initial scope.
@@ -32,7 +32,7 @@ The integration should let a user answer two practical questions:
 
 These are not storage operations. Acorn remains responsible for safeguarding
 keys, private records, encrypted attachments, relay-backed availability, and
-recovery. OpenETR remains responsible for object digests, origin and control
+recovery. OpenETR remains responsible for object digests, Anchor and control
 events, graph traversal, structural verification, and verifier-policy output.
 Safebox Web presents the workflows and mediates the trusted execution boundary.
 
@@ -145,7 +145,7 @@ contract remains useful for interoperability tests, but spawning the CLI is not
 the preferred production boundary.
 
 The current OpenETR working registry assigns regular event kind `1415` to the
-origin event and kind `1416` to the control-event family. Safebox Web should
+Anchor Event and kind `1416` to the control-event family. Safebox Web should
 obtain these semantics from a pinned compatible OpenETR component rather than
 scattering kind constants through the application. Deprecated `31415` and
 `31416` events may be reported by compatibility tooling but must not be issued
@@ -212,11 +212,11 @@ The proposed hypermedia flow is:
 3. A GET request retrieves and hashes the artifact and presents a confirmation
    page. It does not publish anything.
 4. Safebox Web performs a preflight OpenETR query for the object digest and
-   reports existing origin events, including competing or same-signer origins.
+   reports existing Anchor Events, including competing or same-signer anchors.
 5. The user explicitly confirms a CSRF-protected POST.
 6. Safebox Web reloads the artifact and recomputes the digest. It must match the
    digest shown at confirmation time.
-7. The OpenETR component constructs and signs the origin event, publishes it to
+7. The OpenETR component constructs and signs the Anchor Event, publishes it to
    the configured OpenETR relays, and queries for exact event readback.
 8. Safebox Web returns a complete result representation containing the object
    id, digest, event id, signer, kind, relays, readback status, and warnings.
@@ -227,16 +227,16 @@ form is a server-authenticated token containing the record label, complete
 digest, signing `npub`, selected profile, relays, issuance purpose, and issuance
 time. It must contain no private key or artifact bytes.
 
-Duplicate-origin handling must fail closed by default. If an origin already
-exists, Safebox Web should direct the user to verification rather than silently
-issue another event. Any future override must be explicit and must show the
-existing origin evidence first.
+Duplicate-anchor handling must fail closed by default. If an Anchor Event
+already exists, Safebox Web should direct the user to verification rather than
+silently issue another event. Any future override must be explicit and must
+show the existing anchor evidence first.
 
 Relay acknowledgement alone is not conclusive. Exact post-publication readback
 is the stronger success condition. If publication may have occurred but
 readback times out, the outcome is **indeterminate**, not failed. The route must
 show the signed event id and must not automatically sign and publish a second
-origin event.
+Anchor Event.
 
 ## Verification workflow
 
@@ -249,8 +249,8 @@ The proposed flow is:
 1. The user selects **Verify with OpenETR** from an existing record.
 2. Safebox Web retrieves and decrypts the Record File through Acorn.
 3. The OpenETR component calculates its complete digest and object id.
-4. It queries the configured relays for origin and control events anchored by
-   the object-wide `o` tag and traverses exact prior-event `e` links.
+4. It queries the configured relays for Anchor and control events associated
+   through the object-wide `o` tag and traverses exact prior-event `e` links.
 5. It verifies event ids, signatures, required tags, graph continuity, and the
    selected generic or domain verifier policy.
 6. Safebox Web renders signed evidence and policy conclusions separately.
@@ -262,7 +262,7 @@ It should distinguish at least:
 - **Cryptographic evidence:** event ids and signatures verify.
 - **Structural graph:** required tags and event links form candidate chains.
 - **Derived state:** current candidate controller and lifecycle state.
-- **Policy findings:** warnings, ambiguous branches, duplicate origins, unknown
+- **Policy findings:** warnings, ambiguous branches, duplicate anchors, unknown
   participants, or non-recognition under the selected verifier policy.
 - **Recognition:** whether a selected community, institution, registry, or
   legal rule book gives effect to that evidence, if such a policy was actually
@@ -307,7 +307,7 @@ For convenience, Acorn may later store an encrypted companion record in a
 reserved namespace containing:
 
 - object id and complete digest;
-- origin event id and signer `npub`;
+- Anchor Event id and signer `npub`;
 - relay hints and readback observations;
 - OpenETR component and schema versions;
 - selected domain and verifier policy; and
@@ -385,7 +385,7 @@ The OpenETR component should expose typed asynchronous or safely bounded
 operations equivalent to:
 
 ```python
-issue_origin(
+issue_anchor(
     artifact: bytes,
     signer_nsec: str,
     relays: list[str],
@@ -413,7 +413,7 @@ exact readback, graph state, and warnings without private key material.
 - exact artifact bytes and the expected attached signer reach the component
   boundary without appearing in rendered output or logs;
 - digest changes between confirmation and POST are rejected;
-- duplicate origins and indeterminate publication are rendered distinctly;
+- duplicate anchors and indeterminate publication are rendered distinctly;
 - verification separates artifact, cryptographic, graph, policy, and
   recognition findings;
 - unsafe relay destinations and oversized artifacts are rejected; and
@@ -427,7 +427,7 @@ exact readback, graph state, and warnings without private key material.
   not match the issued graph;
 - exercise missing, malformed, competing, and broken-chain events;
 - confirm behavior against an allowlisted third-party relay; and
-- confirm that timeout handling never produces an automatic duplicate origin.
+- confirm that timeout handling never produces an automatic duplicate anchor.
 
 Live tests should use disposable signing keys and non-sensitive fixture files.
 They must never publish a real passport, birth certificate, health record, or
@@ -455,19 +455,19 @@ intermediate integration step. It does not depend on the OpenETR Python package
 and it does not sign or publish anything. For an Acorn Record File, the
 record page uses the complete plaintext SHA-256 value already authenticated by
 Acorn as the object-wide `o` identifier. An on-demand hypermedia link then
-queries the operator-configured relays for current origin kind `1415` and
+queries the operator-configured relays for current Anchor kind `1415` and
 control kind `1416` events.
 
 The projection:
 
 - validates every returned Nostr event signature before displaying it;
-- selects the earliest signed origin when more than one origin exists;
-- follows exact prior-event `e` links from that origin;
+- preserves each signed candidate Anchor Event when more than one exists;
+- follows exact prior-event `e` links from each candidate anchor;
 - requires an explicit `origin` tag, when present, to agree with the selected
-  origin;
-- queries the same configured relays for the origin signer's latest valid kind
+  anchor; the wire tag name is retained for compatibility;
+- queries the same configured relays for the anchor signer's latest valid kind
   `0` profile and presents selected recognition metadata;
-- combines the origin and issuer into one human-first presentation: issuer
+- combines the anchor and signer into one human-first presentation: signer
   display name, name, description, and other populated profile claims appear
   before the statement made about the Record File at anchoring, while event
   identifiers, kinds, signer key, object digest, and profile-event metadata
@@ -475,9 +475,9 @@ The projection:
 - derives an operator-configured durable verifier link from the complete
   object digest and presents the identical URL as a clickable link and
   server-rendered QR code in a collapsible section;
-- displays the origin and related control events without making a recognition
-  or legal-effect claim; and
-- reports competing origins, broken or orphaned chains, invalid signatures,
+- displays each candidate anchor and its related control events without making
+  a recognition or legal-effect claim; and
+- reports competing anchors, broken or orphaned chains, invalid signatures,
   and relay failures as distinct cautions.
 
 The lookup is intentionally on demand so merely opening a private record does
@@ -485,13 +485,13 @@ not contact public OpenETR infrastructure. Expanding the pane presents a normal
 server-rendered link; following it reloads the record with the history pane
 open. No client-side graph logic or OpenETR key material is introduced.
 
-Issuer profile enrichment is recognition context rather than control evidence.
-The profile event must have a valid signature from the exact origin key. Its
+Signer profile enrichment is recognition context rather than control evidence.
+The profile event must have a valid signature from the exact anchor key. Its
 display name, name, description, and safe HTTP(S) links may help a reader
 recognize that key, but self-published NIP-05, Lightning-address, website, and
 profile-image values remain claims unless separately resolved or verified. A
 missing or malformed profile does not invalidate or hide an otherwise valid
-origin event.
+Anchor Event.
 
 Operators configure the experimental query boundary with:
 

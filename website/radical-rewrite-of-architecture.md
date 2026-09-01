@@ -130,14 +130,14 @@ OpenETR generalizes this by anchoring evidence to the exact object and its
 control graph:
 
 ```text
-artifact bytes -> object digest -> signed origin event -> signed control events
+artifact bytes -> object digest -> signed Anchor Event -> signed control events
 ```
 
 That turns verification into more than checking whether one issuer signed one
 credential. A verifier can ask:
 
 - Do these exact bytes match the object being evaluated?
-- Which key originated the object?
+- Which key anchored the object?
 - What signed events followed?
 - Who appears to control it now?
 - Are there competing histories or unresolved branches?

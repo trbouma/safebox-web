@@ -45,8 +45,8 @@ def derive_consequential_state(
     This function is the application boundary for state derivation. The
     ``dcr_records`` is the candidate Digital Controllable Record: one signed
     record or a graph of related signed records concerning the artifact. The
-    current Safebox Web adapter can construct candidate DCR graphs, but it
-    does not yet implement a versioned OpenETR state machine. Returning an
+    current Safebox Web adapter can construct candidate DCR graphs, but it does
+    not yet implement versioned OpenETR state transition rules. Returning an
     explicit ``not_derived`` result prevents callers from treating chronology,
     database state, or the mere presence of signed events as authoritative
     consequential state.
@@ -62,7 +62,6 @@ def derive_consequential_state(
         "protocol_version": None,
         "controller": None,
         "lifecycle": None,
-        "standing": None,
         "active_guards": [],
         "basis_event_ids": [],
     }
@@ -145,7 +144,9 @@ def _event_view(event: Event) -> dict[str, Any]:
         ),
         "content": event.content or "",
         "prior_event_id": _tag_value(event, "e"),
-        "origin_event_id": _tag_value(event, "origin"),
+        # The legacy wire tag remains ``origin``; the application model uses
+        # current Anchor Event terminology.
+        "anchor_event_id": _tag_value(event, "origin"),
         "participant": (
             _npub(_tag_value(event, "p")) if _tag_value(event, "p") else None
         ),
