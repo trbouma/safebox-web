@@ -43,7 +43,7 @@ nav:
       - Cash and Clear: cash-and-clear.md
       - Deep Verification: deep-verification.md
       - Graduated Disclosure: graduated-disclosure.md
-      - Radical Rewrite of Architecture: radical-rewrite-of-architecture.md
+      - Records-First Architecture: records-first-architecture.md
       - Product Architecture: product-architecture.md
       - Trust Boundary: trust-boundary.md
   - Use Safebox Web:

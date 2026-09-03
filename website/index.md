@@ -20,7 +20,7 @@ description: A local-first application for user-controlled value, verifiable rec
 </figure>
 
 [Why Safebox Web?](why-safebox-web.md){ .md-button .md-button--primary }
-[Radical Rewrite of Architecture](radical-rewrite-of-architecture.md){ .md-button .md-button--primary }
+[Records-First Architecture](records-first-architecture.md){ .md-button .md-button--primary }
 [View the source](https://github.com/trbouma/safebox-web){ .md-button }
 
 </section>
@@ -308,7 +308,7 @@ workflow: the payment appears as pending and can be finalized when the mint is
 available again. This working experiment is an important foundation for
 Mainstay across Connected, Local, Mobile, and Community modes.
 
-[Read the radical rewrite](radical-rewrite-of-architecture.md){ .md-button .md-button--primary }
+[Read the records-first architecture](records-first-architecture.md){ .md-button .md-button--primary }
 [See how Safebox treats funds](how-safebox-treats-funds.md){ .md-button .md-button--primary }
 [Read the product architecture](product-architecture.md){ .md-button .md-button--primary }
 [Get started](getting-started.md){ .md-button }

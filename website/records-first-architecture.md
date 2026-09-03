@@ -1,9 +1,9 @@
 ---
-title: Radical Rewrite of Architecture
+title: Records-First Architecture
 description: A records-first approach that separates native claims, artifact notarization, control evidence, recognition, and verifier policy.
 ---
 
-# Radical Rewrite of Architecture
+# Records-First Architecture
 
 Most digital systems start with an application, an account, or a platform
 database. Safebox starts with records.
@@ -275,9 +275,9 @@ whether the procedure was fit for purpose, and whether the statement is current
 and relevant. That is different from trusting a native issuer's claims, though
 a verifier may require both.
 
-That distinction is the heart of the rewrite. The system does not need one
-central database to decide what every record means. Different verifiers can
-recognize the same evidence under different rules.
+That distinction is the heart of the records-first model. The system does not
+need one central database to decide what every record means. Different
+verifiers can recognize the same evidence under different rules.
 
 ## Why this matters
 
@@ -301,7 +301,7 @@ foundation for Mainstay, the future unified application. Lockbox is the
 hardware-first appliance intended to run Mainstay and its supporting services
 locally:
 
-> Lockbox preserves local authority, continuity, and evidence.
+> Lockbox preserves local stewardship, continuity, and evidence.
 
 [Understand Deep Verification](deep-verification.md){ .md-button .md-button--primary }
 [Explore Verifiable Records](records-and-wallet-passes.md){ .md-button }

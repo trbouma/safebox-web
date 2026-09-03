@@ -56,14 +56,14 @@ In that situation, Safebox Web can fall back to local services:
 - later, nearby community infrastructure or mesh transport when wider
   connectivity is unavailable.
 
-## When the large providers go offline
+## When Outside Services Are Unavailable
 
 Local-first becomes most important when the services people normally depend on
 are not available. A cloud application, public relay, Lightning provider, mint,
-DNS service, or even the wider internet can fail independently. Safebox is
-being designed so that the disappearance of one of those providers does not
+DNS service, or even the wider internet can be interrupted independently.
+Safebox is being designed so that a provider outage or transition does not
 automatically make the community's own application, records, or previously
-issued funds disappear with it.
+issued funds unavailable with it.
 
 Mainstay is the in-development application intended to become that local-first
 provider. Running on a Lockbox or other community-controlled infrastructure,
@@ -81,13 +81,13 @@ rather than presenting them as mint-confirmed. When connectivity to the mint
 returns, Acorn checks the proofs, refreshes accepted value, and records the
 final result. Invalid or already-spent proofs do not become confirmed funds.
 
-This is continuity, not the invention of a new source of money. A disconnected
-Mainstay cannot obtain authoritative proof state from an unavailable mint,
+This is continuity, not the invention of a new source of money. A locally
+operating Mainstay cannot obtain authoritative proof state from an unavailable mint,
 complete a real Lightning settlement, or remove the credit risk of the issuer.
 It can preserve local operation, evidence of what was exchanged, and a clear
 queue of work to reconcile later. Communities can therefore choose how much
-provisional risk to accept during an emergency without confusing provisional
-receipt with final settlement.
+provisional risk to accept during a service interruption without confusing
+provisional receipt with final settlement.
 
 Payment continuity follows the same pattern. In ordinary connected use,
 Safebox Web can use mints, Lightning, and direct Safebox-to-Safebox ecash
@@ -120,13 +120,13 @@ for Mainstay, Acorn, Spurline, Grove, and related services people may normally
 reach through a web-connected service.
 
 <figure class="safebox-continuity-figure" markdown>
-![Concept illustration of a phone running Safebox Web beside a compact Lockbox-style Safebox appliance with an integrated keypad, NFC tap point, short LoRa-style antenna, and physical Wi-Fi control, ready beside a small emergency bag, passports, keys, and an emergency folder](assets/images/lockbox-appliance-concept.jpg)
+![Concept illustration of a phone running Safebox Web beside a compact Lockbox-style Safebox appliance with an integrated keypad, NFC tap point, short LoRa-style antenna, and physical Wi-Fi control, ready beside essential records, passports, and keys](assets/images/lockbox-appliance-concept.jpg)
 <figcaption>Safebox Web proves the user experience today. Mainstay will unify that experience across continuity modes, while Lockbox provides a portable local home for the application and its services.</figcaption>
 </figure>
 
 The long-term goal remains simple:
 
-> Lockbox preserves local authority, continuity, and evidence.
+> Lockbox preserves local stewardship, continuity, and evidence.
 
 Safebox Web is the app a person can use now. Acorn is the portable wallet and
 record state underneath it. Spurline preserves local relay events. Grove
@@ -134,4 +134,4 @@ preserves encrypted blob availability. Mainstay will bring those pieces into
 one unified application, and Lockbox will provide the appliance that keeps
 them available locally when continuity matters.
 
-[Read the records-first architecture](radical-rewrite-of-architecture.md){ .md-button .md-button--primary }
+[Read the records-first architecture](records-first-architecture.md){ .md-button .md-button--primary }

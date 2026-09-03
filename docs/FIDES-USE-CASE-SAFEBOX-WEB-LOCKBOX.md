@@ -85,8 +85,8 @@ recognize or import.
 community, proofs may support local in-kind clearing until global connectivity
 returns.
 8. In a Lockbox deployment, Safebox Web, Acorn, Spurline, Grove, and OpenETR
-preserve local authority, continuity, and evidence while synchronizing with
-external infrastructure when available.
+   preserve local stewardship, continuity, and evidence while synchronizing with
+   external infrastructure when available.
 
 Character count: 1,170 / 1,200
 
@@ -149,10 +149,10 @@ components:
 
 The central continuity claim is:
 
-> Lockbox preserves local authority, continuity, and evidence.
+> Lockbox preserves local stewardship, continuity, and evidence.
 
-This use case is especially relevant for communities that may remain locally
-connected while temporarily disconnected from the wider Internet. A remote
-community, for example, could continue to access locally preserved records,
-recognize locally held evidence, and exchange transferable payment proofs until
-global network connectivity returns.
+This use case is especially relevant for communities, resorts, campuses, and
+co-working facilities that may remain locally connected while outside services
+are temporarily unavailable. A remote community, for example, could continue to
+access locally preserved records, recognize locally held evidence, and exchange
+transferable payment proofs until wider network connectivity returns.
