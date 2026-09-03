@@ -45,48 +45,49 @@ present evidence. The experience should feel familiar and convenient.
 
 The important difference is underneath. The app should not be the only place
 the wallet can live. If a hosted service is unavailable, a provider changes
-terms, or the wider internet is down, the same Acorn-controlled state should
-have a local continuity path.
+terms, or outside connectivity is limited, the same Acorn-controlled state
+should have a local continuity path.
 
 In that situation, Safebox Web can fall back to local services:
 
 - a local Acorn execution environment for keys, funds, records, and recovery;
 - a local Spurline relay for signed events and wallet state;
 - a local Grove service for protected Record Files and larger blobs; and
-- later, nearby community infrastructure or mesh transport when wider
-  connectivity is unavailable.
+- later, nearby community infrastructure or mesh transport when outside
+  connectivity is limited.
 
 ## When Outside Services Are Unavailable
 
 Local-first becomes most important when the services people normally depend on
 are not available. A cloud application, public relay, Lightning provider, mint,
-DNS service, or even the wider internet can be interrupted independently.
-Safebox is being designed so that a provider outage or transition does not
+DNS service, or outside network path can be interrupted independently.
+Safebox is being designed so that a provider interruption or transition does not
 automatically make the community's own application, records, or previously
 issued funds unavailable with it.
 
 Mainstay is the in-development application intended to become that local-first
-provider. Running on a Lockbox or other community-controlled infrastructure,
+environment. Running on a Lockbox or other community-operated infrastructure,
 it can bring the familiar Safebox workflows close to the people using them. A
 local Mainstay deployment can use local Acorn execution, a local Spurline
-relay, and local Grove storage instead of waiting for a distant application
-provider to recover.
+relay, and local Grove storage while an outside application provider is slow,
+unavailable, or being changed.
 
-Payments can degrade deliberately instead of failing invisibly. Acorns can
-hold ecash that was issued while its mint was reachable. During an outage,
-Mainstay can help participants exchange that existing ecash through available
-local infrastructure and preserve the signed transfer events. The recipient
-can immediately see that funds have arrived, but Safebox keeps them **pending**
-rather than presenting them as mint-confirmed. When connectivity to the mint
-returns, Acorn checks the proofs, refreshes accepted value, and records the
-final result. Invalid or already-spent proofs do not become confirmed funds.
+Payments can move through clear states instead of failing invisibly. Acorns can
+hold ecash that was issued while its mint was reachable. During a service
+interruption, Mainstay can help participants exchange that existing ecash
+through available local infrastructure and preserve the signed transfer events.
+The recipient can immediately see that funds have arrived, but Safebox keeps
+them **pending** rather than presenting them as mint-confirmed. When
+connectivity to the mint returns, Acorn checks the proofs, refreshes accepted
+value, and records the final result. Invalid or already-spent proofs do not
+become confirmed funds.
 
 This is continuity, not the invention of a new source of money. A locally
-operating Mainstay cannot obtain authoritative proof state from an unavailable mint,
-complete a real Lightning settlement, or remove the credit risk of the issuer.
-It can preserve local operation, evidence of what was exchanged, and a clear
-queue of work to reconcile later. Communities can therefore choose how much
-provisional risk to accept during a service interruption without confusing
+operating Mainstay cannot obtain authoritative proof state from an unavailable
+mint, complete a real Lightning settlement, or remove the credit risk of the
+issuer. It can preserve local operation, evidence of what was exchanged, and a
+clear queue of work to reconcile later. Communities can therefore choose how
+much provisional risk to accept during a service interruption without confusing
 provisional receipt with final settlement.
 
 Payment continuity follows the same pattern. In ordinary connected use,
@@ -115,7 +116,7 @@ those stages without pretending that one service answers every question.
 
 Safebox Web proves this experience today. Mainstay is the future unified
 application that will carry it across keys, records, and payments.
-Lockbox is the hardware-first form of the local fallback: a small local home
+Lockbox is the hardware-first form of the local deployment: a small local home
 for Mainstay, Acorn, Spurline, Grove, and related services people may normally
 reach through a web-connected service.
 

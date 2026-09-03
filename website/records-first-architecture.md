@@ -101,9 +101,9 @@ database.
 
 ## Records first
 
-A records-first architecture treats a record as the object that must survive
-application changes, infrastructure outages, migrations, and changes in who is
-asked to recognize it.
+A records-first architecture treats a record as the object that must remain
+usable through application changes, infrastructure transitions, migrations, and
+changes in who is asked to recognize it.
 
 In Safebox, a record can have several layers:
 
@@ -217,7 +217,7 @@ attestation should be trusted for the decision at hand.
 ## What a wallet needs to preserve
 
 A wallet is the app or environment a person uses. It is not the whole thing
-that must survive.
+that must remain portable.
 
 People and communities need continuity for the resources inside and around the
 wallet:
@@ -282,8 +282,8 @@ verifiers can recognize the same evidence under different rules.
 ## Why this matters
 
 A records-first architecture supports continuity across apps, devices,
-organizations, and communities. It can work with hosted services when they are
-available and local services when continuity matters most.
+organizations, and communities. It can work with hosted services in ordinary
+use and local services when local operation matters most.
 
 It also makes room for use cases that are awkward in ordinary app-centric
 systems:
@@ -293,7 +293,8 @@ systems:
 - community recognition during limited connectivity;
 - Continuity Payments: in-kind local payment clearing using transferable
   proofs, with finality deferred until mint reconciliation;
-- evidence that remains useful after the original application disappears; and
+- evidence that remains useful after the original application changes or is
+  replaced; and
 - verifier policies that can explain why evidence is or is not recognized.
 
 Safebox Web is one working app in that architecture and the practical

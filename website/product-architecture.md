@@ -183,7 +183,7 @@ In that model:
 - Spurline is the local evidence relay;
 - Grove is the local encrypted blob store;
 - OpenETR provides signed transferable-record evidence; and
-- external services remain useful, but not always required for local
+- external services remain useful, while local services can support local
   continuity.
 
 Mainstay should describe changing conditions in plain continuity modes:
@@ -197,7 +197,7 @@ demonstrates direct ecash delivery to another Safebox address and keeps
 unfinalized value visible as pending. If the mint is unreachable, finalization
 can wait without changing the confirmed balance. Mainstay can carry that same
 interaction into Local, Mobile, and Community modes while Lockbox supplies the
-local services and storage.
+nearby services and storage.
 
 ## Related repositories
 

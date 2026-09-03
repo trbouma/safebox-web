@@ -81,9 +81,9 @@ to the record.
 6. The user can share or present a record by QR code. The recipient can review
 the record, protected original, and related evidence before deciding what to
 recognize or import.
-7. Payments can be received or transferred as ecash proofs. In a disconnected
-community, proofs may support local in-kind clearing until global connectivity
-returns.
+7. Payments can be received or transferred as ecash proofs. During limited
+connectivity, proofs may support local in-kind clearing until outside payment
+services can be reached again.
 8. In a Lockbox deployment, Safebox Web, Acorn, Spurline, Grove, and OpenETR
    preserve local stewardship, continuity, and evidence while synchronizing with
    external infrastructure when available.

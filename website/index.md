@@ -287,7 +287,7 @@ The future unified app and its hardware-first local appliance.](product-architec
 
 </div>
 
-## Built for continuity
+## Built for Local Continuity
 
 Safebox Web is deliberately server-rendered, dependency-aware, and modest in
 what it asks the browser to do. The browser provides the session and
@@ -302,8 +302,8 @@ If a mint cannot be reached, the value stays pending rather than being
 presented as final.
 
 Continuity Payments extend that model into local commerce. Safebox can transfer
-previously issued ecash directly to another Safebox address, including when
-mint access is interrupted. The recipient does not need a different receiving
+previously issued ecash directly to another Safebox address, including during
+limited-connectivity periods. The recipient does not need a different receiving
 workflow: the payment appears as pending and can be finalized when the mint is
 available again. This working experiment is an important foundation for
 Mainstay across Connected, Local, Mobile, and Community modes.
