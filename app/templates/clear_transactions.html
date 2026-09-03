@@ -78,6 +78,7 @@
     <p>Confirmed balance{% if balance.pending_amount %}; {{ "{:,}".format(balance.pending_amount) }} pending in {{ "{:,}".format(balance.count) }} transfer{% if balance.count != 1 %}s{% endif %}{% endif %}.</p>
     <dl class="clear-identity">
       <div><dt>CMU</dt><dd>{{ balance.unit }}</dd></div>
+      {% if balance.keyset_id %}<div><dt>Keyset</dt><dd>{{ balance.keyset_id }}</dd></div>{% endif %}
       <div><dt>Mint</dt><dd>{{ balance.mint }}</dd></div>
     </dl>
   </article>

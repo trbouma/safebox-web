@@ -18,6 +18,7 @@ from pathlib import Path
 import zipfile
 
 from cryptography.fernet import Fernet
+import httpx
 import pytest
 from sqlmodel import Session
 
@@ -3387,6 +3388,7 @@ def test_wallet_clear_snapshot_uses_friendly_cached_mint_metadata(tmp_path) -> N
     app.state.clear_mint_metadata_cache[(
         "https://clear.example",
         "cmu-friendly",
+        "",
     )] = (
         time.monotonic(),
         {
@@ -4693,23 +4695,21 @@ def test_clear_page_resolves_aliases_without_summing_distinct_balances(
     monkeypatch,
 ) -> None:
     metadata = {
-        "https://clear.safebox.dev/v1/info": {
-            "mint_url": "https://clear.safebox.dev",
-            "currency": {
-                "name": "Clear Lab Credit Program",
+        "https://clear.safebox.dev/v1/keysets": {
+            "keysets": [{
+                "id": "keyset-new",
                 "unit": "cmu-new",
                 "friendly_alias": "Clear Lab Credits",
                 "friendly_unit_alias": "credits",
-            },
+            }],
         },
-        "https://harbour.example/v1/info": {
-            "mint_url": "https://harbour.example",
-            "currency": {
-                "name": "Harbour Program",
+        "https://harbour.example/v1/keysets": {
+            "keysets": [{
+                "id": "keyset-old",
                 "unit": "cmu-old",
                 "friendly_alias": "Harbour Lab Credits",
                 "friendly_unit_alias": "smiles",
-            },
+            }],
         },
     }
     requested_urls = []
@@ -4749,6 +4749,7 @@ def test_clear_page_resolves_aliases_without_summing_distinct_balances(
             "amount": 25,
             "unit": "cmu-new",
             "mint": "https://clear.safebox.dev",
+            "keyset_ids": ["keyset-new"],
         },
         {
             "event_id": "clear-old",
@@ -4756,6 +4757,7 @@ def test_clear_page_resolves_aliases_without_summing_distinct_balances(
             "amount": 25,
             "unit": "cmu-old",
             "mint": "https://harbour.example",
+            "keyset_ids": ["keyset-old"],
         },
     ]
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
@@ -4771,6 +4773,236 @@ def test_clear_page_resolves_aliases_without_summing_distinct_balances(
     assert "cmu-new" in response.text
     assert "cmu-old" in response.text
     assert sorted(requested_urls) == sorted(metadata)
+
+
+def test_clear_display_falls_back_to_canonical_unit_without_friendly_metadata(
+    monkeypatch,
+) -> None:
+    class FailingClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url):
+            raise httpx.ConnectError(f"unavailable: {url}")
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FailingClient)
+    summary = main_module._clear_balance_summary(
+        [],
+        [{
+            "mint": "https://clear.example",
+            "unit": "cmu-canonical",
+            "amount": 10,
+            "proof_count": 1,
+            "keysets": [{
+                "keyset": "keyset-canonical",
+                "amount": 10,
+                "proof_count": 1,
+            }],
+        }],
+    )
+    asyncio.run(main_module._resolve_clear_aliases(
+        summary,
+        timeout=1,
+        configured_mints=(),
+        cache={},
+    ))
+
+    assert summary["balances"][0]["display_name"] == "cmu-canonical"
+    assert summary["balances"][0]["display_unit"] == "cmu-canonical"
+
+
+def test_clear_display_prefers_friendly_alias_and_unit_alias() -> None:
+    metadata = main_module._clear_display_metadata(
+        {
+            "id": "keyset-food",
+            "unit": "cmu-food",
+            "friendly_name": "Food Program",
+            "friendly_alias": "Food Share Credits",
+            "friendly_unit_alias": "shares",
+        },
+        mint="https://clear.example",
+        unit="cmu-food",
+        keyset_id="keyset-food",
+    )
+
+    assert metadata is not None
+    assert metadata["display_name"] == "Food Share Credits"
+    assert metadata["display_unit"] == "shares"
+    name_only = main_module._clear_display_metadata(
+        {
+            "id": "keyset-food",
+            "unit": "cmu-food",
+            "friendly_name": "Food Program",
+        },
+        mint="https://clear.example",
+        unit="cmu-food",
+        keyset_id="keyset-food",
+    )
+    assert name_only is not None
+    assert name_only["display_name"] == "Food Program"
+    assert name_only["display_unit"] == "cmu-food"
+
+
+def test_clear_balances_remain_grouped_by_mint_unit_and_keyset_not_labels(
+    monkeypatch,
+) -> None:
+    payload = {
+        "keysets": [
+            {
+                "id": "keyset-a",
+                "unit": "cmu-shared",
+                "friendly_alias": "Community Credits",
+                "friendly_unit_alias": "credits",
+            },
+            {
+                "id": "keyset-b",
+                "unit": "cmu-shared",
+                "friendly_alias": "Community Credits",
+                "friendly_unit_alias": "credits",
+            },
+        ]
+    }
+
+    class FakeResponse:
+        content = json.dumps(payload).encode()
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return payload
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url):
+            assert url == "https://clear.example/v1/keysets"
+            return FakeResponse()
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    summary = main_module._clear_balance_summary(
+        [],
+        [{
+            "mint": "https://clear.example",
+            "unit": "cmu-shared",
+            "amount": 30,
+            "proof_count": 2,
+            "keysets": [
+                {"keyset": "keyset-a", "amount": 10, "proof_count": 1},
+                {"keyset": "keyset-b", "amount": 20, "proof_count": 1},
+            ],
+        }],
+    )
+    asyncio.run(main_module._resolve_clear_aliases(
+        summary,
+        timeout=1,
+        configured_mints=(),
+        cache={},
+    ))
+
+    assert len(summary["balances"]) == 2
+    assert {
+        (row["mint"], row["unit"], row["keyset_id"], row["amount"])
+        for row in summary["balances"]
+    } == {
+        ("https://clear.example", "cmu-shared", "keyset-a", 10),
+        ("https://clear.example", "cmu-shared", "keyset-b", 20),
+    }
+    assert {row["display_name"] for row in summary["balances"]} == {
+        "Community Credits"
+    }
+
+
+def test_clear_metadata_refresh_changes_labels_without_changing_balance_identity(
+    monkeypatch,
+) -> None:
+    payload = {
+        "keysets": [{
+            "id": "keyset-refresh",
+            "unit": "cmu-refresh",
+            "friendly_alias": "Updated Credits",
+            "friendly_unit_alias": "shares",
+        }]
+    }
+
+    class FakeResponse:
+        content = json.dumps(payload).encode()
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return payload
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url):
+            assert url == "https://clear.example/v1/keysets"
+            return FakeResponse()
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    summary = main_module._clear_balance_summary(
+        [],
+        [{
+            "mint": "https://clear.example",
+            "unit": "cmu-refresh",
+            "amount": 10,
+            "proof_count": 1,
+            "keysets": [{
+                "keyset": "keyset-refresh",
+                "amount": 10,
+                "proof_count": 1,
+            }],
+        }],
+    )
+    balance = summary["balances"][0]
+    identity_before = (
+        balance["mint"],
+        balance["unit"],
+        balance["keyset_id"],
+    )
+    cache = {
+        identity_before: (
+            time.monotonic() - 301,
+            {
+                "display_name": "Old Credits",
+                "display_unit": "old-units",
+                "metadata_resolved": True,
+            },
+        )
+    }
+
+    asyncio.run(main_module._resolve_clear_aliases(
+        summary,
+        timeout=1,
+        configured_mints=(),
+        cache=cache,
+    ))
+
+    assert (balance["mint"], balance["unit"], balance["keyset_id"]) == identity_before
+    assert balance["display_name"] == "Updated Credits"
+    assert balance["display_unit"] == "shares"
 
 
 def test_transaction_page_shows_persisted_payment_awaiting_confirmation(tmp_path) -> None:

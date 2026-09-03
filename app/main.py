@@ -1141,35 +1141,97 @@ def _clear_balance_summary(
         if isinstance(receipt, dict)
         and str(receipt.get("status") or "pending") == "pending"
     ]
-    by_balance: dict[tuple[str, str], dict] = {}
+    by_balance: dict[tuple[str, str, str], dict] = {}
+
+    def add_spendable_balance(
+        *,
+        mint: str,
+        unit: str,
+        keyset_id: str,
+        amount: object,
+        proof_count: object,
+    ) -> None:
+        try:
+            normalized_amount = max(0, int(amount or 0))
+        except (TypeError, ValueError):
+            normalized_amount = 0
+        try:
+            normalized_proof_count = max(0, int(proof_count or 0))
+        except (TypeError, ValueError):
+            normalized_proof_count = 0
+        row = by_balance.setdefault(
+            (mint, unit, keyset_id),
+            {
+                "mint": mint,
+                "unit": unit,
+                "keyset_id": keyset_id or None,
+                "amount": 0,
+                "proof_count": 0,
+                "pending_amount": 0,
+                "count": 0,
+                "display_name": unit,
+                "display_unit": unit,
+                "metadata_resolved": False,
+            },
+        )
+        row["amount"] += normalized_amount
+        row["proof_count"] += normalized_proof_count
+
     for balance in spendable_balances or []:
         if not isinstance(balance, dict):
             continue
         unit = str(balance.get("unit") or "unknown")
         mint = str(balance.get("mint") or "unknown").rstrip("/")
-        try:
-            amount = max(0, int(balance.get("amount") or 0))
-        except (TypeError, ValueError):
-            amount = 0
-        by_balance[(mint, unit)] = {
-            "mint": mint,
-            "unit": unit,
-            "amount": amount,
-            "proof_count": max(0, int(balance.get("proof_count") or 0)),
-            "pending_amount": 0,
-            "count": 0,
-            "display_name": unit,
-            "display_unit": unit,
-            "metadata_resolved": False,
-        }
+        keysets = balance.get("keysets")
+        if isinstance(keysets, list) and keysets:
+            usable_keysets = [
+                keyset for keyset in keysets if isinstance(keyset, dict)
+            ]
+            for keyset in usable_keysets:
+                keyset_id = str(
+                    keyset.get("keyset")
+                    or keyset.get("keyset_id")
+                    or keyset.get("id")
+                    or ""
+                ).strip()
+                add_spendable_balance(
+                    mint=mint,
+                    unit=unit,
+                    keyset_id=keyset_id,
+                    amount=keyset.get("amount"),
+                    proof_count=keyset.get("proof_count"),
+                )
+            if usable_keysets:
+                continue
+        direct_keyset_id = str(
+            balance.get("keyset_id") or balance.get("keyset") or ""
+        ).strip()
+        if not direct_keyset_id:
+            keyset_ids = balance.get("keyset_ids")
+            if isinstance(keyset_ids, list) and len(keyset_ids) == 1:
+                direct_keyset_id = str(keyset_ids[0] or "").strip()
+        add_spendable_balance(
+            mint=mint,
+            unit=unit,
+            keyset_id=direct_keyset_id,
+            amount=balance.get("amount"),
+            proof_count=balance.get("proof_count"),
+        )
     for receipt in pending:
         unit = str(receipt.get("unit") or "unknown")
         mint = str(receipt.get("mint") or "unknown").rstrip("/")
+        keyset_ids = [
+            str(keyset_id or "").strip()
+            for keyset_id in (receipt.get("keyset_ids") or [])
+            if str(keyset_id or "").strip()
+        ]
+        keyset_id = keyset_ids[0] if len(keyset_ids) == 1 else ""
         row = by_balance.setdefault(
-            (mint, unit),
+            (mint, unit, keyset_id),
             {
                 "mint": mint,
                 "unit": unit,
+                "keyset_id": keyset_id or None,
                 "amount": 0,
                 "proof_count": 0,
                 "pending_amount": 0,
@@ -1191,6 +1253,12 @@ def _clear_balance_summary(
             (
                 str(receipt.get("mint") or "unknown").rstrip("/"),
                 str(receipt.get("unit") or "unknown"),
+                (
+                    str(receipt.get("keyset_ids")[0]).strip()
+                    if isinstance(receipt.get("keyset_ids"), list)
+                    and len(receipt.get("keyset_ids")) == 1
+                    else ""
+                ),
             )
             for receipt in pending
         }),
@@ -1198,7 +1266,11 @@ def _clear_balance_summary(
         "spendable": any(row["amount"] > 0 for row in by_balance.values()),
         "balances": sorted(
             by_balance.values(),
-            key=lambda row: (row["unit"], row["mint"]),
+            key=lambda row: (
+                row["unit"],
+                row["mint"],
+                str(row.get("keyset_id") or ""),
+            ),
         ),
     }
 
@@ -1217,7 +1289,11 @@ def _clear_transaction_view(
     """Present Clear receipts without combining distinct mint-unit balances."""
 
     metadata = {
-        (str(balance["mint"]), str(balance["unit"])): balance
+        (
+            str(balance["mint"]),
+            str(balance["unit"]),
+            str(balance.get("keyset_id") or ""),
+        ): balance
         for balance in summary.get("balances", [])
         if isinstance(balance, dict)
         and balance.get("mint") is not None
@@ -1229,7 +1305,14 @@ def _clear_transaction_view(
             continue
         mint = str(receipt.get("mint") or "unknown").rstrip("/")
         unit = str(receipt.get("unit") or "unknown")
-        display = metadata.get((mint, unit), {})
+        keyset_ids = [
+            str(keyset_id)
+            for keyset_id in (receipt.get("keyset_ids") or [])
+        ]
+        keyset_id = keyset_ids[0] if len(keyset_ids) == 1 else ""
+        display = metadata.get((mint, unit, keyset_id), {})
+        if not display:
+            display = metadata.get((mint, unit, ""), {})
         try:
             amount = int(receipt.get("amount") or 0)
         except (TypeError, ValueError):
@@ -1263,10 +1346,7 @@ def _clear_transaction_view(
                 "event_short": event_id[:12],
                 "sender_short": sender[:12],
                 "comment": str(receipt.get("comment") or "").strip(),
-                "keyset_ids": [
-                    str(keyset_id)
-                    for keyset_id in (receipt.get("keyset_ids") or [])
-                ],
+                "keyset_ids": keyset_ids,
                 "direction": "in",
                 "operation": "receive",
                 "relay_preview": bool(receipt.get("relay_preview")),
@@ -1277,7 +1357,12 @@ def _clear_transaction_view(
             continue
         mint = str(entry.get("mint") or "unknown").rstrip("/")
         unit = str(entry.get("unit") or "unknown")
-        display = metadata.get((mint, unit), {})
+        entry_keyset_id = str(
+            entry.get("keyset_id") or entry.get("keyset") or ""
+        ).strip()
+        display = metadata.get((mint, unit, entry_keyset_id), {})
+        if not display:
+            display = metadata.get((mint, unit, ""), {})
         timestamp = max(0, int(entry.get("timestamp") or 0))
         direction = str(entry.get("direction") or "in")
         operation = str(entry.get("operation") or "transfer")
@@ -1351,21 +1436,42 @@ def _clear_metadata_url(mint: str, configured_mints: tuple[str, ...]) -> str | N
         return None
     if parsed.scheme not in {"http", "https"}:
         return None
-    return f"{normalized}/v1/info"
+    return f"{normalized}/v1/keysets"
 
 
-def _clear_display_metadata(payload: object, *, mint: str, unit: str) -> dict | None:
-    if not isinstance(payload, dict):
+def _clear_keyset_metadata(payload: object) -> list[dict]:
+    """Return well-shaped keyset rows from supported Cashu response forms."""
+
+    rows: object
+    if isinstance(payload, list):
+        rows = payload
+    elif isinstance(payload, dict) and isinstance(payload.get("keysets"), list):
+        rows = payload["keysets"]
+    elif isinstance(payload, dict) and payload.get("id") is not None:
+        rows = [payload]
+    else:
+        return []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _clear_display_metadata(
+    keyset: object,
+    *,
+    mint: str,
+    unit: str,
+    keyset_id: str | None,
+) -> dict | None:
+    if not isinstance(keyset, dict):
         return None
-    advertised_mint = str(payload.get("mint_url") or mint).rstrip("/")
-    currency = payload.get("currency")
-    if advertised_mint != mint or not isinstance(currency, dict):
+    advertised_unit = str(keyset.get("unit") or "").strip()
+    advertised_keyset_id = str(keyset.get("id") or "").strip()
+    if advertised_unit != unit or not advertised_keyset_id:
         return None
-    if str(currency.get("unit") or "") != unit:
+    if keyset_id and advertised_keyset_id != keyset_id:
         return None
 
-    friendly_name = currency.get("friendly_alias") or currency.get("name")
-    friendly_unit = currency.get("friendly_unit_alias")
+    friendly_name = keyset.get("friendly_alias") or keyset.get("friendly_name")
+    friendly_unit = keyset.get("friendly_unit_alias")
     display_name = str(friendly_name or unit).strip()
     display_unit = str(friendly_unit or unit).strip()
     if not display_name or len(display_name) > 120:
@@ -1373,6 +1479,9 @@ def _clear_display_metadata(payload: object, *, mint: str, unit: str) -> dict | 
     if not display_unit or len(display_unit) > 40:
         display_unit = unit
     return {
+        "mint": mint,
+        "unit": unit,
+        "keyset_id": advertised_keyset_id,
         "display_name": display_name,
         "display_unit": display_unit,
         "metadata_resolved": True,
@@ -1384,43 +1493,50 @@ async def _resolve_clear_aliases(
     *,
     timeout: float,
     configured_mints: tuple[str, ...],
-    cache: dict[tuple[str, str], tuple[float, dict]],
+    cache: dict[tuple[str, str, str], tuple[float, dict]],
 ) -> dict:
     balances = summary.get("balances")
     if not isinstance(balances, list) or not balances:
         return summary
 
-    async def resolve(client: httpx.AsyncClient, balance: dict) -> dict | None:
+    now = monotonic()
+
+    def cached_metadata(balance: dict) -> dict | None:
         mint = str(balance["mint"])
         unit = str(balance["unit"])
-        cached = cache.get((mint, unit))
-        if cached is not None and monotonic() - cached[0] < 300:
+        keyset_id = str(balance.get("keyset_id") or "")
+        cached = cache.get((mint, unit, keyset_id))
+        if cached is not None and now - cached[0] < 300:
             return cached[1]
+        return None
+
+    async def refresh_mint(
+        client: httpx.AsyncClient,
+        mint: str,
+    ) -> list[dict]:
         metadata_url = _clear_metadata_url(mint, configured_mints)
         if metadata_url is None:
-            return None
+            return []
         try:
             response = await client.get(metadata_url)
             response.raise_for_status()
             if len(response.content) > 64 * 1024:
-                return None
-            metadata = _clear_display_metadata(
-                response.json(),
-                mint=mint,
-                unit=unit,
-            )
-            if metadata is not None:
-                cache[(mint, unit)] = (monotonic(), metadata)
-            return metadata
+                return []
+            return _clear_keyset_metadata(response.json())
         except Exception as exc:
             logger.info(
-                "clear mint alias lookup skipped mint=%s error_type=%s",
+                "clear mint metadata lookup skipped mint=%s error_type=%s",
                 mint,
                 type(exc).__name__,
             )
-            return None
+            return []
 
     metadata_timeout = max(0.1, min(float(timeout), 3.0))
+    unresolved_mints = sorted({
+        str(balance["mint"])
+        for balance in balances
+        if cached_metadata(balance) is None
+    })
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(
             metadata_timeout,
@@ -1428,12 +1544,55 @@ async def _resolve_clear_aliases(
         ),
         follow_redirects=False,
     ) as client:
-        resolved = await asyncio.gather(
-            *(resolve(client, balance) for balance in balances)
+        refreshed = await asyncio.gather(
+            *(refresh_mint(client, mint) for mint in unresolved_mints)
         )
-    for balance, metadata in zip(balances, resolved, strict=True):
+
+    refreshed_at = monotonic()
+    rows_by_mint = dict(zip(unresolved_mints, refreshed, strict=True))
+    for mint, keysets in rows_by_mint.items():
+        for keyset in keysets:
+            unit = str(keyset.get("unit") or "").strip()
+            keyset_id = str(keyset.get("id") or "").strip()
+            metadata = _clear_display_metadata(
+                keyset,
+                mint=mint,
+                unit=unit,
+                keyset_id=keyset_id,
+            )
+            if metadata is not None:
+                cache[(mint, unit, keyset_id)] = (refreshed_at, metadata)
+
+        by_unit: dict[str, list[tuple[dict, bool]]] = {}
+        for keyset in keysets:
+            unit = str(keyset.get("unit") or "").strip()
+            if not unit:
+                continue
+            metadata = _clear_display_metadata(
+                keyset,
+                mint=mint,
+                unit=unit,
+                keyset_id=None,
+            )
+            if metadata is not None:
+                by_unit.setdefault(unit, []).append(
+                    (metadata, bool(keyset.get("active", True)))
+                )
+        for unit, candidates in by_unit.items():
+            active = [
+                metadata for metadata, is_active in candidates if is_active
+            ]
+            selected = (active or [metadata for metadata, _ in candidates])[0]
+            cache[(mint, unit, "")] = (refreshed_at, selected)
+
+    for balance in balances:
+        metadata = cached_metadata(balance)
         if metadata is not None:
-            balance.update(metadata)
+            balance.update({
+                "display_name": metadata["display_name"],
+                "display_unit": metadata["display_unit"],
+                "metadata_resolved": True,
+            })
     return summary
 
 
@@ -6615,6 +6774,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     '<p><a href="/clear">Return to Clear Transactions</a></p>',
                 ),
                 status_code=502,
+            )
+
+        # Warm display metadata as soon as newly received token envelopes have
+        # exposed their mint, unit, and (when available) proof keyset IDs. This
+        # cache is presentational only; the receipt and proof identities remain
+        # authoritative relay-backed Acorn state.
+        try:
+            pending_receipts = await _read_clear_receipts(
+                acorn,
+                settings.wallet_load_timeout_seconds,
+                status="pending",
+            )
+            await _resolve_clear_aliases(
+                _clear_balance_summary(pending_receipts),
+                timeout=settings.wallet_load_timeout_seconds,
+                configured_mints=settings.clear_mints,
+                cache=request.app.state.clear_mint_metadata_cache,
+            )
+        except Exception as exc:
+            logger.info(
+                "Clear receive metadata refresh skipped error_type=%s",
+                type(exc).__name__,
             )
 
         stored_count = max(0, int((result or {}).get("stored_count", 0)))
