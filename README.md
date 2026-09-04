@@ -17,6 +17,12 @@ state they require. The rationale and incidents prompting this separation are
 captured in the hypermedia note and in Acorn's
 [Load Boundaries and Relay-Backed Read Models](https://github.com/trbouma/safebox-acorn/blob/main/docs/LOAD-BOUNDARIES-AND-READ-MODELS.md).
 
+The current implementation has also been mapped against the September 4, 2026
+working draft of DGSI 103 Part 4. The
+[draft conformance assessment](docs/DRAFT-DGSI-103-4-CONFORMANCE-ASSESSMENT.md)
+records implemented alignment, dependencies, material gaps, and the evidence
+needed before making any formal conformance claim.
+
 Informational fiat estimates use a database-backed cache refreshed by the
 singleton worker; web requests do not contact the external rate provider. See
 the [Informational Currency Rate Cache](docs/CURRENCY-RATE-CACHE.md) for process,
