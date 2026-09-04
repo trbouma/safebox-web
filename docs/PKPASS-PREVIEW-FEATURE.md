@@ -121,7 +121,7 @@ That keeps the concerns separate:
 | --- | --- |
 | Representation | Render the Wallet pass preview. |
 | Integrity | Hash the exact PKPASS bytes. |
-| Control | Attach signed origin or control events to the digest. |
+| Control | Attach signed Anchor or control records to the digest. |
 | Verification | Apply policy to the digest, events, and recognized actors. |
 | Wallet install | Serve the original package to a wallet application. |
 

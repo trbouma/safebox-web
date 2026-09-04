@@ -35,9 +35,9 @@ adapter implements only kinds `1415` and `1416`, the object-wide `o` query, exac
 prior-event `e` traversal, and signature validation; it does not import OpenETR
 or publish events. Future issuance and fuller independent verification remain
 scoped by the
-[OpenETR Issue and Verify Integration Design Note](docs/OPENETR-ISSUE-VERIFY-DESIGN-NOTE.md).
+[OpenETR Anchor and Verify Integration Design Note](docs/OPENETR-ISSUE-VERIFY-DESIGN-NOTE.md).
 The broader product rationale places Safebox at the conjunction of OpenETR's
-object control graph, viewpoint-dependent recognition through the social graph,
+portable DCR evidence and derived state, viewpoint-dependent recognition through the social graph,
 and Acorn's spendable funds. Together these let users evaluate and act on
 portable evidence without making Safebox another system of record.
 

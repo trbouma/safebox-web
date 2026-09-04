@@ -75,7 +75,7 @@ durable OpenETR evidence remains independently queryable.
 
 **Share** is the intentional escalation to deep verification. The verifier can
 retain the exact artifact, calculate its digest, apply native format checks,
-query signed origin and control events, consult recognition sources, and apply
+query signed Anchor and control records, consult recognition sources, and apply
 its own policy. Receiving a copy for
 verification does **not** by itself transfer ownership or control. Any control
 transfer must be represented by the appropriate separately signed events.
@@ -114,18 +114,23 @@ artifact or making the preview itself the object of verification.
 
 ## Where OpenETR fits
 
-OpenETR adds one possible signed control layer around a Uniform Digest Anchor.
+OpenETR adds one possible consequential-state layer around a Uniform Digest
+Anchor. The digest identifies the Digital Artifact; signed records form a
+candidate Digital Controllable Record; defined protocol rules determine what
+state follows.
 
 It can answer questions like:
 
-- Who originated this artifact?
+- Which Anchor record begins each candidate DCR?
 - Which key controlled it at a given point?
 - Was it transferred, presented, encumbered, redeemed, or terminated?
-- What evidence should a verifier consider?
+- What consequential state follows under the selected rules?
+- Which actors and results does this verifier recognize?
 
 Safebox Web can retrieve the Record File through Acorn, hash the exact
 bytes, and pass that digest into OpenETR verification. The verifier can then
-combine the digest with signed control events and recognition inputs.
+validate the available DCR evidence, derive consequential state under an
+identified rule set, and evaluate recognition separately.
 
 The application does not have to become the registry. The blob store does not
 have to understand the file. The preview does not have to prove the whole
@@ -135,9 +140,9 @@ The same separation applies to W3C Verifiable Credentials, EUDI PIDs, and
 mobile driving licences. Credential proof,
 status, holder presentation, issuer recognition, and verifier policy answer
 important credential questions. OpenETR can go deeper when the credential
-refers to a Digital Artifact whose DCR and event history also
-need to be examined. Safebox can preserve the exact credential and Original
-Record while keeping those verification layers distinct.
+refers to a Digital Artifact whose DCR and consequential state also need to be
+examined. Safebox can preserve the exact credential and Record File while
+keeping those verification layers distinct.
 
 [See the credential and Wallet-pass path](records-and-wallet-passes.md){ .md-button }
 
@@ -175,8 +180,8 @@ every concern into one component.
 
 Acorn safeguards keys, encrypted records, exact bytes, and digests. Grove stores
 opaque encrypted blobs. Spurline and other relays preserve signed evidence.
-OpenETR can model control history. Safebox Web renders the workflow and explains
-the result.
+OpenETR can validate DCR evidence and derive consequential state. Safebox Web
+renders the workflow and explains the separate results.
 
 That is powerful because failure in one layer does not automatically collapse
 the whole model. A pretty preview is not enough. A matching hash is not enough.

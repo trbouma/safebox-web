@@ -101,9 +101,10 @@ encrypt originals before Grove receives them.
 
 ### OpenETR
 
-A records-first control protocol that can bind signed origin and lifecycle
-events to an exact artifact's Uniform Digest Anchor. It is one interoperable
-control profile rather than a requirement for every record community.
+An open protocol that binds signed evidence to an exact Digital Artifact,
+assembles that evidence into a Digital Controllable Record, and derives
+consequential state under defined rules. Recognition and effect remain with
+the community, institution, or relying party.
 
 </article>
 
@@ -182,7 +183,7 @@ In that model:
 - Acorn is the controlled protocol state;
 - Spurline is the local evidence relay;
 - Grove is the local encrypted blob store;
-- OpenETR provides signed transferable-record evidence; and
+- OpenETR provides portable DCR evidence and consequential-state derivation; and
 - external services remain useful, while local services can support local
   continuity.
 

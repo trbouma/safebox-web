@@ -1,4 +1,4 @@
-# OpenETR Issue and Verify Integration Design Note
+# OpenETR Anchor and Verify Integration Design Note
 
 > **Terminology migration:** OpenETR now distinguishes Anchor Events, signer
 > evidence, recognition, standing, and Digital Originals. The corresponding
@@ -11,8 +11,8 @@
 This note is a proposed design. It does not describe functionality currently
 available in Safebox Web.
 
-The first integration should be intentionally narrow: issue an OpenETR Anchor
-Event for an existing Acorn record artifact, and independently verify the
+The first integration should be intentionally narrow: record an OpenETR Anchor
+for an existing Acorn Digital Artifact, and independently verify the
 artifact against OpenETR signed evidence. Record transmission, WebSockets,
 transfer negotiation, background subscriptions, and the wider control-event
 lifecycle are not prerequisites and are outside this initial scope.
@@ -20,20 +20,23 @@ lifecycle are not prerequisites and are outside this initial scope.
 ## Purpose
 
 Safebox Web already lets an attached Acorn safeguard private records and their
-Record File attachments. OpenETR adds a different capability: a portable,
-signed control layer around an artifact.
+Record File attachments. OpenETR adds a different capability: portable signed
+evidence from which consequential state can be derived under defined rules.
 
 The integration should let a user answer two practical questions:
 
-1. **Issue:** How can this exact artifact be brought into the OpenETR scheme by
-   a particular signing key?
-2. **Verify:** Does the artifact presented now match the object identified by
-   the signed OpenETR evidence, and what does the control graph say about it?
+1. **Anchor:** How can this exact Digital Artifact begin a candidate DCR with a
+   signed Anchor record?
+2. **Verify:** Does the artifact presented now match the signed OpenETR
+   evidence, what consequential state follows under the selected rules, and
+   what recognition questions remain external?
 
 These are not storage operations. Acorn remains responsible for safeguarding
 keys, private records, encrypted attachments, relay-backed availability, and
-recovery. OpenETR remains responsible for object digests, Anchor and control
-events, graph traversal, structural verification, and verifier-policy output.
+recovery. OpenETR remains responsible for artifact digests, DCR evidence,
+graph traversal, structural verification, state-transition rules, and
+consequential-state output. Recognition remains a separate relying-party
+decision.
 Safebox Web presents the workflows and mediates the trusted execution boundary.
 
 ## Presentation verification and deep verification
@@ -86,17 +89,17 @@ The canonical policy discussion is the OpenETR
 The corresponding Safebox user-facing explanation is
 [Graduated Disclosure in Safebox Web](../website/graduated-disclosure.md).
 
-## Product rationale: control graph, social graph, and funds
+## Product rationale: DCR evidence, recognition, and funds
 
 Safebox is intended to operate at the conjunction of three portable
 capabilities:
 
-1. **Control graph:** OpenETR provides signed evidence about the origin,
-   transfer, attestation, encumbrance, redemption, and termination of an
-   object. It answers: *What happened to this object, in what order, and which
-   keys authorized the events?*
+1. **DCR evidence:** OpenETR provides signed Anchor, control, and linked-evidence
+   records concerning an exact Digital Artifact. It validates that evidence and
+   derives consequential state under defined rules. It does not infer signer
+   authority merely from a valid signature.
 2. **Social graph:** Nostr Web of Trust and other recognition inputs let a
-   verifier ask whether the issuers, controllers, attestors, and counterparties
+   verifier ask whether the signers, controllers, attestors, and counterparties
    are known or trusted from a particular community or institutional viewpoint.
    It answers: *Who recognizes these actors, and why should this verifier give
    weight to their actions?*
@@ -112,7 +115,7 @@ to the application or database that originally created the record. Funds add
 the ability to act economically on that decision.
 
 This is not a claim that social proximity makes an event true or that payment
-makes a record valid. The control graph preserves signed evidence. The social
+makes a record valid. The DCR preserves signed evidence. The social
 graph supplies viewpoint-dependent recognition inputs. A verifier policy keeps
 those inputs separate and explains the conclusion it reaches. Spendable funds
 remain a distinct user-controlled resource. Their conjunction creates a
@@ -128,7 +131,7 @@ private records, and spendable funds can be used together.
 
 | Layer | Responsibility |
 | --- | --- |
-| Browser | Submit ordinary forms and display complete issue or verification results |
+| Browser | Submit ordinary forms and display complete anchor or verification results |
 | Safebox Web | Authenticate the attached Acorn, enforce CSRF and confirmation, retrieve artifact bytes, invoke components, and render results |
 | Safebox Acorn | Safeguard the signing key and private record; retrieve, authenticate, and decrypt the Record File |
 | OpenETR component | Calculate the object identity, construct and sign events, publish and read back evidence, query the graph, and apply verifier policy |
@@ -181,7 +184,7 @@ aid only. It must never substitute for the complete digest used by OpenETR.
 
 The attached Acorn already has a component key available in request-scoped
 process memory after the secure session cookie is decrypted. The smallest
-initial implementation can use that key as the OpenETR issuer profile key.
+initial implementation can use that key as the OpenETR signer key.
 Safebox Web must make this choice explicit before publication because a public
 OpenETR signature links the Acorn public key to the object digest and graph.
 
@@ -192,7 +195,7 @@ The initial confirmation page should display:
 - the OpenETR relay destinations;
 - the selected domain adapter or `generic` profile;
 - the metadata that will be public; and
-- a warning that issuance is a signed publication, not a private Acorn write.
+- a warning that anchoring is a signed publication, not a private Acorn write.
 
 The `nsec` must not be written to an OpenETR config file, subprocess argument,
 database, temporary file, log, event content, or result page. It is supplied to
@@ -200,15 +203,15 @@ the component in memory for the duration of the request.
 
 A later signer interface may support a dedicated OpenETR profile key, hardware
 signer, remote signer, or a protected key record. That extension must not be
-required for the first issue/verify implementation, and it must not silently
+required for the first anchor/verify implementation, and it must not silently
 change which key exercises authority.
 
-## Issue workflow
+## Anchor workflow
 
 The proposed hypermedia flow is:
 
 1. The user opens an existing private record that has a Record File.
-2. The record representation offers **Issue with OpenETR**.
+2. The record representation offers **Anchor with OpenETR**.
 3. A GET request retrieves and hashes the artifact and presents a confirmation
    page. It does not publish anything.
 4. Safebox Web performs a preflight OpenETR query for the object digest and
@@ -229,7 +232,7 @@ time. It must contain no private key or artifact bytes.
 
 Duplicate-anchor handling must fail closed by default. If an Anchor Event
 already exists, Safebox Web should direct the user to verification rather than
-silently issue another event. Any future override must be explicit and must
+silently publish another Anchor record. Any future override must be explicit and must
 show the existing anchor evidence first.
 
 Relay acknowledgement alone is not conclusive. Exact post-publication readback
@@ -287,7 +290,7 @@ other predictable or externally available documents.
 Therefore:
 
 - OpenETR issuance must never happen automatically when a record is saved;
-- the issue confirmation must explain that the digest, signer, event time,
+- the anchor confirmation must explain that the digest, signer, event time,
   tags, and graph relationships may become public;
 - event content and tags must not contain private record payloads, Acorn keys,
   recovery material, Blossom authorization data, or decrypted artifact bytes;
@@ -344,7 +347,7 @@ not proof that an event never existed.
 
 ## Hypermedia approach
 
-Issue and verify remain ordinary server-directed workflows:
+Anchor and verify remain ordinary server-directed workflows:
 
 - GET renders a confirmation or report;
 - POST performs issuance only after CSRF validation and explicit confirmation;
@@ -361,7 +364,7 @@ clear indeterminate outcomes rather than browser-managed workflow state.
 
 The integration must:
 
-- reject issue requests without an authenticated attached Acorn;
+- reject anchor requests without an authenticated attached Acorn;
 - require a Record File with a supported, bounded byte size;
 - recompute the complete digest immediately before signing;
 - never log the `nsec`, session cookie, RPK, artifact bytes, or sensitive event
@@ -370,7 +373,7 @@ The integration must:
 - avoid automatic republishing after a timeout;
 - separate relay failures from cryptographic and policy failures;
 - render malformed or hostile event content as escaped text;
-- keep decrypted artifact responses and issue/verify pages non-cacheable; and
+- keep decrypted artifact responses and anchor/verify pages non-cacheable; and
 - preserve the existing execution-environment warning: Safebox Web necessarily
   sees the attached key and plaintext artifact while performing the request.
 
@@ -408,8 +411,8 @@ exact readback, graph state, and warnings without private key material.
 
 ### Safebox Web unit tests
 
-- issue and verify routes require an authenticated session;
-- issue GET is read-only and POST requires valid CSRF and confirmation;
+- anchor and verify routes require an authenticated session;
+- anchor GET is read-only and POST requires valid CSRF and confirmation;
 - exact artifact bytes and the expected attached signer reach the component
   boundary without appearing in rendered output or logs;
 - digest changes between confirmation and POST are rejected;
@@ -421,10 +424,10 @@ exact readback, graph state, and warnings without private key material.
 
 ### Component and live integration tests
 
-- issue a disposable artifact to a controlled relay and verify exact readback;
+- anchor a disposable artifact to a controlled relay and verify exact readback;
 - verify the same artifact through the OpenETR CLI and Python component;
 - prove that a one-byte artifact change produces a different object and does
-  not match the issued graph;
+  not match the candidate DCR;
 - exercise missing, malformed, competing, and broken-chain events;
 - confirm behavior against an allowlisted third-party relay; and
 - confirm that timeout handling never produces an automatic duplicate anchor.
@@ -436,7 +439,7 @@ other personal artifact digest.
 ## Phased implementation
 
 1. **Stabilize the component boundary:** pin an installable OpenETR version,
-   define bytes-oriented issue/verify results, and add interoperability fixtures.
+   define bytes-oriented anchor/verify results, and add interoperability fixtures.
 2. **Read-only verification:** add the authenticated artifact-verification page
    before allowing publication.
 3. **Explicit issuance:** add preflight, confirmation, signing, publication,
@@ -506,17 +509,17 @@ This implementation is a proving surface, not the final OpenETR component
 boundary described above. In particular it does not yet apply full structural
 or recognition policy, resolve profiles for later control-event participants,
 derive an authoritative current controller across ambiguous branches, support
-legacy kinds, or issue events. Experience with this projection should
+legacy kinds, or publish events. Experience with this projection should
 determine whether the mature query implementation is imported as a package or
 retained behind a small, versioned compatibility module.
 
 WebSockets, record transmission, live subscriptions, and peer-to-peer workflow
-coordination should receive their own design decisions. Issue and verify remain
+coordination should receive their own design decisions. Anchor and verify remain
 useful, interoperable operations without them.
 
 ## Decision summary
 
-Safebox Web should become a thin OpenETR issue-and-verify adapter, not a second
+Safebox Web should become a thin OpenETR anchor-and-verify adapter, not a second
 OpenETR implementation. Acorn safeguards the key and artifact. OpenETR creates
 and verifies the portable signed control evidence. Safebox Web joins them for
 one authenticated request and presents the difference between cryptographic

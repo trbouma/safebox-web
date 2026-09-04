@@ -19,7 +19,7 @@ records, attach protected original documents, claim a handle, receive or
 transfer value, and later move the same wallet state to another compatible
 environment. Underneath the app, Acorn provides portable key, record, recovery,
 and ecash state. OpenETR is an experimental records-first framework that can
-link exact artifacts to signed origin and control history. Together these
+link exact Digital Artifacts to signed Anchor and control evidence. Together these
 pieces explore how verifiable credentials can fit within a broader model of
 portable, verifiable records without making Safebox Web the permanent system
 of record.
@@ -76,7 +76,7 @@ the current request.
 encrypts the content and stores metadata on a relay; large encrypted blobs can
 be stored through Grove.
 5. When public evidence is needed, OpenETR can bind the exact artifact to
-signed origin and control-history events so others can inspect what happened
+signed Anchor and control records so others can inspect what happened
 to the record.
 6. The user can share or present a record by QR code. The recipient can review
 the record, protected original, and related evidence before deciding what to

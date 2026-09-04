@@ -130,8 +130,9 @@ and download path.
 
 This lets a community add a control protocol that matches its own governance
 without changing the artifact or taking over its native signature scheme.
-OpenETR can bind provenance and control events to an exact digest. Another
-community can define different attesters, lifecycle events, recognition rules,
+OpenETR can bind DCR evidence to an exact Digital Artifact and derive
+consequential state under defined rules. Another community can define different
+attesters, lifecycle events, recognition rules,
 or verifier policy over the same kind of anchor.
 
 [See the complete record model](records-and-wallet-passes.md){ .md-button .md-button--primary }

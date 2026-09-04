@@ -144,8 +144,10 @@ verification because it identifies the exact input evaluated.
 A separate protocol can bind signed statements to the same anchor without
 altering the Record File or claiming authority over its native scheme.
 
-OpenETR is one example. It can describe origin, control, transfer,
-presentation, encumbrance, redemption, or termination for an exact artifact.
+OpenETR is one example. It identifies an exact Digital Artifact, preserves
+signed evidence concerning actions such as transfer, encumbrance, redemption,
+or termination in a Digital Controllable Record, and derives consequential
+state under defined rules.
 Another community may care about inspection, archival custody, membership,
 local issuance, professional endorsement, or a different control lifecycle.
 
@@ -153,7 +155,7 @@ local issuance, professional endorsement, or a different control lifecycle.
 shared substrate: exact artifact + Uniform Digest Anchor
 
 community A -> issuer trust and credential status
-community B -> notarization and custody attestations
+community B -> independent attestations and custody evidence
 community C -> transferable control history
 community D -> local recognition and acceptance policy
 ```

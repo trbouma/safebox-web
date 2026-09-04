@@ -40,7 +40,7 @@ the complete verification interaction needs to proceed.
 
 | Action | Disclosure | What happens |
 | --- | --- | --- |
-| **Check** | Evidence only | Safebox opens the Control History. OpenETR provides the digest-bound origin, issuer, signed statements, later events, and durable verifier link while Acorn keeps the private record. |
+| **Check** | Evidence only | Safebox opens the Control History. OpenETR provides the artifact digest, candidate Anchor records, signed DCR evidence, derived state, and durable verifier link while Acorn keeps the private record. |
 | **Present** | Temporary access | The holder displays a QR code. The verifier temporarily inspects the exact record and its Control History without importing it. |
 | **Share** | Recipient receives the record | The verifier imports the exact record into its own Safebox and can retain it for native-format, cryptographic, recognition, and policy checks. |
 
@@ -64,9 +64,10 @@ action is therefore **Check**.
 Check can show:
 
 - the digest identifying the exact Record File;
-- the signed origin statement;
-- available issuer or signer information;
-- relevant control, attestation, replacement, or termination events; and
+- candidate signed Anchor records;
+- available signer information, without assuming the signer's authority;
+- relevant control, attestation, replacement, or termination events;
+- consequential state derived under identified protocol rules; and
 - a durable link and QR code for independent OpenETR verification.
 
 Check does not need to disclose the private artifact. It establishes what
@@ -201,7 +202,7 @@ selective-disclosure methods where the risk justifies their complexity.
 ```text
 Acorn       -> safeguards the key and exact record
 Safebox Web -> presents, shares, and explains the workflow
-OpenETR     -> supplies digest-bound evidence and Control History
+OpenETR     -> supplies DCR evidence and derived consequential state
 Verifier    -> recognizes actors and decides effect
 ```
 

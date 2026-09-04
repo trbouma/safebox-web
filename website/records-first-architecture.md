@@ -1,6 +1,6 @@
 ---
 title: Records-First Architecture
-description: A records-first approach that separates native claims, artifact notarization, control evidence, recognition, and verifier policy.
+description: A records-first approach that separates artifact identity, native claims, signed evidence, consequential state, recognition, and verifier policy.
 ---
 
 # Records-First Architecture
@@ -76,19 +76,24 @@ keys           -> what gives the person control
 funds          -> value the person can hold or transfer
 records        -> information and evidence the person needs to preserve
 credentials    -> records carrying claims secured by native schemes
-notarization   -> independent attestations about exact records or events
-OpenETR        -> digest-bound origin, notarization, and control evidence
+attestations   -> signed statements about exact artifacts or events
+OpenETR        -> portable evidence from which consequential state is derived
 ```
 
-[OpenETR](https://trbouma.github.io/openetr/) is an experimental records-first
-framework for electronic transferable records. It anchors evidence to exact
-artifact digests and signed control events so a verifier can inspect what
-happened to a record without depending on the original application database.
-Because the anchor identifies bytes rather than a file format, the same
-evidence model can operate across PKPASS, W3C Verifiable Credentials, EUDI PID,
-ISO mobile driving licences, PDFs, and record schemes not yet anticipated.
-OpenETR does not replace their native signatures or trust models. It adds a
-separate evidence layer around the exact artifact.
+[OpenETR](https://trbouma.github.io/openetr/) is an open protocol for deriving
+consequential state from end-verifiable evidence concerning durable electronic
+records. A cryptographic digest identifies the exact **Digital Artifact**.
+Signed Anchor, control, and linked-evidence records form a candidate **Digital
+Controllable Record (DCR)**. Defined rules determine what consequential state
+follows from valid evidence, while recognition remains with the community,
+institution, or relying party. This model can operate across PKPASS, W3C
+Verifiable Credentials, EUDI PID, ISO mobile driving licences, PDFs, and record
+schemes not yet anticipated without replacing their native proofs.
+
+The governing discipline is simple: **each proof proves only what it proves.**
+A digest identifies content. A signature attributes a statement to a key.
+Protocol rules derive state from the available evidence. Recognition determines
+what effect that state receives in a particular context.
 
 The rewrite is not that credentials disappear. It is that credentials can be
 understood as a specialized kind of record, while leaving space for other
@@ -113,8 +118,8 @@ In Safebox, a record can have several layers:
 - native signatures, bindings, status, and presentations defined by the
   artifact's own scheme;
 - transferable ecash proofs associated with the Acorn; and
-- OpenETR evidence describing notarization, origin, and control history for an
-  exact artifact.
+- OpenETR DCR evidence and consequential state concerning an exact Digital
+  Artifact.
 
 The app becomes replaceable. The record remains portable.
 
@@ -126,11 +131,11 @@ claims about a subject. They move. They are amended. They are controlled,
 transferred, encumbered, redeemed, revoked, replaced, or recognized differently
 by different parties.
 
-OpenETR generalizes this by anchoring evidence to the exact object and its
-control graph:
+OpenETR generalizes this by identifying the exact Digital Artifact and
+assembling signed evidence concerning it into a candidate DCR:
 
 ```text
-artifact bytes -> object digest -> signed Anchor Event -> signed control events
+Digital Artifact -> signed Anchor record -> DCR evidence -> consequential state
 ```
 
 That turns verification into more than checking whether one issuer signed one
@@ -141,7 +146,7 @@ credential. A verifier can ask:
 - What signed events followed?
 - Who appears to control it now?
 - Are there competing histories or unresolved branches?
-- Which issuers, controllers, or attestors does this verifier recognize?
+- Which signers and roles does this verifier recognize for this purpose?
 
 This is one way to extend the credential idea into transferable records and
 evidence graphs.
@@ -156,10 +161,10 @@ without needing to understand every field inside it.
 
 | Record scheme | Native verification remains responsible for | OpenETR can add around the exact artifact |
 | --- | --- | --- |
-| Apple Wallet PKPASS | Manifest integrity, pass signature, certificate chain, and Wallet behavior | Independent origin, presentation, custody, or control attestations |
-| W3C Verifiable Credential | Issuer proof, credential status, holder presentation, and scheme-specific policy | Digest-bound notarization, provenance, presentation events, or control history |
+| Apple Wallet PKPASS | Manifest integrity, pass signature, certificate chain, and Wallet behavior | Anchor, presentation, custody, or control evidence |
+| W3C Verifiable Credential | Issuer proof, credential status, holder presentation, and scheme-specific policy | Digest-bound attestations, presentation events, or control evidence |
 | EUDI PID and ISO mDL | COSE signatures, MSO digest bindings, device authentication, status, and trust lists | Independent inspection, custody, presentation, and lifecycle evidence |
-| Signed PDF or other artifact | Embedded signatures, timestamps, revocation evidence, or format-specific rules | Cross-organization notarization and control events bound to the same bytes |
+| Signed PDF or other artifact | Embedded signatures, timestamps, revocation evidence, or format-specific rules | Cross-organization attestations and control events bound to the same bytes |
 
 This creates interoperability without flattening. A verifier can first confirm
 that the presented bytes match the UDA, then apply the artifact's native
@@ -169,15 +174,15 @@ verification, then evaluate any OpenETR evidence relevant to its own purpose.
 exact Record File
     -> Uniform Digest Anchor
        +-> native claim verification
-       +-> OpenETR notarization and provenance
-       +-> OpenETR control and lifecycle events
+       +-> OpenETR Anchor and linked evidence
+       +-> OpenETR control events and consequential state
        +-> community recognition and verifier policy
 ```
 
-## Signing claims and notarizing records
+## Native claims and OpenETR evidence
 
-A native issuer signature and a notarization may use the same cryptographic
-primitive, but they do not make the same statement.
+A native issuer signature and an OpenETR attestation may use the same
+cryptographic primitive, but they do not make the same statement.
 
 **Signing claims** means that an issuer, holder, or device key makes an
 assertion inside a defined record scheme. A university may sign a degree claim.
@@ -185,9 +190,9 @@ A licensing authority may sign mDL identity and driving-privilege data. A
 PKPASS signer may sign the package manifest. The signature authenticates the
 signer's assertion and protects the scheme-defined content and bindings.
 
-**Notarizing a record** means that an independently recognized actor makes a
-second-order statement about an exact artifact or an event involving it. A
-notarization might attest that:
+**Attesting to an artifact** means that a signer makes a separate statement
+about an exact artifact or an event involving it. An attestation might state
+that:
 
 - these exact bytes existed at a stated time;
 - the artifact matched a record inspected through another process;
@@ -195,22 +200,23 @@ notarization might attest that:
 - a custody or transfer event occurred under a stated procedure; or
 - an organization recognized the artifact for a specific purpose.
 
-Notarization does not silently become a new issuer signature, and it does not
-prove every claim embedded in the artifact. It adds another path by which a
-verifier may establish trust: confidence in a recognized attestor's statement
-about the digest-bound object or event.
+An attestation does not silently become a native issuer signature, establish
+the signer's authority, or prove every claim embedded in the artifact. It adds
+attributable evidence that a verifier may evaluate using its own recognition
+inputs and rule book.
 
 The distinction is semantic, not merely cryptographic:
 
 ```text
 native signature -> "this key makes these scheme-defined claims"
-notarization      -> "this attestor makes this statement about this exact record"
-control event     -> "this key performed this lifecycle action on this record"
-verifier policy   -> "for this decision, these signers and statements are recognized"
+attestation      -> "this key makes this statement about this exact artifact"
+control record   -> "this key states that this consequential action occurred"
+protocol rules   -> "this state follows from the validated DCR evidence"
+recognition      -> "this relying party accepts this actor, state, and effect"
 ```
 
-OpenETR can carry the latter two forms across otherwise incompatible record
-schemes. The UDA supplies the common object reference; the signed event states
+OpenETR can carry attestation and control records across otherwise incompatible
+record schemes. The UDA supplies the common object reference; the signed event states
 what is being attested; recognition and verifier policy determine whether that
 attestation should be trusted for the decision at hand.
 
@@ -236,11 +242,11 @@ trustworthy, but it should not be the only place those resources can live.
 Safebox Web can connect a private Acorn record to OpenETR without making the
 private record public.
 
-Acorn protects the user's key and private record. Grove can store encrypted
-original bytes. Spurline or other Nostr relays can preserve events. OpenETR
-adds signed public evidence about an exact artifact: its digest, notarizations,
-origin, and control history. The native verifier remains responsible for the
-artifact's own signatures, bindings, and status.
+Acorn protects the user's key and private record. Grove can store the encrypted
+Record File. Spurline or other Nostr relays can preserve events. OpenETR
+identifies the exact Digital Artifact and preserves Anchor, control, and linked
+evidence records in a candidate DCR. The native verifier remains responsible
+for the artifact's own signatures, bindings, and status.
 
 The boundary matters:
 
@@ -249,7 +255,7 @@ Acorn preserves private control.
 Grove preserves encrypted bytes.
 Spurline preserves local relay events.
 Native schemes preserve signed claims and format-specific proofs.
-OpenETR preserves digest-bound notarization and control evidence.
+OpenETR validates DCR evidence and derives consequential state under defined rules.
 Safebox Web helps the user operate the workflow.
 ```
 
@@ -259,11 +265,16 @@ A signature proves that a key signed an event. It does not automatically prove
 that a government, school, employer, community, or counterparty recognizes the
 event.
 
+Verification should report artifact integrity, event authenticity, graph
+continuity, transition validity, consequential state, evidence sufficiency, and
+recognition separately where applicable. It should not compress them into one
+universal `valid` result.
+
 Safebox keeps those questions separate:
 
 - Native schemes preserve signed claims and their internal bindings.
-- OpenETR preserves signed notarization, origin, and control evidence about an
-  exact artifact.
+- OpenETR preserves signed DCR evidence about an exact Digital Artifact and
+  derives consequential state under defined rules.
 - Acorn controls private records and value.
 - Nostr and other social or institutional inputs can help identify recognized
   actors.
