@@ -70,6 +70,7 @@ from app.dependencies import (
     get_session_credentials,
 )
 from app.main import create_app
+from app.models import ClaimedHandle
 from app.funds_finalization import claim_finalization_job, get_finalization_job
 from app.clear_acceptance import get_clear_acceptance_job
 from app.outgoing_payment import get_outgoing_payment_job
@@ -6754,7 +6755,7 @@ def test_safebox_lightning_address_prefers_direct_ecash_transfer(
         def json(self) -> dict:
             return {
                 "names": {"alice": recipient_hex},
-                "relays": {recipient_hex: ["wss://recipient-relay.example"]},
+                "relays": {recipient_hex: ["wss://RELAY.example.com/"]},
             }
 
     class FakeClient:
@@ -6799,8 +6800,115 @@ def test_safebox_lightning_address_prefers_direct_ecash_transfer(
         {
             "amount": 21,
             "recipient": recipient_npub,
-            "relay": "wss://recipient-relay.example",
+            "relay": "wss://RELAY.example.com/",
             "comment": "direct please",
+        }
+    ]
+
+
+def test_local_http_lightning_address_resolves_without_https(
+    monkeypatch, tmp_path,
+) -> None:
+    recipient_hex = "11" * 32
+    recipient_npub = main_module.Keys.hex_to_bech32(recipient_hex, prefix="npub")
+
+    class UnexpectedClient:
+        def __init__(self, **kwargs) -> None:
+            raise AssertionError("local recipients must not require HTTPS discovery")
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", UnexpectedClient)
+    settings = replace(database_settings(tmp_path), allow_insecure_http=True)
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    with TestClient(app, base_url="http://192.168.1.20:8888") as client:
+        with Session(app.state.database_engine) as session:
+            session.add(
+                ClaimedHandle(
+                    claimed_handle="alice",
+                    npub=recipient_npub,
+                    home_relay=acorn.home_relay,
+                )
+            )
+            session.commit()
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "lightning_address": "alice@192.168.1.20",
+                "amount": "21",
+                "comment": "local direct",
+                "confirmed": "yes",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert acorn.payments == []
+    assert acorn.ecash_transfers == [
+        {
+            "amount": 21,
+            "recipient": recipient_npub,
+            "relay": acorn.home_relay,
+            "comment": "local direct",
+        }
+    ]
+
+
+def test_safebox_recipient_on_different_relay_uses_lightning(
+    monkeypatch, tmp_path,
+) -> None:
+    recipient_hex = "11" * 32
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "names": {"alice": recipient_hex},
+                "relays": {recipient_hex: ["wss://other-relay.example"]},
+            }
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            return FakeResponse()
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "lightning_address": "alice@example.com",
+                "amount": "21",
+                "comment": "lightning please",
+                "confirmed": "yes",
+            },
+        )
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not acorn.payments:
+            time.sleep(0.01)
+
+    assert response.status_code == 200
+    assert acorn.ecash_transfers == []
+    assert acorn.payments == [
+        {
+            "amount": 21,
+            "lnaddress": "alice@example.com",
+            "comment": "lightning please",
         }
     ]
 
@@ -6817,7 +6925,7 @@ def test_safebox_direct_ecash_transfer_requires_confirmed_result(
         def json(self) -> dict:
             return {
                 "names": {"alice": recipient_hex},
-                "relays": {recipient_hex: ["wss://recipient-relay.example"]},
+                "relays": {recipient_hex: ["wss://relay.example.com"]},
             }
 
     class FakeClient:
@@ -6873,7 +6981,7 @@ def test_safebox_direct_ecash_transfer_exception_shows_safe_reason(
         def json(self) -> dict:
             return {
                 "names": {"alice": recipient_hex},
-                "relays": {recipient_hex: ["wss://recipient-relay.example"]},
+                "relays": {recipient_hex: ["wss://relay.example.com"]},
             }
 
     class FakeClient:

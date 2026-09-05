@@ -181,10 +181,18 @@ change cannot redirect an already-issued invoice.
 
 When a connected user pays a Lightning address from Safebox Web, the app first
 checks whether the address also resolves as a Safebox/NIP-05 recipient. It
-looks up the address name through the recipient domain's NIP-05 document. If
-that document supplies a recipient public key and relay, Safebox Web can ask
-Acorn to send ecash directly to that Acorn instead of melting proofs through
-Lightning.
+first consults its own claimed-handle registry when the address domain matches
+the current Safebox host. This lets a Mainstay LAN address resolve without DNS
+or an HTTPS request. Other domains are looked up through their NIP-05 document.
+For a confirmed payment, Safebox Web asks Acorn to send ecash directly only
+when the recipient advertises the same normalized home-relay endpoint as the
+sender. A Safebox recipient on a different relay remains a Lightning payment.
+The address domain alone never establishes that the users share a relay.
+
+Continuity mode is an explicit exception: after the user selects that mode,
+Safebox may address a direct transfer to a Safebox recipient on another relay.
+It does not silently replace a confirmed Lightning route with cross-relay
+ecash delivery.
 
 This is still a connected-mode path. Before sending, Safebox Web verifies the
 wallet's proof state with the issuing mint. If the mint cannot be reached, the

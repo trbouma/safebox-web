@@ -545,6 +545,58 @@ async def _resolve_safebox_lightning_recipient(
     return {"npub": recipient_npub, "relay": relay}
 
 
+def _same_relay_endpoint(first: str, second: str) -> bool:
+    """Compare relay endpoints without depending on cosmetic URL differences."""
+
+    def identity(value: str) -> tuple[str, str, int, str, str] | None:
+        try:
+            parsed = urlsplit(str(value).strip())
+            scheme = parsed.scheme.lower()
+            if (
+                scheme not in {"ws", "wss"}
+                or not parsed.hostname
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.fragment
+            ):
+                return None
+            port = parsed.port or (443 if scheme == "wss" else 80)
+        except ValueError:
+            return None
+        path = parsed.path.rstrip("/") or "/"
+        return scheme, parsed.hostname.lower(), port, path, parsed.query
+
+    first_identity = identity(first)
+    return first_identity is not None and first_identity == identity(second)
+
+
+def _resolve_local_safebox_lightning_recipient(
+    request: Request,
+    lightning_address: str,
+) -> dict[str, str] | None:
+    """Resolve an address served by this Safebox without requiring HTTPS or DNS."""
+
+    try:
+        local_part, domain = lightning_address.split("@", 1)
+    except ValueError:
+        return None
+    if domain.lower() != str(request.url.hostname or "").lower():
+        return None
+
+    engine = getattr(request.app.state, "database_engine", None)
+    if engine is None:
+        return None
+    with Session(engine) as session:
+        registration = session.exec(
+            select(ClaimedHandle).where(
+                ClaimedHandle.claimed_handle == local_part.lower()
+            )
+        ).first()
+        if registration is None:
+            return None
+        return {"npub": registration.npub, "relay": registration.home_relay}
+
+
 async def _resolve_safebox_clear_recipient(
     payment_address: str,
     *,
@@ -6340,17 +6392,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 message=message,
             )
 
-        direct_recipient = await _resolve_safebox_lightning_recipient(
+        direct_recipient = _resolve_local_safebox_lightning_recipient(
+            request,
             recipient,
-            timeout=settings.payment_timeout_seconds,
         )
+        if direct_recipient is None:
+            direct_recipient = await _resolve_safebox_lightning_recipient(
+                recipient,
+                timeout=settings.payment_timeout_seconds,
+            )
         if payment_mode == "continuity" and direct_recipient is None:
             return payment_error(
                 "Continuity Transfers can only be sent to another Safebox address. "
                 "No Lightning transfer was attempted.",
                 422,
             )
-        if direct_recipient is not None:
+        direct_on_shared_relay = bool(
+            direct_recipient is not None
+            and _same_relay_endpoint(
+                str(getattr(acorn, "home_relay", "")),
+                direct_recipient["relay"],
+            )
+        )
+        if direct_recipient is not None and (
+            payment_mode == "continuity" or direct_on_shared_relay
+        ):
             tendered_amount, tendered_currency = _transaction_tender_snapshot(
                 request,
                 payment_amount,
