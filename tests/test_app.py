@@ -329,15 +329,10 @@ class FakeLoadedAcorn:
     async def stage_pasted_clear_token(
         self,
         token: str,
-        *,
-        allowed_mints: tuple[str, ...],
-        allowed_units: tuple[str, ...],
     ) -> dict:
         event_id = "9" * 64
         self.staged_clear_tokens.append({
             "token": token,
-            "allowed_mints": allowed_mints,
-            "allowed_units": allowed_units,
         })
         existing = next(
             (
@@ -354,7 +349,7 @@ class FakeLoadedAcorn:
             "status": "pending",
             "amount": 25,
             "unit": "cmu-test",
-            "mint": allowed_mints[0],
+            "mint": "http://clear:3339",
             "comment": "pasted Clear token",
             "timestamp": 1_786_430_400,
         }
@@ -4447,13 +4442,11 @@ def test_user_can_paste_and_accept_a_configured_clear_token(tmp_path) -> None:
     assert job["status"] == "COMPLETE"
     assert acorn.staged_clear_tokens == [{
         "token": "cashuAtest-clear-token",
-        "allowed_mints": ("http://clear:3339",),
-        "allowed_units": (),
     }]
     assert acorn.accepted_clear_receipts == ["9" * 64]
 
 
-def test_pasted_clear_token_page_requires_a_configured_mint(tmp_path) -> None:
+def test_pasted_clear_token_page_does_not_require_deployment_mints(tmp_path) -> None:
     settings = replace(
         database_settings(tmp_path),
         clear_receive_enabled=True,
@@ -4466,20 +4459,25 @@ def test_pasted_clear_token_page_requires_a_configured_mint(tmp_path) -> None:
 
     with TestClient(app, base_url="https://safebox.example") as client:
         page = client.get("/clear/accept-token")
+        token_match = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            page.text,
+        )
+        assert token_match is not None
         response = client.post(
             "/clear/accept-token",
             data={
-                "csrf_token": CsrfProtector(settings).issue(),
-                "token": "cashuAuntrusted-bearer-token",
+                "csrf_token": token_match.group(1),
+                "token": "cashuAnew-mint-token",
             },
+            follow_redirects=False,
         )
 
     assert page.status_code == 200
-    assert "no configured Clear mints" in page.text
-    assert response.status_code == 503
-    assert "not configured to accept pasted Clear tokens" in response.text
-    assert "cashuAuntrusted-bearer-token" not in response.text
-    assert acorn.staged_clear_tokens == []
+    assert 'name="token"' in page.text
+    assert response.status_code == 303
+    assert response.headers["location"] == "/clear/acceptance-status"
+    assert acorn.staged_clear_tokens == [{"token": "cashuAnew-mint-token"}]
 
 
 def test_user_can_check_for_new_clear_transfers(tmp_path) -> None:

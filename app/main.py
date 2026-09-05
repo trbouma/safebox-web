@@ -6759,7 +6759,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "accept_clear_token.html",
                 title="Accept Clear Token",
                 csrf_token=CsrfProtector(settings).issue(),
-                enabled=bool(settings.clear_receive_enabled and settings.clear_mints),
                 error=None,
                 token="",
             )
@@ -6781,9 +6780,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "accept_clear_token.html",
                     title="Accept Clear Token",
                     csrf_token=CsrfProtector(settings).issue(),
-                    enabled=bool(
-                        settings.clear_receive_enabled and settings.clear_mints
-                    ),
                     error=message,
                     token="",
                 ),
@@ -6792,11 +6788,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         if not CsrfProtector(settings).verify(csrf_token):
             return form_error("The form token is invalid or expired.", 403)
-        if not settings.clear_receive_enabled or not settings.clear_mints:
-            return form_error(
-                "This Safebox is not configured to accept pasted Clear tokens.",
-                503,
-            )
         token = str(token or "").strip()
         if not token or len(token) > 128 * 1024:
             return form_error("Enter a valid Clear token.", 400)
@@ -6808,11 +6799,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         try:
             receipt = await asyncio.wait_for(
-                stager(
-                    token,
-                    allowed_mints=settings.clear_mints,
-                    allowed_units=settings.clear_units,
-                ),
+                stager(token),
                 timeout=settings.wallet_load_timeout_seconds,
             )
         except ValueError as exc:

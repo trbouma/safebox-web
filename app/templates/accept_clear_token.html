@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-{% if enabled %}
 <form method="post" action="/clear/accept-token" autocomplete="off"
       data-progress-message="Securing and accepting the Clear token. Please wait."
       data-progress-button="Starting acceptance…">
@@ -13,7 +12,4 @@
   <p class="advisory">Anyone holding this token can spend it until Safebox confirms acceptance.</p>
   <button type="submit">Accept Clear Token</button>
 </form>
-{% else %}
-<p class="error">Pasted Clear tokens are unavailable because this Safebox has no configured Clear mints.</p>
-{% endif %}
 {% endblock %}
