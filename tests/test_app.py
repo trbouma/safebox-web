@@ -277,6 +277,7 @@ class FakeLoadedAcorn:
         self.clear_sweep_calls = 0
         self.clear_sweep_receipts: list[dict] = []
         self.clear_preview_calls = 0
+        self.staged_clear_tokens: list[dict] = []
         self.clear_preview: dict = {
             "previewed_count": 0,
             "previewed_amount": 0,
@@ -324,6 +325,41 @@ class FakeLoadedAcorn:
 
     async def get_clear_transaction_history(self) -> list[dict]:
         return list(self.clear_transaction_history)
+
+    async def stage_pasted_clear_token(
+        self,
+        token: str,
+        *,
+        allowed_mints: tuple[str, ...],
+        allowed_units: tuple[str, ...],
+    ) -> dict:
+        event_id = "9" * 64
+        self.staged_clear_tokens.append({
+            "token": token,
+            "allowed_mints": allowed_mints,
+            "allowed_units": allowed_units,
+        })
+        existing = next(
+            (
+                receipt
+                for receipt in self.clear_receipts
+                if receipt.get("event_id") == event_id
+            ),
+            None,
+        )
+        if existing is not None:
+            return existing
+        receipt = {
+            "event_id": event_id,
+            "status": "pending",
+            "amount": 25,
+            "unit": "cmu-test",
+            "mint": allowed_mints[0],
+            "comment": "pasted Clear token",
+            "timestamp": 1_786_430_400,
+        }
+        self.clear_receipts.append(receipt)
+        return receipt
 
     async def accept_pending_clear_receipt(self, event_id: str) -> dict:
         for receipt in self.clear_receipts:
@@ -4362,6 +4398,88 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert response.text.count('class="page-navigation') == 2
     assert "Confirmed balance" in response.text
     assert "spendable" not in response.text.lower()
+
+
+def test_user_can_paste_and_accept_a_configured_clear_token(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        clear_receive_enabled=True,
+        clear_mints=("http://clear:3339",),
+    )
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn(balance=100)
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_background_acorn_factory] = lambda: lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.get("/clear/accept-token")
+        token_match = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            page.text,
+        )
+        assert token_match is not None
+        response = client.post(
+            "/clear/accept-token",
+            data={
+                "csrf_token": token_match.group(1),
+                "token": "cashuAtest-clear-token",
+            },
+            follow_redirects=False,
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_clear_acceptance_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
+
+    assert page.status_code == 200
+    assert "Accept Clear Token" in page.text
+    assert 'name="token"' in page.text
+    assert response.status_code == 303
+    assert response.headers["location"] == "/clear/acceptance-status"
+    assert job is not None
+    assert job["status"] == "COMPLETE"
+    assert acorn.staged_clear_tokens == [{
+        "token": "cashuAtest-clear-token",
+        "allowed_mints": ("http://clear:3339",),
+        "allowed_units": (),
+    }]
+    assert acorn.accepted_clear_receipts == ["9" * 64]
+
+
+def test_pasted_clear_token_page_requires_a_configured_mint(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        clear_receive_enabled=True,
+        clear_mints=(),
+    )
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn(balance=100)
+    app.dependency_overrides[get_background_acorn_factory] = lambda: lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.get("/clear/accept-token")
+        response = client.post(
+            "/clear/accept-token",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "token": "cashuAuntrusted-bearer-token",
+            },
+        )
+
+    assert page.status_code == 200
+    assert "no configured Clear mints" in page.text
+    assert response.status_code == 503
+    assert "not configured to accept pasted Clear tokens" in response.text
+    assert "cashuAuntrusted-bearer-token" not in response.text
+    assert acorn.staged_clear_tokens == []
 
 
 def test_user_can_check_for_new_clear_transfers(tmp_path) -> None:

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if enabled %}
+<form method="post" action="/clear/accept-token" autocomplete="off"
+      data-progress-message="Securing and accepting the Clear token. Please wait."
+      data-progress-button="Starting acceptance…">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label for="clear-token">Clear token</label>
+  <textarea id="clear-token" name="token" class="clear-token-input"
+            minlength="7" maxlength="131072" autocapitalize="none"
+            autocorrect="off" spellcheck="false" required>{{ token }}</textarea>
+  <p class="advisory">Anyone holding this token can spend it until Safebox confirms acceptance.</p>
+  <button type="submit">Accept Clear Token</button>
+</form>
+{% else %}
+<p class="error">Pasted Clear tokens are unavailable because this Safebox has no configured Clear mints.</p>
+{% endif %}
+{% endblock %}

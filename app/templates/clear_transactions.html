@@ -49,6 +49,7 @@
 </article>
 {%- endmacro %}
 {% block content %}
+<p><a class="nav-button" href="/clear/accept-token">Accept a Clear Token</a></p>
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
 {% if acceptance_job and acceptance_job.status == "RUNNING" %}
 <section class="incoming-funds" aria-label="Clear transfer acceptance">

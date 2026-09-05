@@ -205,6 +205,13 @@ The Clear page presents spendable **Clear Balances** first, actionable
 last. A balance or history lookup failure does not suppress a successful
 read-only preview of newly delivered transfers.
 
+**Accept a Clear Token** provides a separate CSRF-protected form for a pasted
+`cashuA` token. Safebox accepts pasted tokens only from a mint listed in
+`SAFEBOX_CLEAR_MINTS`, journals the bearer token in relay-backed pending receipt
+state, and then uses the same background acceptance, mint refresh, kind `7380`
+proof storage, and kind `7381` history path as a private Clear transfer. The
+token is never placed in a URL or the Safebox Web database.
+
 The complete cross-product result is documented in the
 [Clear Transfer Product Milestone](docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md).
 

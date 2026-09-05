@@ -1472,6 +1472,60 @@ def _clear_page_notice(query_params) -> str | None:
     return f"Received {received:,} new Clear transfer{suffix}."
 
 
+def _start_clear_acceptance(
+    request: Request,
+    acorn: Acorn,
+    acorn_factory,
+    event_id: str,
+) -> RedirectResponse:
+    """Start the single recoverable Clear acceptance job for an Acorn."""
+
+    settings = request.app.state.settings
+    npub = acorn.pubkey_bech32
+    outgoing_job = get_outgoing_payment_job(
+        request.app.state.database_engine,
+        npub,
+    )
+    if outgoing_job and outgoing_job.get("status") == "RUNNING":
+        return RedirectResponse("/pay/status", status_code=303)
+    cash_job = get_finalization_job(
+        request.app.state.database_engine,
+        npub,
+    )
+    if cash_job and cash_job.get("status") == "RUNNING":
+        return RedirectResponse(
+            "/transactions?finalization=running",
+            status_code=303,
+        )
+    claimed, owner_token, _job = claim_clear_acceptance_job(
+        request.app.state.database_engine,
+        npub,
+        event_id,
+        worker_id=request.app.state.worker_id,
+    )
+    if claimed:
+        task = asyncio.wrap_future(
+            request.app.state.background_job_executor.submit(
+                run_clear_acceptance_job_in_thread,
+                engine=request.app.state.database_engine,
+                acorn_factory=acorn_factory,
+                npub=npub,
+                event_id=event_id,
+                owner_token=owner_token,
+                load_timeout_seconds=settings.wallet_load_timeout_seconds,
+            )
+        )
+        request.app.state.clear_acceptance_tasks[npub] = task
+
+        def remove_completed_task(completed: asyncio.Task) -> None:
+            current = request.app.state.clear_acceptance_tasks.get(npub)
+            if current is completed:
+                request.app.state.clear_acceptance_tasks.pop(npub, None)
+
+        task.add_done_callback(remove_completed_task)
+    return RedirectResponse("/clear/acceptance-status", status_code=303)
+
+
 def _clear_metadata_url(mint: str, configured_mints: tuple[str, ...]) -> str | None:
     normalized = mint.rstrip("/")
     parsed = urlsplit(normalized)
@@ -6697,6 +6751,104 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             preferred_language=preferred_language,
         )
 
+    @app.get("/clear/accept-token", response_class=HTMLResponse)
+    async def accept_clear_token_form(request: Request) -> HTMLResponse:
+        settings = request.app.state.settings
+        return HTMLResponse(
+            render_template(
+                "accept_clear_token.html",
+                title="Accept Clear Token",
+                csrf_token=CsrfProtector(settings).issue(),
+                enabled=bool(settings.clear_receive_enabled and settings.clear_mints),
+                error=None,
+                token="",
+            )
+        )
+
+    @app.post("/clear/accept-token", response_class=HTMLResponse)
+    async def accept_pasted_clear_token(
+        request: Request,
+        acorn: LoadedAcornDependency,
+        acorn_factory: BackgroundAcornFactoryDependency,
+        token: str = Form(...),
+        csrf_token: str = Form(...),
+    ):
+        settings = request.app.state.settings
+
+        def form_error(message: str, status_code: int) -> HTMLResponse:
+            return HTMLResponse(
+                render_template(
+                    "accept_clear_token.html",
+                    title="Accept Clear Token",
+                    csrf_token=CsrfProtector(settings).issue(),
+                    enabled=bool(
+                        settings.clear_receive_enabled and settings.clear_mints
+                    ),
+                    error=message,
+                    token="",
+                ),
+                status_code=status_code,
+            )
+
+        if not CsrfProtector(settings).verify(csrf_token):
+            return form_error("The form token is invalid or expired.", 403)
+        if not settings.clear_receive_enabled or not settings.clear_mints:
+            return form_error(
+                "This Safebox is not configured to accept pasted Clear tokens.",
+                503,
+            )
+        token = str(token or "").strip()
+        if not token or len(token) > 128 * 1024:
+            return form_error("Enter a valid Clear token.", 400)
+        stager = getattr(acorn, "stage_pasted_clear_token", None)
+        if stager is None:
+            return form_error(
+                "This Safebox Acorn installation does not support pasted Clear tokens.",
+                501,
+            )
+        try:
+            receipt = await asyncio.wait_for(
+                stager(
+                    token,
+                    allowed_mints=settings.clear_mints,
+                    allowed_units=settings.clear_units,
+                ),
+                timeout=settings.wallet_load_timeout_seconds,
+            )
+        except ValueError as exc:
+            logger.info(
+                "pasted Clear token rejected error_type=%s",
+                type(exc).__name__,
+            )
+            return form_error(str(exc), 400)
+        except Exception as exc:
+            logger.warning(
+                "pasted Clear token staging failed error_type=%s",
+                type(exc).__name__,
+            )
+            return form_error(
+                "Safebox could not securely store the Clear token for acceptance.",
+                502,
+            )
+
+        receipt_status = str(receipt.get("status") or "pending")
+        if receipt_status == "accepted":
+            return RedirectResponse("/clear?receipt_accepted=1", status_code=303)
+        if receipt_status != "pending":
+            return form_error("This Clear token is no longer pending acceptance.", 409)
+        event_id = str(receipt.get("event_id") or "").strip().lower()
+        if re.fullmatch(r"[0-9a-f]{64}", event_id) is None:
+            return form_error(
+                "Safebox could not identify the staged Clear token safely.",
+                502,
+            )
+        return _start_clear_acceptance(
+            request,
+            acorn,
+            acorn_factory,
+            event_id,
+        )
+
     @app.get("/clear", response_class=HTMLResponse)
     async def clear_transactions(
         request: Request,
@@ -6910,51 +7062,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ),
                 status_code=400,
             )
-        npub = acorn.pubkey_bech32
-        outgoing_job = get_outgoing_payment_job(
-            request.app.state.database_engine,
-            npub,
-        )
-        if outgoing_job and outgoing_job.get("status") == "RUNNING":
-            return RedirectResponse("/pay/status", status_code=303)
-        cash_job = get_finalization_job(
-            request.app.state.database_engine,
-            npub,
-        )
-        if cash_job and cash_job.get("status") == "RUNNING":
-            return RedirectResponse(
-                "/transactions?finalization=running",
-                status_code=303,
-            )
-        claimed, owner_token, _job = claim_clear_acceptance_job(
-            request.app.state.database_engine,
-            npub,
+        return _start_clear_acceptance(
+            request,
+            acorn,
+            acorn_factory,
             event_id,
-            worker_id=request.app.state.worker_id,
-        )
-        if claimed:
-            task = asyncio.wrap_future(
-                request.app.state.background_job_executor.submit(
-                    run_clear_acceptance_job_in_thread,
-                    engine=request.app.state.database_engine,
-                    acorn_factory=acorn_factory,
-                    npub=npub,
-                    event_id=event_id,
-                    owner_token=owner_token,
-                    load_timeout_seconds=settings.wallet_load_timeout_seconds,
-                )
-            )
-            request.app.state.clear_acceptance_tasks[npub] = task
-
-            def remove_completed_task(completed: asyncio.Task) -> None:
-                current = request.app.state.clear_acceptance_tasks.get(npub)
-                if current is completed:
-                    request.app.state.clear_acceptance_tasks.pop(npub, None)
-
-            task.add_done_callback(remove_completed_task)
-        return RedirectResponse(
-            "/clear/acceptance-status",
-            status_code=303,
         )
 
     @app.get("/clear/acceptance-status", response_class=HTMLResponse)

@@ -55,6 +55,7 @@ label { display: block; margin-top: 1rem; }
 input, select, textarea, button { box-sizing: border-box; font: inherit; min-height: 2.75rem; padding: .6rem; width: 100%; border: 1px solid var(--border); border-radius: .35rem; background: var(--control); color: var(--text); }
 input[type="checkbox"] { min-height: auto; width: auto; margin-right: .45rem; }
 textarea { min-height: 7rem; }
+.clear-token-input { min-height: 12rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
 .safekeeping-message { min-height: 24rem; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9rem; line-height: 1.45; white-space: pre-wrap; }
 button { cursor: pointer; margin-top: 1.25rem; }
 button:disabled { cursor: wait; opacity: .65; }
