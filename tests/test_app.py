@@ -84,6 +84,7 @@ from app.security import (
     DepositQuoteState,
     InvoicePaymentCipher,
     InvoicePaymentState,
+    LOOPBACK_COOKIE_NAME,
     SECURE_COOKIE_NAME,
     SessionCipher,
     SessionCredentials,
@@ -855,12 +856,14 @@ def test_settings_load_cookie_key_from_working_directory_env_file(
     env_key = Fernet.generate_key().decode("ascii")
     (tmp_path / ".env").write_text(
         f"SAFEBOX_COOKIE_KEY={env_key}\n"
+        "SAFEBOX_ALLOW_INSECURE_HTTP=true\n"
         "SAFEBOX_SESSION_TTL_HOURS=2\n"
         "SAFEBOX_BACKGROUND_JOB_THREADS=3\n",
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
+    monkeypatch.delenv("SAFEBOX_ALLOW_INSECURE_HTTP", raising=False)
     monkeypatch.delenv("SAFEBOX_SESSION_TTL_HOURS", raising=False)
     monkeypatch.delenv("SAFEBOX_SESSION_TTL_SECONDS", raising=False)
     monkeypatch.delenv("SAFEBOX_BACKGROUND_JOB_THREADS", raising=False)
@@ -868,6 +871,7 @@ def test_settings_load_cookie_key_from_working_directory_env_file(
     settings = Settings.from_env()
 
     assert settings.cookie_key == env_key
+    assert settings.allow_insecure_http is True
     assert settings.session_ttl_seconds == 7200
     assert settings.background_job_threads == 3
 
@@ -1015,6 +1019,33 @@ def test_non_loopback_http_is_rejected() -> None:
 
     assert response.status_code == 400
     assert "HTTPS is required" in response.json()["detail"]
+
+
+def test_explicit_insecure_http_mode_allows_non_loopback_with_plain_cookie() -> None:
+    settings = replace(TEST_SETTINGS, allow_insecure_http=True)
+    client = TestClient(create_app(settings), base_url="http://192.168.1.20:8888")
+
+    response = client.post(
+        "/connect",
+        data={
+            "csrf_token": CsrfProtector(settings).issue(),
+            "secret_type": "nsec",
+            "secret": TEST_NSEC,
+            "bootstrap_relay": "relay.example.com",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    set_cookie = response.headers["set-cookie"]
+    assert f"{LOOPBACK_COOKIE_NAME}=" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "Secure" not in set_cookie
+    assert client.get("/api/session").status_code == 200
+
+
+def test_settings_disable_insecure_http_by_default() -> None:
+    assert Settings(cookie_key=TEST_KEY).allow_insecure_http is False
 
 
 def test_direct_127001_http_is_allowed() -> None:

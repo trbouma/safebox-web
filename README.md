@@ -677,6 +677,13 @@ internet-accessible deployment.
 The image health check calls `/health` internally over container loopback and
 therefore does not bypass the external HTTPS policy.
 
+For an intentionally trusted local network, an operator may set
+`SAFEBOX_ALLOW_INSECURE_HTTP=true` and publish the application listener on a
+LAN or VPN interface. This opt-in permits plain HTTP and issues non-`Secure`
+session cookies, so every device able to observe or reach that network joins
+the Safebox trust boundary. Keep the default `false` for Internet-facing or
+otherwise untrusted networks, and prefer HTTPS whenever practical.
+
 ### Docker Compose
 
 Create the local runtime configuration before the first start:
@@ -695,6 +702,7 @@ Review these deployment values in `.env` before starting:
 
 ```env
 SAFEBOX_COOKIE_KEY=<generated URL-safe 32-byte application key>
+SAFEBOX_ALLOW_INSECURE_HTTP=false
 SAFEBOX_ALLOWED_WS_RELAYS=
 SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
 SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app

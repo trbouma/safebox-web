@@ -452,7 +452,20 @@ def is_loopback_http_request(request: Request) -> bool:
 
 
 def is_allowed_transport(request: Request) -> bool:
-    return request.url.scheme == "https" or is_loopback_http_request(request)
+    return (
+        request.url.scheme == "https"
+        or is_loopback_http_request(request)
+        or _allows_insecure_http(request)
+    )
+
+
+def _allows_insecure_http(request: Request) -> bool:
+    settings = getattr(request.app.state, "settings", None)
+    return bool(
+        request.url.scheme == "http"
+        and settings is not None
+        and settings.allow_insecure_http
+    )
 
 
 def is_same_origin(request: Request, origin: str) -> bool:
@@ -478,7 +491,9 @@ def is_same_origin(request: Request, origin: str) -> bool:
 
 
 def cookie_name_for_request(request: Request) -> str:
-    return LOOPBACK_COOKIE_NAME if is_loopback_http_request(request) else SECURE_COOKIE_NAME
+    if is_loopback_http_request(request) or _allows_insecure_http(request):
+        return LOOPBACK_COOKIE_NAME
+    return SECURE_COOKIE_NAME
 
 
 def set_session_cookie(
@@ -497,7 +512,9 @@ def set_session_cookie(
         expires=datetime.now(timezone.utc)
         + timedelta(seconds=settings.session_ttl_seconds),
         httponly=True,
-        secure=not is_loopback_http_request(request),
+        secure=not (
+            is_loopback_http_request(request) or _allows_insecure_http(request)
+        ),
         samesite="strict",
         path="/",
     )

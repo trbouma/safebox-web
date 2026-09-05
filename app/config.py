@@ -306,6 +306,7 @@ class Settings:
     """Runtime settings that do not contain wallet state."""
 
     cookie_key: str
+    allow_insecure_http: bool = False
     session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
     wallet_load_timeout_seconds: float = 20.0
     wallet_home_snapshot_timeout_seconds: float = 3.0
@@ -552,6 +553,7 @@ class Settings:
         ).strip()
         return cls(
             cookie_key=cookie_key,
+            allow_insecure_http=_env_bool("SAFEBOX_ALLOW_INSECURE_HTTP"),
             session_ttl_seconds=ttl,
             wallet_load_timeout_seconds=load_timeout,
             wallet_home_snapshot_timeout_seconds=home_snapshot_timeout,
