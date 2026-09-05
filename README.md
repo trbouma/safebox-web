@@ -684,6 +684,12 @@ session cookies, so every device able to observe or reach that network joins
 the Safebox trust boundary. Keep the default `false` for Internet-facing or
 otherwise untrusted networks, and prefer HTTPS whenever practical.
 
+`SAFEBOX_ALLOW_INSECURE_MINTS=true` separately permits Acorns created through
+Safebox Web to use a non-loopback `http://` mint such as a private Compose
+service name. Enable it only when the path between Safebox and the mint is an
+operator-controlled local network. Browser HTTP permission does not
+automatically weaken mint URL validation.
+
 ### Docker Compose
 
 Create the local runtime configuration before the first start:
@@ -703,6 +709,7 @@ Review these deployment values in `.env` before starting:
 ```env
 SAFEBOX_COOKIE_KEY=<generated URL-safe 32-byte application key>
 SAFEBOX_ALLOW_INSECURE_HTTP=false
+SAFEBOX_ALLOW_INSECURE_MINTS=false
 SAFEBOX_ALLOWED_WS_RELAYS=
 SAFEBOX_DEFAULT_BOOTSTRAP_RELAY=wss://relay.getsafebox.app
 SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app

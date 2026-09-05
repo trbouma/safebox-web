@@ -344,11 +344,11 @@ def normalize_bootstrap_relay(
     return normalized
 
 
-def normalize_home_mint(value: str) -> str:
+def normalize_home_mint(value: str, *, allow_insecure: bool = False) -> str:
     """Normalize and validate an HTTPS mint URL.
 
-    Plain HTTP is accepted only for an IPv4 loopback mint used in local
-    development.
+    Plain HTTP is accepted for an IPv4 loopback mint used in development or
+    when the operator explicitly permits an isolated local mint network.
     """
 
     mint = str(value).strip().rstrip("/")
@@ -364,7 +364,7 @@ def normalize_home_mint(value: str) -> str:
         raise ValueError(
             "home mint must not contain credentials, a query, or a fragment"
         )
-    if parsed.scheme == "http":
+    if parsed.scheme == "http" and not allow_insecure:
         try:
             address = ipaddress.ip_address(parsed.hostname)
         except ValueError as exc:

@@ -857,6 +857,7 @@ def test_settings_load_cookie_key_from_working_directory_env_file(
     (tmp_path / ".env").write_text(
         f"SAFEBOX_COOKIE_KEY={env_key}\n"
         "SAFEBOX_ALLOW_INSECURE_HTTP=true\n"
+        "SAFEBOX_ALLOW_INSECURE_MINTS=true\n"
         "SAFEBOX_SESSION_TTL_HOURS=2\n"
         "SAFEBOX_BACKGROUND_JOB_THREADS=3\n",
         encoding="utf-8",
@@ -864,6 +865,7 @@ def test_settings_load_cookie_key_from_working_directory_env_file(
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
     monkeypatch.delenv("SAFEBOX_ALLOW_INSECURE_HTTP", raising=False)
+    monkeypatch.delenv("SAFEBOX_ALLOW_INSECURE_MINTS", raising=False)
     monkeypatch.delenv("SAFEBOX_SESSION_TTL_HOURS", raising=False)
     monkeypatch.delenv("SAFEBOX_SESSION_TTL_SECONDS", raising=False)
     monkeypatch.delenv("SAFEBOX_BACKGROUND_JOB_THREADS", raising=False)
@@ -872,6 +874,7 @@ def test_settings_load_cookie_key_from_working_directory_env_file(
 
     assert settings.cookie_key == env_key
     assert settings.allow_insecure_http is True
+    assert settings.allow_insecure_mints is True
     assert settings.session_ttl_seconds == 7200
     assert settings.background_job_threads == 3
 
@@ -1046,6 +1049,7 @@ def test_explicit_insecure_http_mode_allows_non_loopback_with_plain_cookie() -> 
 
 def test_settings_disable_insecure_http_by_default() -> None:
     assert Settings(cookie_key=TEST_KEY).allow_insecure_http is False
+    assert Settings(cookie_key=TEST_KEY).allow_insecure_mints is False
 
 
 def test_direct_127001_http_is_allowed() -> None:
@@ -3214,6 +3218,28 @@ def test_create_acorn_rejects_insecure_remote_mint() -> None:
     assert response.status_code == 400
     assert "allowed only on loopback" in response.text
     assert SECURE_COOKIE_NAME not in response.headers.get("set-cookie", "")
+
+
+def test_create_acorn_allows_explicit_local_http_mint(monkeypatch) -> None:
+    FakeCreatedAcorn.instances.clear()
+    monkeypatch.setattr(main_module, "Acorn", FakeCreatedAcorn)
+    settings = replace(TEST_SETTINGS, allow_insecure_mints=True)
+    client = TestClient(create_app(settings), base_url="https://safebox.example")
+
+    response = client.post(
+        "/create",
+        data={
+            "csrf_token": CsrfProtector(settings).issue(),
+            "home_relay": "relay.example.com",
+            "home_mint": "http://clear:3339",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 201
+    assert FakeCreatedAcorn.instances[0].kwargs["mints"] == [
+        "http://clear:3339"
+    ]
 
 
 def test_loaded_acorn_dependency_loads_request_scoped_state() -> None:
