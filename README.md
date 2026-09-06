@@ -205,13 +205,17 @@ The Clear page presents spendable **Clear Balances** first, actionable
 last. A balance or history lookup failure does not suppress a successful
 read-only preview of newly delivered transfers.
 
-**Accept a Clear Token** provides a separate CSRF-protected form for a pasted
-`cashuA` token. Safebox journals the bearer token in the attached Acorn's
-relay-backed pending receipt state, then uses the same background acceptance,
+**Clear Tokens** provides CSRF-protected creation and acceptance on one page.
+Creation exports an amount from an existing confirmed Clear balance as a
+`cashuA` bearer token and QR code; it does not commission or issue new mint
+supply. Safebox never places the exported token in a URL or its database, and
+marks the response as non-cacheable.
+
+Pasted or scanned `cashuA` tokens are journaled in the attached Acorn's
+relay-backed pending receipt state, then use the same background acceptance,
 mint refresh, kind `7380` proof storage, and kind `7381` history path as a
 private Clear transfer. The Acorn retains the mint, CMU, and keyset
 relationship; `SAFEBOX_CLEAR_MINTS` is not required to display or use this page.
-The token is never placed in a URL or the Safebox Web database.
 
 The complete cross-product result is documented in the
 [Clear Transfer Product Milestone](docs/CLEAR-TRANSFER-PRODUCT-MILESTONE-2026-08-17.md).

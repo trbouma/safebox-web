@@ -1472,6 +1472,60 @@ def _clear_page_notice(query_params) -> str | None:
     return f"Received {received:,} new Clear transfer{suffix}."
 
 
+async def _stage_clear_token(acorn, token: str, timeout: float) -> dict:
+    """Validate and durably stage a bearer token before mint acceptance."""
+
+    normalized_token = str(token or "").strip()
+    if (
+        not normalized_token.lower().startswith("cashua")
+        or len(normalized_token) > 128 * 1024
+    ):
+        raise ValueError("Enter a valid Clear token.")
+    stager = getattr(acorn, "stage_pasted_clear_token", None)
+    if stager is None:
+        raise NotImplementedError(
+            "This Safebox Acorn installation does not support Clear token acceptance."
+        )
+    receipt = await asyncio.wait_for(stager(normalized_token), timeout=timeout)
+    if not isinstance(receipt, dict):
+        raise RuntimeError("Clear token staging did not return a receipt")
+    return receipt
+
+
+async def _continue_clear_token_acceptance(
+    request: Request,
+    acorn: Acorn,
+    acorn_factory,
+    receipt: dict,
+    error_response,
+) -> Response:
+    """Continue a staged token through the recoverable acceptance worker."""
+
+    async def fail(message: str, status_code: int) -> Response:
+        response = error_response(message, status_code)
+        if inspect.isawaitable(response):
+            response = await response
+        return response
+
+    receipt_status = str(receipt.get("status") or "pending")
+    if receipt_status == "accepted":
+        return RedirectResponse("/clear?receipt_accepted=1", status_code=303)
+    if receipt_status != "pending":
+        return await fail("This Clear token is no longer pending acceptance.", 409)
+    event_id = str(receipt.get("event_id") or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{64}", event_id) is None:
+        return await fail(
+            "Safebox could not identify the staged Clear token safely.",
+            502,
+        )
+    return _start_clear_acceptance(
+        request,
+        acorn,
+        acorn_factory,
+        event_id,
+    )
+
+
 def _start_clear_acceptance(
     request: Request,
     acorn: Acorn,
@@ -5599,6 +5653,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def accept_scanned_lightning_payment(
         request: Request,
         acorn: PaymentAcornDependency,
+        acorn_factory: PaymentAcornFactoryDependency,
         csrf_token: str = Form(...),
         lightning_payment: str = Form(...),
     ) -> HTMLResponse:
@@ -5757,6 +5812,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     csrf_token=form_token.issue(),
                 ),
                 headers={"Cache-Control": "no-store"},
+            )
+
+        if scanned_value.lower().startswith("cashua"):
+            try:
+                receipt = await _stage_clear_token(
+                    acorn,
+                    scanned_value,
+                    settings.wallet_load_timeout_seconds,
+                )
+            except NotImplementedError as exc:
+                return scan_error(str(exc), 501)
+            except ValueError as exc:
+                logger.info(
+                    "scanned Clear token rejected error_type=%s",
+                    type(exc).__name__,
+                )
+                return scan_error(str(exc))
+            except Exception as exc:
+                logger.warning(
+                    "scanned Clear token staging failed error_type=%s",
+                    type(exc).__name__,
+                )
+                return scan_error(
+                    "Safebox could not securely store the Clear token for acceptance.",
+                    502,
+                )
+            return await _continue_clear_token_acceptance(
+                request,
+                acorn,
+                acorn_factory,
+                receipt,
+                scan_error,
             )
 
         if scanned_value.lower().startswith("creqa"):
@@ -6751,17 +6838,203 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             preferred_language=preferred_language,
         )
 
-    @app.get("/clear/accept-token", response_class=HTMLResponse)
-    async def accept_clear_token_form(request: Request) -> HTMLResponse:
+    async def clear_token_page(
+        request: Request,
+        acorn,
+        *,
+        accept_error: str | None = None,
+        create_error: str | None = None,
+        status_code: int = 200,
+        created_token: dict | None = None,
+    ) -> HTMLResponse:
         settings = request.app.state.settings
+        try:
+            clear_balances = await _payment_clear_balances(request, acorn)
+        except Exception as exc:
+            logger.warning(
+                "Clear token balance lookup failed error_type=%s",
+                type(exc).__name__,
+            )
+            clear_balances = []
+            if create_error is None:
+                create_error = "Safebox could not load the available Clear balances."
         return HTMLResponse(
             render_template(
                 "accept_clear_token.html",
-                title="Accept Clear Token",
+                title="Clear Tokens",
                 csrf_token=CsrfProtector(settings).issue(),
-                error=None,
+                accept_error=accept_error,
+                create_error=create_error,
+                clear_balances=clear_balances,
+                created_token=created_token,
                 token="",
+            ),
+            status_code=status_code,
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/clear/accept-token", response_class=HTMLResponse)
+    async def accept_clear_token_form(
+        request: Request,
+        acorn: LoadedAcornDependency,
+    ) -> HTMLResponse:
+        return await clear_token_page(request, acorn)
+
+    @app.post("/clear/create-token", response_class=HTMLResponse)
+    async def create_clear_token(
+        request: Request,
+        acorn: PaymentAcornDependency,
+        asset: str = Form(...),
+        amount: str = Form(...),
+        memo: str = Form("Clear transfer"),
+        confirmed: str | None = Form(None),
+        csrf_token: str = Form(...),
+    ) -> HTMLResponse:
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error="The form token is invalid or expired.",
+                status_code=403,
             )
+
+        selected_asset = _decode_clear_payment_asset(asset)
+        try:
+            transfer_amount = int(str(amount).strip())
+        except (TypeError, ValueError):
+            transfer_amount = 0
+        transfer_memo = str(memo or "Clear transfer").strip()
+        try:
+            balances = await _payment_clear_balances(request, acorn)
+        except Exception as exc:
+            logger.warning(
+                "Clear token balance validation failed error_type=%s",
+                type(exc).__name__,
+            )
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error="Safebox could not load the selected Clear balance.",
+                status_code=502,
+            )
+        selected_balance = next(
+            (
+                balance
+                for balance in balances
+                if balance.get("asset_id") == asset
+            ),
+            None,
+        )
+        if selected_asset is None or selected_balance is None:
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error="Select an available Clear balance.",
+                status_code=400,
+            )
+        if transfer_amount <= 0:
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error="Enter a Clear token amount greater than zero.",
+                status_code=400,
+            )
+        if transfer_amount > int(selected_balance.get("amount") or 0):
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error="The token amount exceeds the selected Clear balance.",
+                status_code=400,
+            )
+        if len(transfer_memo) > 200:
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error="The token memo must be 200 characters or fewer.",
+                status_code=400,
+            )
+        if confirmed != "yes":
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error=(
+                    "Confirm that creating the token transfers value out of "
+                    "the selected Clear balance."
+                ),
+                status_code=400,
+            )
+        exporter = getattr(acorn, "export_clear_token", None)
+        if exporter is None:
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error="This Safebox Acorn installation cannot create Clear tokens.",
+                status_code=501,
+            )
+        mint, unit = selected_asset
+        try:
+            result = await asyncio.wait_for(
+                exporter(
+                    mint=mint,
+                    unit=unit,
+                    amount=transfer_amount,
+                    memo=transfer_memo,
+                ),
+                timeout=settings.payment_timeout_seconds,
+            )
+        except ValueError as exc:
+            logger.info(
+                "Clear token creation rejected error_type=%s",
+                type(exc).__name__,
+            )
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error=str(exc),
+                status_code=400,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Clear token creation failed error_type=%s",
+                type(exc).__name__,
+            )
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error="Safebox could not create the Clear token.",
+                status_code=502,
+            )
+
+        exported_token = str(result.get("token") or "").strip()
+        if not exported_token:
+            logger.error("Clear token export returned no bearer token")
+            return await clear_token_page(
+                request,
+                acorn,
+                create_error=(
+                    "Safebox created a transfer but did not return its token. "
+                    "Review Clear Transactions before trying again."
+                ),
+                status_code=502,
+            )
+        try:
+            qr_svg = _qr_svg(exported_token)
+        except Exception as exc:
+            logger.warning(
+                "Clear token QR rendering failed error_type=%s",
+                type(exc).__name__,
+            )
+            qr_svg = None
+        return await clear_token_page(
+            request,
+            acorn,
+            created_token={
+                "token": exported_token,
+                "amount": int(result.get("amount") or transfer_amount),
+                "display_unit": str(selected_balance.get("display_unit") or unit),
+                "qr_svg": qr_svg,
+            },
         )
 
     @app.post("/clear/accept-token", response_class=HTMLResponse)
@@ -6774,66 +7047,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ):
         settings = request.app.state.settings
 
-        def form_error(message: str, status_code: int) -> HTMLResponse:
-            return HTMLResponse(
-                render_template(
-                    "accept_clear_token.html",
-                    title="Accept Clear Token",
-                    csrf_token=CsrfProtector(settings).issue(),
-                    error=message,
-                    token="",
-                ),
+        async def form_error(message: str, status_code: int) -> HTMLResponse:
+            return await clear_token_page(
+                request,
+                acorn,
+                accept_error=message,
                 status_code=status_code,
             )
 
         if not CsrfProtector(settings).verify(csrf_token):
-            return form_error("The form token is invalid or expired.", 403)
-        token = str(token or "").strip()
-        if not token or len(token) > 128 * 1024:
-            return form_error("Enter a valid Clear token.", 400)
-        stager = getattr(acorn, "stage_pasted_clear_token", None)
-        if stager is None:
-            return form_error(
-                "This Safebox Acorn installation does not support pasted Clear tokens.",
-                501,
-            )
+            return await form_error("The form token is invalid or expired.", 403)
         try:
-            receipt = await asyncio.wait_for(
-                stager(token),
-                timeout=settings.wallet_load_timeout_seconds,
+            receipt = await _stage_clear_token(
+                acorn,
+                token,
+                settings.wallet_load_timeout_seconds,
             )
+        except NotImplementedError as exc:
+            return await form_error(str(exc), 501)
         except ValueError as exc:
             logger.info(
                 "pasted Clear token rejected error_type=%s",
                 type(exc).__name__,
             )
-            return form_error(str(exc), 400)
+            return await form_error(str(exc), 400)
         except Exception as exc:
             logger.warning(
                 "pasted Clear token staging failed error_type=%s",
                 type(exc).__name__,
             )
-            return form_error(
+            return await form_error(
                 "Safebox could not securely store the Clear token for acceptance.",
                 502,
             )
-
-        receipt_status = str(receipt.get("status") or "pending")
-        if receipt_status == "accepted":
-            return RedirectResponse("/clear?receipt_accepted=1", status_code=303)
-        if receipt_status != "pending":
-            return form_error("This Clear token is no longer pending acceptance.", 409)
-        event_id = str(receipt.get("event_id") or "").strip().lower()
-        if re.fullmatch(r"[0-9a-f]{64}", event_id) is None:
-            return form_error(
-                "Safebox could not identify the staged Clear token safely.",
-                502,
-            )
-        return _start_clear_acceptance(
+        return await _continue_clear_token_acceptance(
             request,
             acorn,
             acorn_factory,
-            event_id,
+            receipt,
+            form_error,
         )
 
     @app.get("/clear", response_class=HTMLResponse)

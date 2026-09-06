@@ -40,6 +40,8 @@ if (
           ? "Record-sharing code acquired. Opening the transfer review…"
           : lowerValue.startsWith("creqa")
             ? "Clear payment request acquired. Opening the transfer review…"
+          : lowerValue.startsWith("cashua")
+            ? "Clear token acquired. Securing it for acceptance…"
           : lowerValue.startsWith("https://")
             ? "Website address acquired. Opening the safety review…"
           : "Payment code acquired. Opening the payment review…";

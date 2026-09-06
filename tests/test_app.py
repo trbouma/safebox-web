@@ -278,6 +278,7 @@ class FakeLoadedAcorn:
         self.clear_sweep_receipts: list[dict] = []
         self.clear_preview_calls = 0
         self.staged_clear_tokens: list[dict] = []
+        self.exported_clear_tokens: list[dict] = []
         self.clear_preview: dict = {
             "previewed_count": 0,
             "previewed_amount": 0,
@@ -355,6 +356,19 @@ class FakeLoadedAcorn:
         }
         self.clear_receipts.append(receipt)
         return receipt
+
+    async def export_clear_token(self, **kwargs) -> dict:
+        self.exported_clear_tokens.append(dict(kwargs))
+        amount = int(kwargs["amount"])
+        return {
+            "status": "OK",
+            "token": "cashuAtest-exported-clear-token",
+            "amount": amount,
+            "mint": kwargs["mint"],
+            "unit": kwargs["unit"],
+            "fee": 0,
+            "balance": max(0, 100 - amount),
+        }
 
     async def accept_pending_clear_receipt(self, event_id: str) -> dict:
         for receipt in self.clear_receipts:
@@ -4434,7 +4448,8 @@ def test_user_can_paste_and_accept_a_configured_clear_token(tmp_path) -> None:
             time.sleep(0.01)
 
     assert page.status_code == 200
-    assert "Accept Clear Token" in page.text
+    assert "Clear Tokens" in page.text
+    assert "Create a Clear Token" in page.text
     assert 'name="token"' in page.text
     assert response.status_code == 303
     assert response.headers["location"] == "/clear/acceptance-status"
@@ -4478,6 +4493,74 @@ def test_pasted_clear_token_page_does_not_require_deployment_mints(tmp_path) -> 
     assert response.status_code == 303
     assert response.headers["location"] == "/clear/acceptance-status"
     assert acorn.staged_clear_tokens == [{"token": "cashuAnew-mint-token"}]
+
+
+def test_user_can_create_a_clear_token_qr_from_a_confirmed_balance(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    acorn.clear_balances = [{
+        "mint": "http://clear:3339",
+        "unit": "cmu-test",
+        "amount": 75,
+        "proof_count": 3,
+        "keyset_id": "keyset-test",
+    }]
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.get("/clear/accept-token")
+        csrf_match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+        asset_match = re.search(r'name="asset".*?value="([^"]+)"', page.text, re.S)
+        assert csrf_match is not None
+        assert asset_match is not None
+        response = client.post(
+            "/clear/create-token",
+            data={
+                "csrf_token": csrf_match.group(1),
+                "asset": asset_match.group(1),
+                "amount": "25",
+                "memo": "Community lunch",
+                "confirmed": "yes",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert "Clear Token Ready" in response.text
+    assert "Clear token QR code" in response.text
+    assert "cashuAtest-exported-clear-token" in response.text
+    assert "cashuAtest-exported-clear-token" not in str(response.url)
+    assert acorn.exported_clear_tokens == [{
+        "mint": "http://clear:3339",
+        "unit": "cmu-test",
+        "amount": 25,
+        "memo": "Community lunch",
+    }]
+
+
+def test_clear_token_creation_rejects_an_unavailable_balance(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+
+    response = TestClient(app, base_url="https://safebox.example").post(
+        "/clear/create-token",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "asset": main_module._encode_clear_payment_asset(
+                "https://untrusted.example",
+                "cmu-test",
+            ),
+            "amount": "25",
+            "memo": "Must not export",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Select an available Clear balance" in response.text
+    assert acorn.exported_clear_tokens == []
 
 
 def test_user_can_check_for_new_clear_transfers(tmp_path) -> None:
@@ -5966,6 +6049,7 @@ def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None
     assert "const start = async () =>" in script.text
     assert "void start();" in script.text
     assert "startButton.hidden = false;" in script.text
+    assert 'lowerValue.startsWith("cashua")' in script.text
 
 
 def test_scanned_lightning_address_prefills_payment_review() -> None:
@@ -5985,6 +6069,25 @@ def test_scanned_lightning_address_prefills_payment_review() -> None:
     assert response.status_code == 200
     assert "Transfer a Balance" in response.text
     assert 'value="alice@example.com"' in response.text
+
+
+def test_scanned_clear_token_starts_recoverable_acceptance(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/scan/lightning",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "lightning_payment": "cashuAscanned-clear-token",
+            },
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/clear/acceptance-status"
+    assert acorn.staged_clear_tokens == [{"token": "cashuAscanned-clear-token"}]
 
 
 def test_scanned_lnurl_pay_qr_derives_lightning_address() -> None:

@@ -1,15 +1,71 @@
 {% extends "base.html" %}
 {% block content %}
-{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-<form method="post" action="/clear/accept-token" autocomplete="off"
-      data-progress-message="Securing and accepting the Clear token. Please wait."
-      data-progress-button="Starting acceptance…">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <label for="clear-token">Clear token</label>
-  <textarea id="clear-token" name="token" class="clear-token-input"
-            minlength="7" maxlength="131072" autocapitalize="none"
-            autocorrect="off" spellcheck="false" required>{{ token }}</textarea>
-  <p class="advisory">Anyone holding this token can spend it until Safebox confirms acceptance.</p>
-  <button type="submit">Accept Clear Token</button>
-</form>
+{% if created_token %}
+<section aria-labelledby="created-clear-token-title">
+  <h2 id="created-clear-token-title">Clear Token Ready</h2>
+  <p><strong>{{ created_token.amount }} {{ created_token.display_unit }}</strong></p>
+  {% if created_token.qr_svg %}
+  <div class="invoice-qr" aria-label="Clear token QR code">
+    {{ created_token.qr_svg | safe }}
+  </div>
+  {% else %}
+  <p class="error" role="alert">The token is too large to display as a QR
+  code. Use the text token below.</p>
+  {% endif %}
+  <label for="created-clear-token">Clear token</label>
+  <textarea id="created-clear-token" class="clear-token-input" readonly
+            spellcheck="false">{{ created_token.token }}</textarea>
+  <p class="advisory">Anyone holding this token can spend it. Keep this page
+  open until the receiving wallet confirms acceptance.</p>
+</section>
+{% endif %}
+
+<section aria-labelledby="create-clear-token-title">
+  <h2 id="create-clear-token-title">Create a Clear Token</h2>
+  {% if create_error %}<p class="error" role="alert">{{ create_error }}</p>{% endif %}
+  {% if clear_balances %}
+  <form method="post" action="/clear/create-token" autocomplete="off"
+        data-progress-message="Creating the Clear token. Please wait and do not refresh this page."
+        data-progress-button="Creating token…">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="clear-token-asset">Clear Balance</label>
+    <select id="clear-token-asset" name="asset" required>
+      {% for balance in clear_balances %}
+      <option value="{{ balance.asset_id }}">
+        {{ balance.display_name }} — {{ balance.amount }} {{ balance.display_unit }}
+      </option>
+      {% endfor %}
+    </select>
+    <label for="clear-token-amount">Amount</label>
+    <input id="clear-token-amount" name="amount" type="number" min="1" step="1" required>
+    <label for="clear-token-memo">Memo</label>
+    <input id="clear-token-memo" name="memo" type="text" maxlength="200"
+           value="Clear transfer">
+    <label>
+      <input name="confirmed" type="checkbox" value="yes" required>
+      I understand that this transfers value out of the selected Clear Balance.
+    </label>
+    <button type="submit">Create Clear Token</button>
+  </form>
+  {% else %}
+  <p>No confirmed Clear balance is available for creating a token.</p>
+  {% endif %}
+</section>
+
+<section aria-labelledby="accept-clear-token-title">
+  <h2 id="accept-clear-token-title">Accept a Clear Token</h2>
+  {% if accept_error %}<p class="error" role="alert">{{ accept_error }}</p>{% endif %}
+  <form method="post" action="/clear/accept-token" autocomplete="off"
+        data-progress-message="Securing and accepting the Clear token. Please wait."
+        data-progress-button="Starting acceptance…">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="clear-token">Clear token</label>
+    <textarea id="clear-token" name="token" class="clear-token-input"
+              minlength="7" maxlength="131072" autocapitalize="none"
+              autocorrect="off" spellcheck="false" required>{{ token }}</textarea>
+    <p class="advisory">Anyone holding this token can spend it until Safebox
+    confirms acceptance.</p>
+    <button type="submit">Accept Clear Token</button>
+  </form>
+</section>
 {% endblock %}
