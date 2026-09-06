@@ -118,6 +118,14 @@ them to Acorn as advisory lookup locations. Acorn prefers the recipient's
 signed NIP-17 kind `10050` inbox record. A same-instance registration remains a
 separate local case and may use its internal home relay explicitly.
 
+When Safebox creates, loads, or refreshes a handle for an Acorn, it checks the
+configured external relays for that Acorn's signed kind `10050` record. If no
+valid record exists, Safebox asks the Acorn to publish one containing
+`SAFEBOX_NIP05_EXTERNAL_RELAYS`. An existing record is wallet-owned and is not
+overwritten, even when its relay choices differ from the application default.
+Initialization failures do not block wallet access; Safebox logs the failure
+and retries after a bounded delay.
+
 ## Clear receive advertisement
 
 Safebox Web can optionally advertise that claimed handles support Clear token

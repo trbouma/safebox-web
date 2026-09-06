@@ -81,6 +81,7 @@ from app.dependencies import (
     PaymentAcornFactoryDependency,
     ReceiveAcornDependency,
     RecordAcornDependency,
+    ensure_acorn_inbox_relays,
 )
 from app.models import ClaimedHandle, CurrencyRate
 from app.funds_finalization import (
@@ -4045,6 +4046,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             nsec=generated_nsec,
             home_relay=normalized_relay,
             relays=[normalized_relay],
+            public_relays=list(settings.nip05_external_relays),
             mints=[normalized_mint],
         )
         try:
@@ -4059,6 +4061,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 acorn,
                 timeout=settings.wallet_load_timeout_seconds,
             )
+            await ensure_acorn_inbox_relays(acorn, settings)
         except TimeoutError:
             logger.warning("acorn creation timed out relay=%s", normalized_relay)
             return creation_error(
@@ -5243,6 +5246,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             session.rollback()
             return claim_error("That handle was claimed by another request.", 409)
 
+        await ensure_acorn_inbox_relays(acorn, settings)
         return RedirectResponse("/handle", status_code=303)
 
     @app.post("/handle/remove", response_class=HTMLResponse)

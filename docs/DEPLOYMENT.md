@@ -154,7 +154,9 @@ Set `SAFEBOX_NIP05_EXTERNAL_RELAYS` to a comma-delimited list of externally
 reachable `wss://` relays where recipients publish their signed NIP-17 kind
 `10050` inbox records. When unset, public NIP-05 responses identify each
 recipient `npub` but omit relay hints; internal wallet home relays are never
-published through NIP-05.
+published through NIP-05. Safebox initializes a missing kind `10050` record
+from this list when it creates or loads an Acorn, but preserves any existing
+wallet-authored inbox list.
 
 The persisted service-Acorn recovery file overrides later relay and mint
 environment changes. Use `SAFEBOX_SERVICE_ACORN_MIGRATE=true` only for a

@@ -19,6 +19,8 @@ from app.security import SessionCipher, SessionCredentials, cookie_name_for_requ
 
 
 logger = logging.getLogger("safebox_web.security")
+_INBOX_RELAY_CHECK_RETRY_SECONDS = 300.0
+_inbox_relay_checks: dict[tuple[str, tuple[str, ...]], float | None] = {}
 
 
 def _session_rejection_reason(exc: ValueError) -> str:
@@ -82,6 +84,7 @@ def build_acorn(credentials: SessionCredentials, settings: Settings) -> Acorn:
         nsec=credentials.nsec,
         home_relay=credentials.bootstrap_relay,
         relays=[credentials.bootstrap_relay],
+        public_relays=list(settings.nip05_external_relays),
         blossom_home_server=settings.blossom_home_server,
         blossom_servers=[settings.blossom_home_server],
     )
@@ -114,6 +117,7 @@ def get_background_acorn_factory(
             nsec=nsec,
             home_relay=bootstrap_relay,
             relays=[bootstrap_relay],
+            public_relays=list(settings.nip05_external_relays),
             blossom_home_server=blossom_home_server,
             blossom_servers=[blossom_home_server],
         )
@@ -125,6 +129,59 @@ BackgroundAcornFactoryDependency = Annotated[
     AcornFactory,
     Depends(get_background_acorn_factory),
 ]
+
+
+async def ensure_acorn_inbox_relays(acorn: Acorn, settings: Settings) -> None:
+    """Initialize a missing signed inbox record from app-level relay defaults."""
+
+    configured_relays = tuple(settings.nip05_external_relays)
+    if not configured_relays:
+        return
+    resolver = getattr(acorn, "resolve_inbox_relays", None)
+    publisher = getattr(acorn, "publish_inbox_relays", None)
+    pubkey = str(getattr(acorn, "pubkey_hex", "") or "").lower()
+    if not callable(resolver) or not callable(publisher) or not pubkey:
+        logger.warning(
+            "acorn inbox relay initialization skipped reason=unsupported_component"
+        )
+        return
+
+    cache_key = (pubkey, configured_relays)
+    retry_at = _inbox_relay_checks.get(cache_key)
+    if retry_at is None and cache_key in _inbox_relay_checks:
+        return
+    if retry_at is not None and monotonic() < retry_at:
+        return
+
+    timeout = min(5.0, settings.wallet_load_timeout_seconds)
+    try:
+        resolution = await asyncio.wait_for(
+            resolver(pubkey, lookup_relays=list(configured_relays)),
+            timeout=timeout,
+        )
+        if not resolution.get("found"):
+            await asyncio.wait_for(
+                publisher(
+                    list(configured_relays),
+                    publish_relays=list(configured_relays),
+                ),
+                timeout=timeout,
+            )
+            logger.info(
+                "acorn inbox relays initialized npub=%s relays=%s",
+                getattr(acorn, "pubkey_bech32", pubkey),
+                configured_relays,
+            )
+        _inbox_relay_checks[cache_key] = None
+    except Exception as exc:
+        _inbox_relay_checks[cache_key] = (
+            monotonic() + _INBOX_RELAY_CHECK_RETRY_SECONDS
+        )
+        logger.warning(
+            "acorn inbox relay initialization deferred npub=%s error_type=%s",
+            getattr(acorn, "pubkey_bech32", pubkey),
+            type(exc).__name__,
+        )
 
 
 async def get_loaded_acorn(
@@ -152,6 +209,7 @@ async def get_loaded_acorn(
             "acorn state load scope=funds duration_ms=%s",
             int((monotonic() - started) * 1000),
         )
+    await ensure_acorn_inbox_relays(acorn, settings)
     return acorn
 
 
@@ -186,6 +244,7 @@ def get_payment_acorn_factory(
             nsec=nsec,
             home_relay=bootstrap_relay,
             relays=[bootstrap_relay],
+            public_relays=list(settings.nip05_external_relays),
             blossom_home_server=blossom_home_server,
             blossom_servers=[blossom_home_server],
         )
@@ -225,6 +284,7 @@ def get_deposit_acorn_factory(
             nsec=nsec,
             home_relay=bootstrap_relay,
             relays=[bootstrap_relay],
+            public_relays=list(settings.nip05_external_relays),
             blossom_home_server=blossom_home_server,
             blossom_servers=[blossom_home_server],
         )

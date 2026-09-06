@@ -45,6 +45,7 @@ from acorn import (
 )
 import app.main as main_module
 import app.security as security_module
+import app.dependencies as dependencies_module
 from app.config import (
     DEFAULT_OPENETR_PUBLIC_BASE_URL,
     DEFAULT_SESSION_TTL_HOURS,
@@ -60,6 +61,7 @@ EUDI_PID_FIXTURE = Path(
 )
 PKPASS_MIME_TYPE = "application/vnd.apple.pkpass"
 from app.dependencies import (
+    ensure_acorn_inbox_relays,
     get_background_acorn_factory,
     get_acorn,
     get_deposit_acorn,
@@ -2739,6 +2741,7 @@ def test_create_acorn_initializes_relay_state_and_starts_session(monkeypatch) ->
         "nsec": TEST_NSEC,
         "home_relay": "wss://relay.example.com",
         "relays": ["wss://relay.example.com"],
+        "public_relays": [],
         "mints": ["https://mint.example.com"],
     }
     assert created.created_seed_phrase == TEST_MNEMONIC
@@ -3326,6 +3329,70 @@ def test_loaded_acorn_dependency_loads_request_scoped_state() -> None:
 
     assert result is acorn
     assert acorn.loaded is True
+
+
+def test_inbox_relay_initialization_does_nothing_without_app_default() -> None:
+    acorn = SimpleNamespace(
+        pubkey_hex="a" * 64,
+        resolve_inbox_relays=AsyncMock(),
+        publish_inbox_relays=AsyncMock(),
+    )
+
+    asyncio.run(ensure_acorn_inbox_relays(acorn, TEST_SETTINGS))
+
+    acorn.resolve_inbox_relays.assert_not_awaited()
+    acorn.publish_inbox_relays.assert_not_awaited()
+
+
+def test_inbox_relay_initialization_publishes_missing_record() -> None:
+    settings = replace(
+        TEST_SETTINGS,
+        nip05_external_relays=("wss://federation.example",),
+    )
+    acorn = SimpleNamespace(
+        pubkey_hex="b" * 64,
+        pubkey_bech32="npub1missing",
+        resolve_inbox_relays=AsyncMock(
+            return_value={"found": False, "relays": []}
+        ),
+        publish_inbox_relays=AsyncMock(return_value={"status": "OK"}),
+    )
+    dependencies_module._inbox_relay_checks.clear()
+
+    asyncio.run(ensure_acorn_inbox_relays(acorn, settings))
+    asyncio.run(ensure_acorn_inbox_relays(acorn, settings))
+
+    acorn.resolve_inbox_relays.assert_awaited_once_with(
+        "b" * 64,
+        lookup_relays=["wss://federation.example"],
+    )
+    acorn.publish_inbox_relays.assert_awaited_once_with(
+        ["wss://federation.example"],
+        publish_relays=["wss://federation.example"],
+    )
+
+
+def test_inbox_relay_initialization_preserves_existing_wallet_record() -> None:
+    settings = replace(
+        TEST_SETTINGS,
+        nip05_external_relays=("wss://app-default.example",),
+    )
+    acorn = SimpleNamespace(
+        pubkey_hex="c" * 64,
+        pubkey_bech32="npub1existing",
+        resolve_inbox_relays=AsyncMock(
+            return_value={
+                "found": True,
+                "relays": ["wss://wallet-choice.example"],
+            }
+        ),
+        publish_inbox_relays=AsyncMock(),
+    )
+    dependencies_module._inbox_relay_checks.clear()
+
+    asyncio.run(ensure_acorn_inbox_relays(acorn, settings))
+
+    acorn.publish_inbox_relays.assert_not_awaited()
 
 
 def test_record_acorn_dependency_does_not_load_funds_state() -> None:
