@@ -604,14 +604,14 @@ def _same_relay_endpoint(first: str, second: str) -> bool:
     return first_identity is not None and first_identity == identity(second)
 
 
-def _resolve_local_safebox_lightning_recipient(
+def _resolve_local_safebox_recipient(
     request: Request,
-    lightning_address: str,
+    payment_address: str,
 ) -> dict[str, object] | None:
     """Resolve an address served by this Safebox without requiring HTTPS or DNS."""
 
     try:
-        local_part, domain = lightning_address.split("@", 1)
+        local_part, domain = payment_address.split("@", 1)
     except ValueError:
         return None
     if domain.lower() != str(request.url.hostname or "").lower():
@@ -6470,12 +6470,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return payment_error("Transfer comment must be 200 characters or fewer.")
 
         if selected_clear is not None:
-            clear_recipient = await _resolve_safebox_clear_recipient(
-                recipient,
-                mint=str(selected_clear["mint"]),
-                unit=str(selected_clear["unit"]),
-                timeout=settings.payment_timeout_seconds,
-            )
+            clear_recipient = _resolve_local_safebox_recipient(request, recipient)
+            if clear_recipient is None:
+                clear_recipient = await _resolve_safebox_clear_recipient(
+                    recipient,
+                    mint=str(selected_clear["mint"]),
+                    unit=str(selected_clear["unit"]),
+                    timeout=settings.payment_timeout_seconds,
+                )
             if clear_recipient is None:
                 return payment_error(
                     "That address does not advertise support for this Clear "
@@ -6493,12 +6495,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 str(relay)
                 for relay in clear_recipient.get("relay_hints", [])
             ]
-            if not clear_relay_hints:
+            explicit_clear_relay = (
+                str(clear_recipient.get("relay") or "") or None
+            )
+            if explicit_clear_relay is None and not clear_relay_hints:
                 return payment_error(
                     "That address does not advertise an externally reachable "
                     "relay for Clear delivery. No value was sent.",
                     422,
                 )
+            clear_routing_kwargs = (
+                {"relay": explicit_clear_relay}
+                if explicit_clear_relay is not None
+                else _supported_relay_hint_kwargs(sender, clear_relay_hints)
+            )
             try:
                 delivery = await asyncio.wait_for(
                     sender(
@@ -6507,10 +6517,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         mint=str(selected_clear["mint"]),
                         unit=str(selected_clear["unit"]),
                         comment=payment_comment,
-                        **_supported_relay_hint_kwargs(
-                            sender,
-                            clear_relay_hints,
-                        ),
+                        **clear_routing_kwargs,
                     ),
                     timeout=settings.payment_timeout_seconds,
                 )
@@ -6586,7 +6593,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 message=message,
             )
 
-        direct_recipient = _resolve_local_safebox_lightning_recipient(
+        direct_recipient = _resolve_local_safebox_recipient(
             request,
             recipient,
         )

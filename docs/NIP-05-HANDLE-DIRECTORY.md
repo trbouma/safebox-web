@@ -118,6 +118,12 @@ them to Acorn as advisory lookup locations. Acorn prefers the recipient's
 signed NIP-17 kind `10050` inbox record. A same-instance registration remains a
 separate local case and may use its internal home relay explicitly.
 
+The same local shortcut applies to Clear transfers. When the payment address
+belongs to this Safebox instance, Safebox routes the Clear gift wrap explicitly
+to the recipient's internal home relay without requiring HTTPS discovery. Clear
+transfers to another instance continue through external NIP-05 discovery and
+the recipient's signed inbox record.
+
 When Safebox creates, loads, or refreshes a handle for an Acorn, it checks the
 configured external relays for that Acorn's signed kind `10050` record. If no
 valid record exists, Safebox asks the Acorn to publish one containing

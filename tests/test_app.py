@@ -6097,6 +6097,68 @@ def test_clear_payment_sends_exact_mint_and_cmu_to_compatible_address(
     ]
 
 
+def test_local_clear_payment_uses_internal_relay_without_https(
+    monkeypatch, tmp_path,
+) -> None:
+    recipient_hex = "11" * 32
+    recipient_npub = main_module.Keys.hex_to_bech32(recipient_hex, prefix="npub")
+
+    class UnexpectedClient:
+        def __init__(self, **kwargs) -> None:
+            raise AssertionError("local Clear recipients must not require HTTPS discovery")
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", UnexpectedClient)
+    settings = replace(database_settings(tmp_path), allow_insecure_http=True)
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn(balance=500)
+    acorn.clear_balances = [
+        {
+            "mint": "http://clear.one",
+            "unit": "cmu-one",
+            "amount": 25,
+            "proof_count": 3,
+        }
+    ]
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    with TestClient(app, base_url="http://192.168.1.20:8888") as client:
+        with Session(app.state.database_engine) as session:
+            session.add(
+                ClaimedHandle(
+                    claimed_handle="alice",
+                    npub=recipient_npub,
+                    home_relay="ws://spurline:8080",
+                )
+            )
+            session.commit()
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "payment_asset": main_module._encode_clear_payment_asset(
+                    "http://clear.one",
+                    "cmu-one",
+                ),
+                "lightning_address": "alice@192.168.1.20",
+                "amount": "5",
+                "comment": "local Clear transfer",
+                "payment_mode": "confirmed",
+                "confirmed": "yes",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert acorn.clear_transfers == [
+        {
+            "amount": 5,
+            "recipient": recipient_npub,
+            "relay": "ws://spurline:8080",
+            "mint": "http://clear.one",
+            "unit": "cmu-one",
+            "comment": "local Clear transfer",
+        }
+    ]
+
+
 def test_clear_payment_rejects_address_without_compatible_advertisement(
     monkeypatch,
 ) -> None:
