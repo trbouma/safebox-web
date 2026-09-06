@@ -119,6 +119,7 @@ Place the generated value in `SAFEBOX_COOKIE_KEY` and review at least:
 SAFEBOX_COOKIE_KEY=<new private key>
 SAFEBOX_DATABASE_URL=sqlite:///data/database.db
 SAFEBOX_ALLOWED_WS_RELAYS=
+SAFEBOX_NIP05_EXTERNAL_RELAYS=
 SAFEBOX_OPENETR_RELAYS=wss://relay.openetr.org
 SAFEBOX_OPENETR_PUBLIC_BASE_URL=https://openetr.org/etr
 SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS=5
@@ -148,6 +149,12 @@ SAFEBOX_SERVICE_ACORN_DELIVERY_RETRY_MAX_SECONDS=60
 SAFEBOX_SERVICE_ACORN_GIFT_WRAP_RETENTION_SECONDS=604800
 SAFEBOX_NIP57_REQUIRE_DESCRIPTION_HASH=false
 ```
+
+Set `SAFEBOX_NIP05_EXTERNAL_RELAYS` to a comma-delimited list of externally
+reachable `wss://` relays where recipients publish their signed NIP-17 kind
+`10050` inbox records. When unset, public NIP-05 responses identify each
+recipient `npub` but omit relay hints; internal wallet home relays are never
+published through NIP-05.
 
 The persisted service-Acorn recovery file overrides later relay and mint
 environment changes. Use `SAFEBOX_SERVICE_ACORN_MIGRATE=true` only for a

@@ -252,6 +252,41 @@ def _supported_tender_kwargs(
     }
 
 
+def _supported_relay_hint_kwargs(method, relay_hints: list[str]) -> dict:
+    """Pass advisory discovery relays when the Acorn version supports them."""
+
+    try:
+        parameters = inspect.signature(method).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    supports_kwargs = any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
+    if "relay_hints" in parameters or supports_kwargs:
+        return {"relay_hints": relay_hints}
+    # Rolling-deployment compatibility with an older Acorn component.
+    return {"relay": relay_hints[0]} if relay_hints else {}
+
+
+def _nip05_relay_hints(payload: dict, pubkey_hex: str) -> list[str]:
+    """Return normalized advisory relay hints for one NIP-05 public key."""
+
+    relays = payload.get("relays")
+    if not isinstance(relays, dict):
+        return []
+    recipient_relays = relays.get(pubkey_hex) or relays.get(pubkey_hex.lower())
+    if not isinstance(recipient_relays, list):
+        return []
+    return list(
+        dict.fromkeys(
+            str(relay).strip()
+            for relay in recipient_relays
+            if str(relay).strip().startswith(("wss://", "ws://"))
+        )
+    )
+
+
 def _humanize_retention(seconds: int) -> str:
     """Present a configured retention period in an intuitive exact unit."""
 
@@ -489,7 +524,7 @@ async def _resolve_safebox_lightning_recipient(
     lightning_address: str,
     *,
     timeout: float,
-) -> dict[str, str] | None:
+) -> dict[str, object] | None:
     """Resolve a Lightning address to a Safebox NIP-05 recipient if possible."""
 
     try:
@@ -521,8 +556,7 @@ async def _resolve_safebox_lightning_recipient(
     if not isinstance(payload, dict):
         return None
     names = payload.get("names")
-    relays = payload.get("relays")
-    if not isinstance(names, dict) or not isinstance(relays, dict):
+    if not isinstance(names, dict):
         return None
 
     pubkey_hex = names.get(local_part) or names.get(local_part.lower())
@@ -531,18 +565,17 @@ async def _resolve_safebox_lightning_recipient(
         pubkey_hex,
     ):
         return None
-    recipient_relays = relays.get(pubkey_hex) or relays.get(pubkey_hex.lower())
-    if not isinstance(recipient_relays, list) or not recipient_relays:
-        return None
-    relay = str(recipient_relays[0]).strip()
-    if not relay.startswith(("wss://", "ws://")):
-        return None
+    relay_hints = _nip05_relay_hints(payload, pubkey_hex)
 
     try:
         recipient_npub = Keys.hex_to_bech32(pubkey_hex.lower(), prefix="npub")
     except Exception:
         return None
-    return {"npub": recipient_npub, "relay": relay}
+    return {
+        "npub": recipient_npub,
+        "relay_hints": relay_hints,
+        "route_scope": "external",
+    }
 
 
 def _same_relay_endpoint(first: str, second: str) -> bool:
@@ -573,7 +606,7 @@ def _same_relay_endpoint(first: str, second: str) -> bool:
 def _resolve_local_safebox_lightning_recipient(
     request: Request,
     lightning_address: str,
-) -> dict[str, str] | None:
+) -> dict[str, object] | None:
     """Resolve an address served by this Safebox without requiring HTTPS or DNS."""
 
     try:
@@ -594,7 +627,12 @@ def _resolve_local_safebox_lightning_recipient(
         ).first()
         if registration is None:
             return None
-        return {"npub": registration.npub, "relay": registration.home_relay}
+        return {
+            "npub": registration.npub,
+            "relay": registration.home_relay,
+            "relay_hints": [registration.home_relay],
+            "route_scope": "internal",
+        }
 
 
 async def _resolve_safebox_clear_recipient(
@@ -603,7 +641,7 @@ async def _resolve_safebox_clear_recipient(
     mint: str,
     unit: str,
     timeout: float,
-) -> dict[str, str] | None:
+) -> dict[str, object] | None:
     """Resolve a NIP-05 address advertising compatible Clear receipt support."""
 
     try:
@@ -633,11 +671,9 @@ async def _resolve_safebox_clear_recipient(
     if not isinstance(payload, dict):
         return None
     names = payload.get("names")
-    relays = payload.get("relays")
     clear = payload.get("clear")
     if (
         not isinstance(names, dict)
-        or not isinstance(relays, dict)
         or not isinstance(clear, dict)
     ):
         return None
@@ -669,17 +705,16 @@ async def _resolve_safebox_clear_recipient(
         return None
     if advertised_units and str(unit).strip() not in advertised_units:
         return None
-    recipient_relays = relays.get(pubkey_hex) or relays.get(pubkey_hex.lower())
-    if not isinstance(recipient_relays, list) or not recipient_relays:
-        return None
-    relay = str(recipient_relays[0]).strip()
-    if not relay.startswith(("wss://", "ws://")):
-        return None
+    relay_hints = _nip05_relay_hints(payload, pubkey_hex)
     try:
         recipient_npub = Keys.hex_to_bech32(pubkey_hex.lower(), prefix="npub")
     except Exception:
         return None
-    return {"npub": recipient_npub, "relay": relay}
+    return {
+        "npub": recipient_npub,
+        "relay_hints": relay_hints,
+        "route_scope": "external",
+    }
 
 
 def _decode_lightning_invoice(value: str) -> dict[str, object] | None:
@@ -5287,11 +5322,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Access-Control-Allow-Origin": "*"},
             )
 
-        content = {
-            "names": {normalized_name: pubkey_hex},
-            "relays": {pubkey_hex: [registration.home_relay]},
-        }
         settings = request.app.state.settings
+        content = {"names": {normalized_name: pubkey_hex}}
+        if settings.nip05_external_relays:
+            content["relays"] = {
+                pubkey_hex: list(settings.nip05_external_relays),
+            }
         if settings.clear_receive_enabled:
             clear_descriptor = {
                 "protocols": ["clear-token-transfer"],
@@ -6449,15 +6485,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "Clear transfers.",
                     503,
                 )
+            clear_relay_hints = [
+                str(relay)
+                for relay in clear_recipient.get("relay_hints", [])
+            ]
+            if not clear_relay_hints:
+                return payment_error(
+                    "That address does not advertise an externally reachable "
+                    "relay for Clear delivery. No value was sent.",
+                    422,
+                )
             try:
                 delivery = await asyncio.wait_for(
                     sender(
                         amount=payment_amount,
-                        recipient=clear_recipient["npub"],
-                        relay=clear_recipient["relay"],
+                        recipient=str(clear_recipient["npub"]),
                         mint=str(selected_clear["mint"]),
                         unit=str(selected_clear["unit"]),
                         comment=payment_comment,
+                        **_supported_relay_hint_kwargs(
+                            sender,
+                            clear_relay_hints,
+                        ),
                     ),
                     timeout=settings.payment_timeout_seconds,
                 )
@@ -6548,13 +6597,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "No Lightning transfer was attempted.",
                 422,
             )
-        direct_on_shared_relay = bool(
-            direct_recipient is not None
-            and _same_relay_endpoint(
-                str(getattr(acorn, "home_relay", "")),
-                direct_recipient["relay"],
-            )
+        direct_relay_hints = (
+            [str(relay) for relay in direct_recipient.get("relay_hints", [])]
+            if direct_recipient is not None
+            else []
         )
+        explicit_relay = (
+            str(direct_recipient.get("relay") or "") or None
+            if direct_recipient is not None
+            else None
+        )
+        shared_relay = explicit_relay or next(
+            (
+                relay
+                for relay in direct_relay_hints
+                if _same_relay_endpoint(
+                    str(getattr(acorn, "home_relay", "")),
+                    relay,
+                )
+            ),
+            None,
+        )
+        direct_on_shared_relay = shared_relay is not None
+        if (
+            payment_mode == "continuity"
+            and shared_relay is None
+            and not direct_relay_hints
+        ):
+            return payment_error(
+                "That Safebox address does not advertise an externally "
+                "reachable relay. No value was sent.",
+                422,
+            )
         if direct_recipient is not None and (
             payment_mode == "continuity" or direct_on_shared_relay
         ):
@@ -6562,13 +6636,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request,
                 payment_amount,
             )
+            routing_kwargs = (
+                {"relay": shared_relay}
+                if shared_relay is not None
+                else _supported_relay_hint_kwargs(
+                    acorn.send_ecash_transfer,
+                    direct_relay_hints,
+                )
+            )
+            route_description = (
+                shared_relay or ",".join(direct_relay_hints) or "kind10050"
+            )
             try:
                 delivery = await asyncio.wait_for(
                     acorn.send_ecash_transfer(
                         amount=payment_amount,
-                        recipient=direct_recipient["npub"],
-                        relay=direct_recipient["relay"],
+                        recipient=str(direct_recipient["npub"]),
                         comment=payment_comment,
+                        **routing_kwargs,
                         **_supported_tender_kwargs(
                             acorn.send_ecash_transfer,
                             tendered_amount,
@@ -6586,7 +6671,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 logger.warning(
                     "direct safebox ecash payment timed out outcome=unknown recipient=%s relay=%s",
                     direct_recipient["npub"],
-                    direct_recipient["relay"],
+                    route_description,
                 )
                 return HTMLResponse(
                     _page(
@@ -6605,7 +6690,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 logger.warning(
                     "direct safebox ecash payment failed recipient=%s relay=%s error_type=%s error=%s",
                     direct_recipient["npub"],
-                    direct_recipient["relay"],
+                    route_description,
                     type(exc).__name__,
                     str(exc),
                 )
@@ -6629,7 +6714,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 logger.warning(
                     "direct safebox ecash payment returned unconfirmed result recipient=%s relay=%s result=%r",
                     direct_recipient["npub"],
-                    direct_recipient["relay"],
+                    route_description,
                     delivery,
                 )
                 return HTMLResponse(

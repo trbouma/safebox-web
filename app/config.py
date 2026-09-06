@@ -349,6 +349,7 @@ class Settings:
     clear_receive_enabled: bool = False
     clear_mints: tuple[str, ...] = ()
     clear_units: tuple[str, ...] = ()
+    nip05_external_relays: tuple[str, ...] = ()
     background_job_threads: int = 2
 
     @property
@@ -443,6 +444,26 @@ class Settings:
             raise ValueError(
                 "SAFEBOX_BACKGROUND_JOB_THREADS must be between 1 and 16"
             )
+        for relay in self.nip05_external_relays:
+            try:
+                parsed_relay = urlsplit(str(relay).strip())
+                parsed_port = parsed_relay.port
+            except ValueError as exc:
+                raise ValueError(
+                    "SAFEBOX_NIP05_EXTERNAL_RELAYS must contain valid relay URLs"
+                ) from exc
+            if (
+                parsed_relay.scheme.lower() != "wss"
+                or not parsed_relay.hostname
+                or parsed_relay.username is not None
+                or parsed_relay.password is not None
+                or (parsed_port is not None and not 1 <= parsed_port <= 65535)
+                or parsed_relay.fragment
+            ):
+                raise ValueError(
+                    "SAFEBOX_NIP05_EXTERNAL_RELAYS must contain externally "
+                    "reachable wss:// relay URLs"
+                )
         _validate_gift_wrap_retention(
             self.service_acorn_gift_wrap_retention_seconds
         )
@@ -639,5 +660,8 @@ class Settings:
             clear_receive_enabled=_env_bool("SAFEBOX_CLEAR_RECEIVE_ENABLED", False),
             clear_mints=_comma_list_from_env("SAFEBOX_CLEAR_MINTS"),
             clear_units=_comma_list_from_env("SAFEBOX_CLEAR_UNITS"),
+            nip05_external_relays=_comma_list_from_env(
+                "SAFEBOX_NIP05_EXTERNAL_RELAYS"
+            ),
             background_job_threads=background_job_threads,
         )

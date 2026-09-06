@@ -615,19 +615,22 @@ class FakeLoadedAcorn:
         *,
         amount: int,
         recipient: str,
-        relay: str,
-        comment: str,
+        relay: str | None = None,
+        relay_hints: list[str] | None = None,
+        comment: str = "funds transfer",
         **kwargs,
     ):
-        self.ecash_transfers.append(
-            {
-                "amount": amount,
-                "recipient": recipient,
-                "relay": relay,
-                "comment": comment,
-                **kwargs,
-            }
-        )
+        call = {
+            "amount": amount,
+            "recipient": recipient,
+            "comment": comment,
+            **kwargs,
+        }
+        if relay is not None:
+            call["relay"] = relay
+        if relay_hints is not None:
+            call["relay_hints"] = relay_hints
+        self.ecash_transfers.append(call)
         self.balance -= amount
         return {"status": "OK", "event_id": "ecash-event-1"}
 
@@ -995,6 +998,34 @@ def test_settings_load_comma_delimited_ws_relay_allowlist(
         "ws://localhost:8735",
         "ws://beelink:7777",
     )
+
+
+def test_settings_load_external_nip05_relays(tmp_path, monkeypatch) -> None:
+    env_key = Fernet.generate_key().decode("ascii")
+    (tmp_path / ".env").write_text(
+        f"SAFEBOX_COOKIE_KEY={env_key}\n"
+        "SAFEBOX_NIP05_EXTERNAL_RELAYS=wss://federation.example, "
+        "wss://backup.example/inbox\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
+    monkeypatch.delenv("SAFEBOX_NIP05_EXTERNAL_RELAYS", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.nip05_external_relays == (
+        "wss://federation.example",
+        "wss://backup.example/inbox",
+    )
+
+
+def test_external_nip05_relays_require_wss() -> None:
+    with pytest.raises(ValueError, match="SAFEBOX_NIP05_EXTERNAL_RELAYS"):
+        replace(
+            TEST_SETTINGS,
+            nip05_external_relays=("ws://grove:8080",),
+        )
 
 
 def test_ws_relay_requires_exact_allowlist_entry() -> None:
@@ -3846,7 +3877,6 @@ def test_connected_acorn_can_claim_and_resolve_a_nip05_handle(tmp_path) -> None:
         assert resolution.headers["access-control-allow-origin"] == "*"
         assert resolution.json() == {
             "names": {"alice": acorn.pubkey_hex},
-            "relays": {acorn.pubkey_hex: ["wss://relay.one.example"]},
         }
 
         # The same component can idempotently refresh its current relay.
@@ -3862,8 +3892,8 @@ def test_connected_acorn_can_claim_and_resolve_a_nip05_handle(tmp_path) -> None:
         assert refreshed.status_code == 303
         assert client.get(
             "/.well-known/nostr.json", params={"name": "alice"}
-        ).json()["relays"] == {
-            acorn.pubkey_hex: ["wss://relay.two.example"]
+        ).json() == {
+            "names": {"alice": acorn.pubkey_hex},
         }
 
         unconfirmed_remove = client.post(
@@ -3888,6 +3918,52 @@ def test_connected_acorn_can_claim_and_resolve_a_nip05_handle(tmp_path) -> None:
         ).status_code == 404
         assert "Claim a NIP-05 handle" in client.get("/handle").text
         assert "NIP-05 address" not in client.get("/wallet").text
+
+
+def test_nip05_advertises_configured_external_relays_not_internal_home(
+    tmp_path,
+) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        nip05_external_relays=(
+            "wss://federation.example",
+            "wss://backup.example/inbox",
+        ),
+    )
+    app = create_app(settings)
+    acorn = main_module.Acorn(
+        nsec=TEST_NSEC,
+        home_relay="ws://grove:8080",
+        relays=["ws://grove:8080"],
+    )
+    stub_deferred_recovery_status(acorn)
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        claim = client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "Alice",
+            },
+            follow_redirects=False,
+        )
+        assert claim.status_code == 303
+        resolution = client.get(
+            "/.well-known/nostr.json",
+            params={"name": "alice"},
+        )
+
+    assert resolution.json() == {
+        "names": {"alice": acorn.pubkey_hex},
+        "relays": {
+            acorn.pubkey_hex: [
+                "wss://federation.example",
+                "wss://backup.example/inbox",
+            ],
+        },
+    }
 
 
 def test_nip05_handle_can_advertise_clear_receive_support(tmp_path) -> None:
@@ -3923,7 +3999,6 @@ def test_nip05_handle_can_advertise_clear_receive_support(tmp_path) -> None:
     assert resolution.status_code == 200
     assert resolution.json() == {
         "names": {"alice": acorn.pubkey_hex},
-        "relays": {acorn.pubkey_hex: ["wss://relay.one.example"]},
         "clear": {
             "alice": {
                 "protocols": ["clear-token-transfer"],
@@ -5947,7 +6022,7 @@ def test_clear_payment_sends_exact_mint_and_cmu_to_compatible_address(
         {
             "amount": 5,
             "recipient": recipient_npub,
-            "relay": "wss://recipient-relay.example",
+            "relay_hints": ["wss://recipient-relay.example"],
             "mint": "http://clear.one",
             "unit": "cmu-one",
             "comment": "meeting room",
@@ -7604,7 +7679,11 @@ def test_continuity_payment_sends_only_to_safebox_without_mint_check(
         async def get(self, url, params):
             return FakeResponse()
 
-    monkeypatch.setattr(main_module, "_read_proof_verification", mint_must_not_be_called)
+    monkeypatch.setattr(
+        main_module,
+        "_read_proof_verification",
+        mint_must_not_be_called,
+    )
     monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
@@ -7631,7 +7710,7 @@ def test_continuity_payment_sends_only_to_safebox_without_mint_check(
         {
             "amount": 21,
             "recipient": recipient_npub,
-            "relay": "ws://spurline.local:8080",
+            "relay_hints": ["ws://spurline.local:8080"],
             "comment": "local market",
             "payment_mode": "continuity",
         }
@@ -7657,7 +7736,11 @@ def test_continuity_payment_rejects_external_lightning_address(
         async def get(self, url, params):
             raise main_module.httpx.HTTPError("not a Safebox address")
 
-    monkeypatch.setattr(main_module, "_read_proof_verification", mint_must_not_be_called)
+    monkeypatch.setattr(
+        main_module,
+        "_read_proof_verification",
+        mint_must_not_be_called,
+    )
     monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
@@ -7680,6 +7763,63 @@ def test_continuity_payment_rejects_external_lightning_address(
     assert "only be sent to another Safebox address" in response.text
     assert "No Lightning transfer was attempted" in response.text
     assert 'value="continuity"' in response.text
+    assert acorn.payments == []
+    assert acorn.ecash_transfers == []
+
+
+def test_continuity_payment_rejects_safebox_without_external_relay_hint(
+    monkeypatch,
+) -> None:
+    recipient_hex = "11" * 32
+
+    async def mint_must_not_be_called(_acorn, _timeout):
+        raise AssertionError("Continuity mode must not contact the mint")
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"names": {"alice": recipient_hex}}
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        main_module,
+        "_read_proof_verification",
+        mint_must_not_be_called,
+    )
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "federated transfer",
+            "payment_mode": "continuity",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "does not advertise an externally reachable relay" in response.text
     assert acorn.payments == []
     assert acorn.ecash_transfers == []
 

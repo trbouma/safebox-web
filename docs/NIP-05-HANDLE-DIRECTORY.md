@@ -18,7 +18,7 @@ The `claimed_handle` table contains only:
 | --- | --- |
 | `claimed_handle` | Normalized, public NIP-05 local name |
 | `npub` | Bech32 public key of the controlling Acorn component |
-| `home_relay` | Relay advertised for that component |
+| `home_relay` | Context-local relay used by that component |
 
 The numeric `id` is an internal database primary key. Database constraints
 make both `claimed_handle` and `npub` unique. This provides one component per
@@ -84,7 +84,15 @@ Resolution uses:
 GET /.well-known/nostr.json?name=alice
 ```
 
-For a registered name, Safebox returns the NIP-05 shape:
+For a registered name, Safebox always returns the stable public-key mapping.
+Relay hints are included only when the operator configures externally reachable
+relays:
+
+```env
+SAFEBOX_NIP05_EXTERNAL_RELAYS=wss://federation.example,wss://backup.example
+```
+
+The resulting NIP-05 shape is:
 
 ```json
 {
@@ -100,6 +108,15 @@ For a registered name, Safebox returns the NIP-05 shape:
 ```
 
 The endpoint permits cross-origin reads. Unknown valid names return `404`.
+When `SAFEBOX_NIP05_EXTERNAL_RELAYS` is empty, the `relays` member is omitted.
+Safebox never substitutes the claimed wallet's `home_relay`, because that value
+may be a Docker-only Mainstay address such as `ws://grove:8080`.
+
+These relay values are discovery hints, not wallet identity or a permanently
+pinned delivery route. For external ecash and Clear delivery, Safebox passes
+them to Acorn as advisory lookup locations. Acorn prefers the recipient's
+signed NIP-17 kind `10050` inbox record. A same-instance registration remains a
+separate local case and may use its internal home relay explicitly.
 
 ## Clear receive advertisement
 
