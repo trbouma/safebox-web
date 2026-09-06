@@ -20,6 +20,10 @@ if (
   scanForm instanceof HTMLFormElement
 ) {
   let accepted = false;
+  const cameraAvailable =
+    window.isSecureContext &&
+    navigator.mediaDevices != null &&
+    typeof navigator.mediaDevices.getUserMedia === "function";
 
   const scanner = new QrScanner(
     video,
@@ -77,6 +81,14 @@ if (
   };
 
   const start = async () => {
+    if (!cameraAvailable) {
+      video.hidden = true;
+      startButton.hidden = true;
+      stopButton.hidden = true;
+      status.textContent =
+        "Camera scanning requires HTTPS when Safebox is opened from another device. Enter the code manually below.";
+      return;
+    }
     accepted = false;
     startButton.disabled = true;
     status.textContent = "Requesting camera access…";
@@ -97,5 +109,12 @@ if (
   startButton.addEventListener("click", start);
   stopButton.addEventListener("click", stop);
   window.addEventListener("pagehide", () => scanner.destroy(), { once: true });
-  void start();
+  if (cameraAvailable) {
+    void start();
+  } else {
+    video.hidden = true;
+    startButton.hidden = true;
+    status.textContent =
+      "Camera scanning requires HTTPS when Safebox is opened from another device. Enter the code manually below.";
+  }
 }

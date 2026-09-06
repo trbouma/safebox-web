@@ -6050,6 +6050,8 @@ def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None
     assert "void start();" in script.text
     assert "startButton.hidden = false;" in script.text
     assert 'lowerValue.startsWith("cashua")' in script.text
+    assert "window.isSecureContext" in script.text
+    assert "Camera scanning requires HTTPS" in script.text
 
 
 def test_scanned_lightning_address_prefills_payment_review() -> None:
