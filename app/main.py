@@ -639,7 +639,6 @@ def _resolve_local_safebox_recipient(
 async def _resolve_safebox_clear_recipient(
     payment_address: str,
     *,
-    mint: str,
     unit: str,
     timeout: float,
 ) -> dict[str, object] | None:
@@ -696,14 +695,9 @@ async def _resolve_safebox_clear_recipient(
         return None
     if 7379 not in advertised_kinds:
         return None
-    advertised_mints = {
-        str(candidate).rstrip("/") for candidate in descriptor.get("mints") or []
-    }
     advertised_units = {
         str(candidate).strip() for candidate in descriptor.get("units") or []
     }
-    if advertised_mints and str(mint).rstrip("/") not in advertised_mints:
-        return None
     if advertised_units and str(unit).strip() not in advertised_units:
         return None
     relay_hints = _nip05_relay_hints(payload, pubkey_hex)
@@ -745,6 +739,26 @@ def _decode_lightning_invoice(value: str) -> dict[str, object] | None:
         ).isoformat(sep=" ", timespec="seconds"),
         "payment_hash": str(decoded.payment_hash),
     }
+
+
+def _clear_mint_has_public_route(mint: str) -> bool:
+    """Treat a well-formed HTTPS mint URL as remotely reachable for now."""
+
+    normalized = str(mint or "").strip().rstrip("/")
+    try:
+        parsed = urlsplit(normalized)
+        parsed_port = parsed.port
+    except ValueError:
+        return False
+    return bool(
+        parsed.scheme.lower() == "https"
+        and parsed.hostname
+        and parsed.username is None
+        and parsed.password is None
+        and (parsed_port is None or 1 <= parsed_port <= 65535)
+        and not parsed.query
+        and not parsed.fragment
+    )
 
 
 def _invoice_payment_form(
@@ -5338,8 +5352,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "transports": ["nip59"],
                 "kinds": [7379],
             }
-            if settings.clear_mints:
-                clear_descriptor["mints"] = list(settings.clear_mints)
+            if settings.clear_external_mints:
+                clear_descriptor["mints"] = list(settings.clear_external_mints)
             if settings.clear_units:
                 clear_descriptor["units"] = list(settings.clear_units)
             content["clear"] = {
@@ -6472,9 +6486,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if selected_clear is not None:
             clear_recipient = _resolve_local_safebox_recipient(request, recipient)
             if clear_recipient is None:
+                if not _clear_mint_has_public_route(str(selected_clear["mint"])):
+                    return payment_error(
+                        "That Clear Balance uses an internal-only mint and cannot "
+                        "be sent outside this Safebox instance. No value was sent.",
+                        422,
+                    )
                 clear_recipient = await _resolve_safebox_clear_recipient(
                     recipient,
-                    mint=str(selected_clear["mint"]),
                     unit=str(selected_clear["unit"]),
                     timeout=settings.payment_timeout_seconds,
                 )

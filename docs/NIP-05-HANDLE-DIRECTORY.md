@@ -140,6 +140,7 @@ delivery. This is controlled by:
 ```env
 SAFEBOX_CLEAR_RECEIVE_ENABLED=true
 SAFEBOX_CLEAR_MINTS=
+SAFEBOX_CLEAR_EXTERNAL_MINTS=
 SAFEBOX_CLEAR_UNITS=
 ```
 
@@ -157,6 +158,13 @@ requested handle:
   }
 }
 ```
+
+Only `SAFEBOX_CLEAR_EXTERNAL_MINTS` is emitted as public mint reachability
+metadata. Internal entries in `SAFEBOX_CLEAR_MINTS` remain private. A remote
+sender may deliver a token from a well-formed public HTTPS mint even when that
+mint is new to the receiver. A token backed only by an internal HTTP route is
+stopped before proof export; same-instance recipients use the local directory
+and internal mint route instead.
 
 The advertised transfer format is a relay-visible kind `1059` NIP-59 gift wrap
 containing an inner kind `7379` Clear transfer. Optional mint and unit filters

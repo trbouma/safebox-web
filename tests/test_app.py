@@ -1022,6 +1022,34 @@ def test_settings_load_external_nip05_relays(tmp_path, monkeypatch) -> None:
     )
 
 
+def test_settings_load_external_clear_mints(tmp_path, monkeypatch) -> None:
+    env_key = Fernet.generate_key().decode("ascii")
+    (tmp_path / ".env").write_text(
+        f"SAFEBOX_COOKIE_KEY={env_key}\n"
+        "SAFEBOX_CLEAR_EXTERNAL_MINTS=https://clear.example, "
+        "https://backup.example/clear\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SAFEBOX_COOKIE_KEY", raising=False)
+    monkeypatch.delenv("SAFEBOX_CLEAR_EXTERNAL_MINTS", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.clear_external_mints == (
+        "https://clear.example",
+        "https://backup.example/clear",
+    )
+
+
+def test_external_clear_mints_require_https() -> None:
+    with pytest.raises(ValueError, match="SAFEBOX_CLEAR_EXTERNAL_MINTS"):
+        replace(
+            TEST_SETTINGS,
+            clear_external_mints=("http://clear:3339",),
+        )
+
+
 def test_external_nip05_relays_require_wss() -> None:
     with pytest.raises(ValueError, match="SAFEBOX_NIP05_EXTERNAL_RELAYS"):
         replace(
@@ -2201,7 +2229,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
         "Manage Balances"
     ) < response.text.index("Manage Records")
     assert "Claim a Custom Address" not in response.text
-    assert '<a href="/invite">Invite someone to create an Acorn</a>' in response.text
+    assert '<a href="/invite">Onboard a Friend</a>' in response.text
     assert "Scan a Code" not in response.text
     assert 'href="/record-protection/enable"' in response.text
     assert "Protected Records" in response.text
@@ -2215,6 +2243,9 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert 'name="confirmed" type="checkbox" value="yes" required' in response.text
     assert response.text.index("wallet-actions") < response.text.index("Component public key")
     assert response.text.index("Disconnect") < response.text.index("Advisories")
+    assert response.text.index("Advisories") < response.text.index(
+        "Onboard a Friend"
+    )
 
 
 @pytest.mark.parametrize(
@@ -4074,6 +4105,42 @@ def test_nip05_handle_can_advertise_clear_receive_support(tmp_path) -> None:
             }
         },
     }
+
+
+def test_nip05_advertises_only_external_clear_mint_routes(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        clear_receive_enabled=True,
+        clear_mints=("http://clear:3339", "https://clear.example"),
+        clear_external_mints=("https://clear.example",),
+    )
+    app = create_app(settings)
+    acorn = main_module.Acorn(
+        nsec=TEST_NSEC,
+        home_relay="ws://spurline:8080",
+        relays=["ws://spurline:8080"],
+    )
+    stub_deferred_recovery_status(acorn)
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        claim = client.post(
+            "/handle",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "claimed_handle": "alice",
+            },
+            follow_redirects=False,
+        )
+        assert claim.status_code == 303
+        resolution = client.get(
+            "/.well-known/nostr.json", params={"name": "alice"}
+        )
+
+    descriptor = resolution.json()["clear"]["alice"]
+    assert descriptor["mints"] == ["https://clear.example"]
+    assert "http://clear:3339" not in str(resolution.json())
 
 
 def test_wallet_shows_plain_address_with_lnurl_qr(
@@ -6001,7 +6068,7 @@ def test_payment_form_lists_each_clear_balance_without_combining_it() -> None:
     assert "cmu-two — 40 cmu-two" in response.text
 
 
-def test_clear_payment_sends_exact_mint_and_cmu_to_compatible_address(
+def test_clear_payment_sends_public_mint_unknown_to_compatible_receiver(
     monkeypatch,
 ) -> None:
     recipient_hex = "11" * 32
@@ -6020,7 +6087,6 @@ def test_clear_payment_sends_exact_mint_and_cmu_to_compatible_address(
                         "protocols": ["clear-token-transfer"],
                         "transports": ["nip59"],
                         "kinds": [7379],
-                        "mints": ["http://clear.one"],
                         "units": ["cmu-one"],
                     }
                 },
@@ -6054,7 +6120,7 @@ def test_clear_payment_sends_exact_mint_and_cmu_to_compatible_address(
     acorn = FakeLoadedAcorn(balance=500)
     acorn.clear_balances = [
         {
-            "mint": "http://clear.one",
+            "mint": "https://clear.one",
             "unit": "cmu-one",
             "amount": 25,
             "proof_count": 3,
@@ -6068,7 +6134,7 @@ def test_clear_payment_sends_exact_mint_and_cmu_to_compatible_address(
         data={
             "csrf_token": valid_csrf_token(),
             "payment_asset": main_module._encode_clear_payment_asset(
-                "http://clear.one",
+                "https://clear.one",
                 "cmu-one",
             ),
             "lightning_address": "alice@example.com",
@@ -6090,7 +6156,7 @@ def test_clear_payment_sends_exact_mint_and_cmu_to_compatible_address(
             "amount": 5,
             "recipient": recipient_npub,
             "relay_hints": ["wss://recipient-relay.example"],
-            "mint": "http://clear.one",
+            "mint": "https://clear.one",
             "unit": "cmu-one",
             "comment": "meeting room",
         }
@@ -6159,7 +6225,7 @@ def test_local_clear_payment_uses_internal_relay_without_https(
     ]
 
 
-def test_clear_payment_rejects_address_without_compatible_advertisement(
+def test_clear_payment_rejects_internal_mint_for_external_recipient(
     monkeypatch,
 ) -> None:
     recipient_hex = "11" * 32
@@ -6172,6 +6238,13 @@ def test_clear_payment_rejects_address_without_compatible_advertisement(
             return {
                 "names": {"alice": recipient_hex},
                 "relays": {recipient_hex: ["wss://recipient-relay.example"]},
+                "clear": {
+                    "alice": {
+                        "protocols": ["clear-token-transfer"],
+                        "transports": ["nip59"],
+                        "kinds": [7379],
+                    }
+                },
             }
 
     class FakeClient:
@@ -6218,7 +6291,7 @@ def test_clear_payment_rejects_address_without_compatible_advertisement(
     )
 
     assert response.status_code == 422
-    assert "does not advertise support for this Clear Balance" in response.text
+    assert "uses an internal-only mint" in response.text
     assert "No value was sent" in response.text
     assert acorn.clear_transfers == []
     assert acorn.payments == []

@@ -149,7 +149,6 @@
       {% if nip05_address %}
       <p>NIP-05 address: <strong><a href="/handle">{{ nip05_address }}</a></strong></p>
       {% endif %}
-      <p><a href="{{ onboard_invite_path }}">Invite someone to create an Acorn</a>.</p>
       <p>This landing page loads only relay-visible balance snapshots. Mint
       verification, transaction history, and pending transfers are loaded only
       when you open the corresponding transaction page. Friendly Clear names
@@ -161,7 +160,8 @@
     {% endif %}
   </div>
 </details>
-<nav class="wallet-actions" aria-label="Display preferences">
+<nav class="wallet-actions" aria-label="Wallet options">
+  <a href="{{ onboard_invite_path }}">{{ _("Onboard a Friend") }}</a>
   <a href="/preferences">{{ _("Preferences") }}</a>
 </nav>
 {% endblock %}

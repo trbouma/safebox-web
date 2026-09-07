@@ -348,6 +348,7 @@ class Settings:
     currency_rate_stale_seconds: int = DEFAULT_CURRENCY_RATE_STALE_SECONDS
     clear_receive_enabled: bool = False
     clear_mints: tuple[str, ...] = ()
+    clear_external_mints: tuple[str, ...] = ()
     clear_units: tuple[str, ...] = ()
     nip05_external_relays: tuple[str, ...] = ()
     background_job_threads: int = 2
@@ -444,6 +445,27 @@ class Settings:
             raise ValueError(
                 "SAFEBOX_BACKGROUND_JOB_THREADS must be between 1 and 16"
             )
+        for mint in self.clear_external_mints:
+            try:
+                parsed_mint = urlsplit(str(mint).strip())
+                parsed_port = parsed_mint.port
+            except ValueError as exc:
+                raise ValueError(
+                    "SAFEBOX_CLEAR_EXTERNAL_MINTS must contain valid URLs"
+                ) from exc
+            if (
+                parsed_mint.scheme.lower() != "https"
+                or not parsed_mint.hostname
+                or parsed_mint.username is not None
+                or parsed_mint.password is not None
+                or (parsed_port is not None and not 1 <= parsed_port <= 65535)
+                or parsed_mint.query
+                or parsed_mint.fragment
+            ):
+                raise ValueError(
+                    "SAFEBOX_CLEAR_EXTERNAL_MINTS must contain externally "
+                    "reachable https:// mint URLs"
+                )
         for relay in self.nip05_external_relays:
             try:
                 parsed_relay = urlsplit(str(relay).strip())
@@ -659,6 +681,9 @@ class Settings:
             currency_rate_stale_seconds=currency_rate_stale_seconds,
             clear_receive_enabled=_env_bool("SAFEBOX_CLEAR_RECEIVE_ENABLED", False),
             clear_mints=_comma_list_from_env("SAFEBOX_CLEAR_MINTS"),
+            clear_external_mints=_comma_list_from_env(
+                "SAFEBOX_CLEAR_EXTERNAL_MINTS"
+            ),
             clear_units=_comma_list_from_env("SAFEBOX_CLEAR_UNITS"),
             nip05_external_relays=_comma_list_from_env(
                 "SAFEBOX_NIP05_EXTERNAL_RELAYS"

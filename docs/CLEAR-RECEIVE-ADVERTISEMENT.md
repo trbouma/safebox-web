@@ -41,9 +41,18 @@ SAFEBOX_CLEAR_MINTS=http://127.0.0.1:3338,https://clear.example
 SAFEBOX_CLEAR_UNITS=cmu-00ce29eeaf094301
 ```
 
-Leaving `SAFEBOX_CLEAR_MINTS` and `SAFEBOX_CLEAR_UNITS` empty advertises
-general Clear receive support. Wallets still validate the mint, unit, keyset
-ids, and token payload after decrypting the transfer.
+Separately list only mint routes that another Safebox can reach:
+
+```env
+SAFEBOX_CLEAR_EXTERNAL_MINTS=https://clear.example
+```
+
+`SAFEBOX_CLEAR_MINTS` controls configured acceptance and metadata access;
+`SAFEBOX_CLEAR_EXTERNAL_MINTS` advertises public routes already known to the
+receiver. That advertisement is not exhaustive: a receiver may learn about a
+new public HTTPS mint from its first Clear transfer.
+Never put an internal Docker route such as `http://clear:3339` in the external
+list.
 
 ## Wallet display metadata
 
@@ -100,6 +109,7 @@ service:
 environment:
   SAFEBOX_CLEAR_RECEIVE_ENABLED: "${SAFEBOX_CLEAR_RECEIVE_ENABLED:-false}"
   SAFEBOX_CLEAR_MINTS: "${SAFEBOX_CLEAR_MINTS:-}"
+  SAFEBOX_CLEAR_EXTERNAL_MINTS: "${SAFEBOX_CLEAR_EXTERNAL_MINTS:-}"
   SAFEBOX_CLEAR_UNITS: "${SAFEBOX_CLEAR_UNITS:-}"
 ```
 
@@ -139,11 +149,12 @@ When enabled, `/.well-known/nostr.json?name=alice` includes a `clear` section:
 }
 ```
 
-If mint or unit restrictions are configured, the descriptor also includes:
+If externally reachable mint routes or unit restrictions are configured, the
+descriptor also includes:
 
 ```json
 {
-  "mints": ["http://127.0.0.1:3338"],
+  "mints": ["https://clear.example"],
   "units": ["cmu-00ce29eeaf094301"]
 }
 ```
@@ -162,15 +173,36 @@ transport: nip59
 The sender should publish the gift wrap to the relay hints returned in the
 same NIP-05 response.
 
+## Current routing profiles
+
+Safebox resolves recipient delivery and mint reachability independently:
+
+| Recipient | Mint route | Result |
+| --- | --- | --- |
+| Same Safebox instance | Internal HTTP or public HTTPS | Explicit internal relay |
+| External Safebox | Public HTTPS | Signed external inbox route |
+| External Safebox | Internal HTTP only | Rejected before proof export |
+
+A same-instance handle is resolved from the local claimed-handle directory and
+does not require HTTPS discovery. An external recipient must advertise Clear
+transport support and an externally reachable relay. A public HTTPS mint may
+be new to the receiver and need not appear in its NIP-05 descriptor beforehand.
+
+This interim profile was manually validated on September 6, 2026, for an
+internal-mint transfer between two Mainstay wallets and a public-mint transfer
+from an independent Safebox into Mainstay.
+
 ## Trust boundary
 
 This is an application-level setting. It says that this Safebox Web deployment
 currently advertises Clear receive support for claimed handles.
 
 The advertisement does not prove that a particular user will accept every
-Clear token, does not finalize a transfer, and does not bind the wallet to a
-particular Clear mint unless `SAFEBOX_CLEAR_MINTS` or `SAFEBOX_CLEAR_UNITS` are
-configured.
+Clear token or finalize a transfer. For this interim profile, a sender treats a
+well-formed HTTPS mint URL as publicly reachable even when it is not yet in the
+receiver's advertised mint list. Internal HTTP mint routes remain restricted
+to same-instance recipients. This is a URL-based assumption, not a network
+probe or cryptographic service-identity proof.
 
 Pending Clear transfers can be deleted individually before finalization.
 Deletion erases the stored bearer token and leaves only a minimal tombstone in
