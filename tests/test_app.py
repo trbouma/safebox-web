@@ -62,6 +62,7 @@ EUDI_PID_FIXTURE = Path(
 PKPASS_MIME_TYPE = "application/vnd.apple.pkpass"
 from app.dependencies import (
     ensure_acorn_inbox_relays,
+    ensure_acorn_mainstay_context,
     get_background_acorn_factory,
     get_acorn,
     get_deposit_acorn,
@@ -3426,10 +3427,104 @@ def test_inbox_relay_initialization_preserves_existing_wallet_record() -> None:
     acorn.publish_inbox_relays.assert_not_awaited()
 
 
+def test_mainstay_context_initialization_installs_grove_route(monkeypatch) -> None:
+    settings = replace(
+        TEST_SETTINGS,
+        mainstay_context_url="http://mainstay-local:8788/context",
+    )
+    acorn = SimpleNamespace(
+        pubkey_hex="d" * 64,
+        pubkey_bech32="npub1wallet",
+        service_context_npub=None,
+        ensure_context_service_endpoint=AsyncMock(return_value=True),
+    )
+    context_npub = Acorn(nsec=TEST_NSEC).pubkey_bech32
+    service_npub = dependencies_module.Keys(
+        priv_k="2" * 64
+    ).public_key_bech32()
+
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "type": "mainstay-service-context",
+                "version": 1,
+                "context_npub": context_npub,
+                "services": [
+                    {
+                        "service_type": "blossom",
+                        "service_npub": service_npub,
+                        "endpoints": [
+                            {
+                                "endpoint_id": "mainstay-grove-internal-blossom",
+                                "scope": "internal",
+                                "transport": "http",
+                                "locator": {"url": "http://grove:8000"},
+                                "capabilities": ["blossom.read"],
+                                "priority": 10,
+                            }
+                        ],
+                    }
+                ],
+            }
+
+    request = AsyncMock(return_value=Response())
+    monkeypatch.setattr(httpx.AsyncClient, "get", request)
+    dependencies_module._mainstay_context_cache.clear()
+    dependencies_module._mainstay_context_checks.clear()
+
+    asyncio.run(ensure_acorn_mainstay_context(acorn, settings))
+
+    assert acorn.service_context_npub == context_npub
+    acorn.ensure_context_service_endpoint.assert_awaited_once()
+    kwargs = acorn.ensure_context_service_endpoint.await_args.kwargs
+    assert kwargs["context_npub"] == context_npub
+    assert kwargs["service_npub"] == service_npub
+    assert kwargs["endpoint"]["locator"]["url"] == "http://grove:8000"
+
+
+def test_mainstay_context_supports_prior_acorn_record_api() -> None:
+    context_npub = dependencies_module.Keys(
+        priv_k="3" * 64
+    ).public_key_bech32()
+    service_npub = dependencies_module.Keys(
+        priv_k="4" * 64
+    ).public_key_bech32()
+    acorn = SimpleNamespace(
+        get_context_endpoints=AsyncMock(
+            return_value=dependencies_module.ContextEndpointsRecord()
+        ),
+        publish_context_endpoints=AsyncMock(return_value={"status": "OK"}),
+    )
+
+    changed = asyncio.run(
+        dependencies_module._install_context_service_endpoint(
+            acorn,
+            context_npub=context_npub,
+            service_npub=service_npub,
+            endpoint={
+                "endpoint_id": "mainstay-grove-internal-blossom",
+                "scope": "internal",
+                "transport": "http",
+                "locator": {"url": "http://grove:8000"},
+                "capabilities": ["blossom.read"],
+                "priority": 10,
+            },
+        )
+    )
+
+    assert changed is True
+    record = acorn.publish_context_endpoints.await_args.args[0]
+    assert record.hints[0].context_npub == context_npub
+    assert record.hints[0].service_npub == service_npub
+
+
 def test_record_acorn_dependency_does_not_load_funds_state() -> None:
     acorn = FakeLoadedAcorn()
 
-    result = get_record_acorn(acorn)
+    result = asyncio.run(get_record_acorn(acorn, TEST_SETTINGS))
 
     assert result is acorn
     assert acorn.loaded is False

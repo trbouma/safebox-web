@@ -125,6 +125,7 @@ SAFEBOX_OPENETR_PUBLIC_BASE_URL=https://openetr.org/etr
 SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS=5
 SAFEBOX_OPENETR_QUERY_LIMIT=100
 SAFEBOX_BLOSSOM_HOME_SERVER=https://blossom.getsafebox.app
+SAFEBOX_MAINSTAY_CONTEXT_URL=
 SAFEBOX_MAX_BLOB_BYTES=10485760
 
 SAFEBOX_BITCOIN_API_BASE=https://blockstream.info/api
@@ -157,6 +158,12 @@ recipient `npub` but omit relay hints; internal wallet home relays are never
 published through NIP-05. Safebox initializes a missing kind `10050` record
 from this list when it creates or loads an Acorn, but preserves any existing
 wallet-authored inbox list.
+
+Leave `SAFEBOX_MAINSTAY_CONTEXT_URL` blank for an independent deployment. A
+Mainstay-managed Safebox points it at Mainstay's internal `/context` endpoint;
+Safebox then records the installation-qualified Grove route in each Acorn's
+private relay-backed endpoint record. The manifest carries public `npub`
+values and scoped routes, never service private keys.
 
 The persisted service-Acorn recovery file overrides later relay and mint
 environment changes. Use `SAFEBOX_SERVICE_ACORN_MIGRATE=true` only for a

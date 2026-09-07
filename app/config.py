@@ -318,6 +318,7 @@ class Settings:
     default_home_mint: str = "https://mint.getsafebox.app"
     onboard_invite_codes: tuple[str, ...] = ("INVITEME",)
     blossom_home_server: str = "https://blossom.getsafebox.app"
+    mainstay_context_url: str | None = None
     max_blob_bytes: int = DEFAULT_MAX_BLOB_BYTES
     bitcoin_api_base: str = DEFAULT_BITCOIN_API_BASE
     bitcoin_lookup_timeout_seconds: float = DEFAULT_BITCOIN_LOOKUP_TIMEOUT_SECONDS
@@ -422,6 +423,20 @@ class Settings:
             raise ValueError("SAFEBOX_OPENETR_QUERY_LIMIT must be at least 1")
         if not self.blossom_home_server.strip():
             raise ValueError("SAFEBOX_BLOSSOM_HOME_SERVER is required")
+        if self.mainstay_context_url:
+            parsed_context = urlsplit(self.mainstay_context_url.strip())
+            if (
+                parsed_context.scheme.lower() not in {"http", "https"}
+                or not parsed_context.hostname
+                or parsed_context.username is not None
+                or parsed_context.password is not None
+                or parsed_context.query
+                or parsed_context.fragment
+            ):
+                raise ValueError(
+                    "SAFEBOX_MAINSTAY_CONTEXT_URL must be an HTTP URL without "
+                    "credentials, a query, or a fragment"
+                )
         if self.provider_invoice_wait_seconds <= 0:
             raise ValueError("SAFEBOX_PROVIDER_INVOICE_WAIT_SECONDS must be positive")
         if self.lnurl_min_sendable_msat < 1000:
@@ -619,6 +634,9 @@ class Settings:
                 "SAFEBOX_BLOSSOM_HOME_SERVER",
                 "https://blossom.getsafebox.app",
             ).strip(),
+            mainstay_context_url=(
+                os.getenv("SAFEBOX_MAINSTAY_CONTEXT_URL", "").strip() or None
+            ),
             max_blob_bytes=max_blob_bytes,
             bitcoin_api_base=os.getenv(
                 "SAFEBOX_BITCOIN_API_BASE",

@@ -82,6 +82,7 @@ from app.dependencies import (
     ReceiveAcornDependency,
     RecordAcornDependency,
     ensure_acorn_inbox_relays,
+    ensure_acorn_mainstay_context,
 )
 from app.models import ClaimedHandle, CurrencyRate
 from app.funds_finalization import (
@@ -4076,6 +4077,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 timeout=settings.wallet_load_timeout_seconds,
             )
             await ensure_acorn_inbox_relays(acorn, settings)
+            await ensure_acorn_mainstay_context(acorn, settings)
         except TimeoutError:
             logger.warning("acorn creation timed out relay=%s", normalized_relay)
             return creation_error(
