@@ -168,6 +168,39 @@ def test_fund_worker_requires_existing_recovery_state(tmp_path) -> None:
         asyncio.run(worker_module.fund_worker(worker_settings(tmp_path), 21))
 
 
+def test_balance_worker_reports_persisted_operating_reserve(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    state_path = tmp_path / "service-acorn.json"
+    state_path.write_text("recovery", encoding="utf-8")
+    acorn = SimpleNamespace(
+        get_balance=lambda: 457,
+        home_mint="https://mint.example.com",
+        pubkey_bech32="npub1service",
+    )
+
+    async def fake_start(settings):
+        return SimpleNamespace(acorn=acorn, state_path=state_path)
+
+    monkeypatch.setattr(worker_module, "start_service_acorn", fake_start)
+
+    result = asyncio.run(worker_module.balance_worker(worker_settings(tmp_path)))
+
+    assert result == {
+        "status": "OK",
+        "balance": 457,
+        "unit": "sat",
+        "mint": "https://mint.example.com",
+        "npub": "npub1service",
+    }
+
+
+def test_balance_worker_requires_existing_recovery_state(tmp_path) -> None:
+    with pytest.raises(RuntimeError, match="Start the worker once"):
+        asyncio.run(worker_module.balance_worker(worker_settings(tmp_path)))
+
+
 def test_worker_parser_accepts_fund_command_and_mint_override() -> None:
     args = worker_module._parser().parse_args(
         ["fund", "100", "--mint", "https://mint.example.com"]
@@ -176,6 +209,13 @@ def test_worker_parser_accepts_fund_command_and_mint_override() -> None:
     assert args.command == "fund"
     assert args.amount == 100
     assert args.mint == "https://mint.example.com"
+
+
+def test_worker_parser_accepts_machine_readable_balance_command() -> None:
+    args = worker_module._parser().parse_args(["balance", "--json"])
+
+    assert args.command == "balance"
+    assert args.json is True
 
 
 def test_worker_requires_explicit_enablement(tmp_path) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import signal
 from typing import Sequence
@@ -182,6 +183,26 @@ async def retire_worker(settings: ServiceAcornSettings) -> dict:
     return await stop_service_acorn(runtime, settings)
 
 
+async def balance_worker(settings: ServiceAcornSettings) -> dict:
+    """Read the persisted service Acorn operating balance."""
+
+    _require_enabled(settings)
+    state_path = service_acorn_state_path(settings)
+    if not state_path.is_file():
+        raise RuntimeError(
+            "No service Acorn recovery state exists. Start the worker once "
+            "before checking its balance."
+        )
+    runtime = await start_service_acorn(settings)
+    return {
+        "status": "OK",
+        "balance": int(runtime.acorn.get_balance()),
+        "unit": "sat",
+        "mint": runtime.acorn.home_mint,
+        "npub": runtime.acorn.pubkey_bech32,
+    }
+
+
 async def fund_worker(
     settings: ServiceAcornSettings,
     amount: int,
@@ -268,6 +289,15 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("run", help="run the singleton provider worker")
     commands.add_parser("retire", help="sweep and burn the service Acorn")
+    balance_parser = commands.add_parser(
+        "balance",
+        help="show the service Acorn operating reserve balance",
+    )
+    balance_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit a machine-readable result",
+    )
     fund_parser = commands.add_parser(
         "fund",
         help="deposit an operating reserve into the service Acorn",
@@ -292,6 +322,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "retire":
             asyncio.run(retire_worker(settings))
+        elif args.command == "balance":
+            result = asyncio.run(balance_worker(settings))
+            if args.json:
+                print(json.dumps(result), flush=True)
+            else:
+                print(
+                    f"Service Acorn reserve: {result['balance']} sats",
+                    flush=True,
+                )
         elif args.command == "fund":
             result = asyncio.run(fund_worker(settings, args.amount, mint=args.mint))
             print(
