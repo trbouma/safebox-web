@@ -1170,6 +1170,11 @@ def test_direct_127001_http_is_allowed() -> None:
     response = client.get("/health")
 
     assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "service": "safebox-web",
+        "version": "0.1.0",
+    }
 
 
 def test_onboard_page_displays_acorn_safebox_relationship_visual() -> None:

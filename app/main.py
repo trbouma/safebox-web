@@ -148,6 +148,7 @@ from app.localization import (
 
 
 logger = logging.getLogger("safebox_web.security")
+APP_VERSION = "0.1.0"
 BITCOIN_TXID_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
 
 
@@ -3466,7 +3467,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             app.state.database_engine.dispose()
 
-    app = FastAPI(title="Safebox Web", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Safebox Web", version=APP_VERSION, lifespan=lifespan)
     app.state.settings = runtime_settings
     app.state.clear_mint_metadata_cache = {}
     app.include_router(lnurl_pay_router)
@@ -3700,7 +3701,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health", response_class=JSONResponse)
     async def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "service": "safebox-web",
+            "version": APP_VERSION,
+        }
 
     @app.get("/rates", response_class=HTMLResponse)
     async def public_rates(
