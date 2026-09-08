@@ -25,6 +25,7 @@ from app.provider_payments import (
     get_provider_payment,
     get_provider_zap,
     process_provider_payments_once,
+    reconcile_legacy_settlement_timeouts,
     set_provider_identity,
     update_provider_payment,
 )
@@ -499,7 +500,9 @@ def test_worker_fails_provider_invoice_when_mint_quote_is_missing(tmp_path) -> N
     engine.dispose()
 
 
-def test_worker_fails_provider_invoice_after_repeated_unpaid_checks(tmp_path) -> None:
+def test_worker_keeps_checking_provider_invoice_after_initial_poll_window(
+    tmp_path,
+) -> None:
     engine, payment_id = queued_payment(tmp_path)
     update_provider_payment(
         engine,
@@ -514,10 +517,46 @@ def test_worker_fails_provider_invoice_after_repeated_unpaid_checks(tmp_path) ->
     assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
 
     payment = get_provider_payment(engine, payment_id)
-    assert payment.status == "FAILED"
-    assert payment.error == "Invoice settlement timed out"
+    assert payment.status == "SETTLEMENT_UNCONFIRMED"
+    assert payment.error == (
+        "Settlement remains unconfirmed; continuing periodic mint checks"
+    )
     assert payment.attempts == 60
-    assert payment.next_check_at is None
+    assert payment.next_check_at is not None
+
+    update_provider_payment(engine, payment_id, next_check_at=utc_now())
+    acorn.quote_paid = True
+    acorn._provider_last_settlement_check = 0
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
+    payment = get_provider_payment(engine, payment_id)
+    assert payment.status == "DELIVERED"
+    assert payment.delivery_event_id == "event-1"
+    engine.dispose()
+
+
+def test_worker_recovers_legacy_timed_out_provider_invoice(tmp_path) -> None:
+    engine, payment_id = queued_payment(tmp_path)
+    update_provider_payment(
+        engine,
+        payment_id,
+        status="FAILED",
+        mint_quote="quote-1",
+        invoice="lnbc21-test",
+        attempts=60,
+        error="Invoice settlement timed out",
+        next_check_at=None,
+    )
+
+    assert reconcile_legacy_settlement_timeouts(engine) == 1
+    assert reconcile_legacy_settlement_timeouts(engine) == 0
+    payment = get_provider_payment(engine, payment_id)
+    assert payment.status == "SETTLEMENT_UNCONFIRMED"
+    assert payment.next_check_at is not None
+
+    acorn = FakeProviderAcorn(quote_paid=True)
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
+    payment = get_provider_payment(engine, payment_id)
+    assert payment.status == "DELIVERED"
     engine.dispose()
 
 

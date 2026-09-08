@@ -960,7 +960,8 @@ They do not contact a relay or mint.
 - There is no production account, multi-device, session-revocation, or HSM
   integration in this minimal shell.
 - The standalone worker durably tracks quote creation, settlement, and ecash
-  delivery, but still lacks invoice expiry, complete crash reconciliation,
+  delivery, including slow rechecks for late settlement, but still lacks
+  authoritative invoice expiry, complete crash reconciliation,
   idempotent acknowledgement/retry, refunds, and operator review tooling. It
   must not yet accept meaningful third-party funds.
 - Exactly one service Acorn worker may own the provider wallet. The stateless

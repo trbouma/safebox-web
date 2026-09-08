@@ -34,6 +34,8 @@ logger = logging.getLogger("safebox_web.provider_payments")
 MAX_PROVIDER_SETTLEMENT_ATTEMPTS = 60
 MIN_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS = 4.0
 PROVIDER_SETTLEMENT_RECHECK_SECONDS = 5.0
+PROVIDER_STALE_SETTLEMENT_RECHECK_SECONDS = 60.0
+LEGACY_SETTLEMENT_TIMEOUT_ERROR = "Invoice settlement timed out"
 
 
 def _is_quote_not_found_error(exc: Exception) -> bool:
@@ -150,6 +152,7 @@ async def wait_for_provider_invoice(
             raise RuntimeError("Provider payment disappeared from the durable queue")
         if payment.invoice and payment.status in {
             "INVOICE_PENDING",
+            "SETTLEMENT_UNCONFIRMED",
             "SETTLED",
             "DELIVERING",
             "RECEIPT_PENDING",
@@ -177,6 +180,50 @@ def next_provider_payment(engine: Engine, status: str) -> ProviderPayment | None
             if payment.next_check_at is None or payment.next_check_at <= now:
                 return payment
     return None
+
+
+def next_provider_settlement(engine: Engine) -> ProviderPayment | None:
+    """Return the oldest due invoice that may still settle at its mint."""
+
+    now = utc_now()
+    with Session(engine) as session:
+        statement = (
+            select(ProviderPayment)
+            .where(
+                ProviderPayment.status.in_(
+                    ("INVOICE_PENDING", "SETTLEMENT_UNCONFIRMED")
+                )
+            )
+            .order_by(ProviderPayment.id)
+        )
+        for payment in session.exec(statement):
+            if payment.next_check_at is None or payment.next_check_at <= now:
+                return payment
+    return None
+
+
+def reconcile_legacy_settlement_timeouts(engine: Engine) -> int:
+    """Resume mint polling for invoices made terminal by the former timeout."""
+
+    recovered = 0
+    with Session(engine) as session:
+        statement = select(ProviderPayment).where(
+            ProviderPayment.status == "FAILED",
+            ProviderPayment.error == LEGACY_SETTLEMENT_TIMEOUT_ERROR,
+            ProviderPayment.mint_quote.is_not(None),
+            ProviderPayment.invoice.is_not(None),
+        )
+        for payment in session.exec(statement):
+            payment.status = "SETTLEMENT_UNCONFIRMED"
+            payment.error = (
+                "Settlement remains unconfirmed; continuing periodic mint checks"
+            )
+            payment.next_check_at = utc_now()
+            payment.updated_at = utc_now()
+            session.add(payment)
+            recovered += 1
+        session.commit()
+    return recovered
 
 
 def update_provider_payment(engine: Engine, payment_id: str, **changes) -> None:
@@ -387,7 +434,7 @@ async def process_provider_payments_once(
             )
         changed = True
 
-    invoice = next_provider_payment(engine, "INVOICE_PENDING")
+    invoice = next_provider_settlement(engine)
     if invoice is not None:
         last_check = float(
             getattr(acorn, "_provider_last_settlement_check", 0.0) or 0.0
@@ -423,8 +470,14 @@ async def process_provider_payments_once(
             )
             paid = False
         attempts = invoice.attempts + 1
-        if not paid and terminal_error is None and attempts >= MAX_PROVIDER_SETTLEMENT_ATTEMPTS:
-            terminal_error = "Invoice settlement timed out"
+        settlement_stale = (
+            not paid
+            and terminal_error is None
+            and (
+                invoice.status == "SETTLEMENT_UNCONFIRMED"
+                or attempts >= MAX_PROVIDER_SETTLEMENT_ATTEMPTS
+            )
+        )
         update_provider_payment(
             engine,
             invoice.payment_id,
@@ -433,15 +486,30 @@ async def process_provider_payments_once(
                 if paid
                 else "FAILED"
                 if terminal_error
+                else "SETTLEMENT_UNCONFIRMED"
+                if settlement_stale
                 else "INVOICE_PENDING"
             ),
             attempts=attempts,
-            error=terminal_error,
+            error=(
+                terminal_error
+                or (
+                    "Settlement remains unconfirmed; continuing periodic mint checks"
+                    if settlement_stale
+                    else None
+                )
+            ),
             next_check_at=(
                 None
                 if paid or terminal_error
                 else utc_now()
-                + timedelta(seconds=PROVIDER_SETTLEMENT_RECHECK_SECONDS)
+                + timedelta(
+                    seconds=(
+                        PROVIDER_STALE_SETTLEMENT_RECHECK_SECONDS
+                        if settlement_stale
+                        else PROVIDER_SETTLEMENT_RECHECK_SECONDS
+                    )
+                )
             ),
         )
         if paid:
@@ -455,6 +523,13 @@ async def process_provider_payments_once(
                 "provider invoice failed payment_id=%s reason=%s",
                 invoice.payment_id,
                 terminal_error,
+            )
+        elif settlement_stale and invoice.status != "SETTLEMENT_UNCONFIRMED":
+            logger.warning(
+                "provider invoice settlement remains unconfirmed; continuing "
+                "periodic checks payment_id=%s attempts=%s",
+                invoice.payment_id,
+                attempts,
             )
         changed = True
 

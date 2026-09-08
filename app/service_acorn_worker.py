@@ -15,7 +15,11 @@ import qrcode
 from app.config import ServiceAcornSettings
 from app.currency_rates import refresh_currency_rates
 from app.database import create_database_engine, run_migrations
-from app.provider_payments import process_provider_payments_once, set_provider_identity
+from app.provider_payments import (
+    process_provider_payments_once,
+    reconcile_legacy_settlement_timeouts,
+    set_provider_identity,
+)
 from app.service_acorn import (
     ServiceAcornRuntime,
     service_acorn_state_path,
@@ -108,6 +112,13 @@ async def run_worker(
     try:
         runtime = await start_service_acorn(settings)
         set_provider_identity(engine, runtime.acorn.pubkey_hex)
+        recovered_timeouts = reconcile_legacy_settlement_timeouts(engine)
+        if recovered_timeouts:
+            logger.warning(
+                "resumed periodic settlement checks for legacy timed-out "
+                "provider payments count=%s",
+                recovered_timeouts,
+            )
         service_acorn_runtime = runtime
         service_acorn = runtime.acorn
         logger.info(

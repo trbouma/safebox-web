@@ -98,6 +98,22 @@ network availability, persisted wallet identity, Lightning settlement,
 recipient obligations, and operating capital, is recorded in
 [Service Acorn Migration and Operating Reserve Lessons](SERVICE-ACORN-MIGRATION-AND-OPERATING-RESERVE-LESSONS.md).
 
+## Late invoice settlement
+
+Stopping the worker does not cancel invoices it already issued. The durable
+provider-payment row retains the mint quote, invoice, recipient, amount and
+relay. When the worker returns, it resumes settlement checks and delivers the
+resulting ecash if the mint reports that the quote was paid.
+
+After the initial settlement polling window, an unpaid invoice moves to
+`SETTLEMENT_UNCONFIRMED` rather than a terminal failure. The worker continues
+checking it at a slower interval so a payment made during maintenance or after
+network delay is not abandoned. On startup, the worker also migrates older
+`FAILED` rows whose exact error was `Invoice settlement timed out` into this
+recoverable state. A definite mint response such as quote-not-found remains
+terminal. Ambiguous ecash publication remains a separate manual-review state
+and is never retried automatically because doing so could duplicate delivery.
+
 On its first start the worker:
 
 1. generates a fresh seed phrase and `nsec` in memory;
