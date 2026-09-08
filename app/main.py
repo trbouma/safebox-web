@@ -746,7 +746,7 @@ def _decode_lightning_invoice(value: str) -> dict[str, object] | None:
     }
 
 
-def _clear_mint_has_public_route(mint: str) -> bool:
+def _mint_has_public_route(mint: str) -> bool:
     """Treat a well-formed HTTPS mint URL as remotely reachable for now."""
 
     normalized = str(mint or "").strip().rstrip("/")
@@ -6523,7 +6523,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if selected_clear is not None:
             clear_recipient = _resolve_local_safebox_recipient(request, recipient)
             if clear_recipient is None:
-                if not _clear_mint_has_public_route(str(selected_clear["mint"])):
+                if not _mint_has_public_route(str(selected_clear["mint"])):
                     return payment_error(
                         "That Clear Balance uses an internal-only mint and cannot "
                         "be sent outside this Safebox instance. No value was sent.",
@@ -6686,6 +6686,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             None,
         )
         direct_on_shared_relay = shared_relay is not None
+        direct_over_external_relay = bool(
+            direct_relay_hints
+            and _mint_has_public_route(str(getattr(acorn, "home_mint", "")))
+        )
         if (
             payment_mode == "continuity"
             and shared_relay is None
@@ -6697,7 +6701,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 422,
             )
         if direct_recipient is not None and (
-            payment_mode == "continuity" or direct_on_shared_relay
+            payment_mode == "continuity"
+            or direct_on_shared_relay
+            or direct_over_external_relay
         ):
             tendered_amount, tendered_currency = _transaction_tender_snapshot(
                 request,

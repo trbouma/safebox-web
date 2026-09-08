@@ -7456,10 +7456,11 @@ def test_local_http_lightning_address_resolves_without_https(
     ]
 
 
-def test_safebox_recipient_on_different_relay_uses_lightning(
+def test_safebox_recipient_on_different_relay_uses_direct_ecash(
     monkeypatch, tmp_path,
 ) -> None:
     recipient_hex = "11" * 32
+    recipient_npub = main_module.Keys.hex_to_bech32(recipient_hex, prefix="npub")
 
     class FakeResponse:
         def raise_for_status(self) -> None:
@@ -7496,7 +7497,65 @@ def test_safebox_recipient_on_different_relay_uses_lightning(
                 "csrf_token": valid_csrf_token(),
                 "lightning_address": "alice@example.com",
                 "amount": "21",
-                "comment": "lightning please",
+                "comment": "federated ecash",
+                "confirmed": "yes",
+            },
+        )
+    assert response.status_code == 200
+    assert "Direct Safebox funds transfer sent" in response.text
+    assert acorn.payments == []
+    assert acorn.ecash_transfers == [
+        {
+            "amount": 21,
+            "recipient": recipient_npub,
+            "relay_hints": ["wss://other-relay.example"],
+            "comment": "federated ecash",
+        }
+    ]
+
+
+def test_external_safebox_with_internal_cash_mint_uses_lightning(
+    monkeypatch, tmp_path,
+) -> None:
+    recipient_hex = "11" * 32
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "names": {"alice": recipient_hex},
+                "relays": {recipient_hex: ["wss://other-relay.example"]},
+            }
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url, params):
+            return FakeResponse()
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=500)
+    acorn.home_mint = "http://mint:3338"
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "lightning_address": "alice@example.com",
+                "amount": "21",
+                "comment": "lightning fallback",
                 "confirmed": "yes",
             },
         )
@@ -7510,7 +7569,7 @@ def test_safebox_recipient_on_different_relay_uses_lightning(
         {
             "amount": 21,
             "lnaddress": "alice@example.com",
-            "comment": "lightning please",
+            "comment": "lightning fallback",
         }
     ]
 

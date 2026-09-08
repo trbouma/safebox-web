@@ -161,9 +161,9 @@ behavior and lets an ordinary Lightning wallet scan the address without
 knowing anything about Acorn or the provider's internal ecash delivery.
 
 The QR is displayed only when the connected Acorn has a claimed handle and
-`SAFEBOX_SERVICE_ACORN_ENABLED=true`. Its URL is derived from the externally
-visible request host and scheme, so production depends on the trusted reverse
-proxy supplying the correct HTTPS forwarded headers.
+`SAFEBOX_SERVICE_ACORN_ENABLED=true`. A fully qualified DNS request host always
+produces an HTTPS LNURL and callback. Single-label and numeric local addresses
+retain their request scheme.
 
 ## Recipient registration
 
@@ -184,15 +184,18 @@ checks whether the address also resolves as a Safebox/NIP-05 recipient. It
 first consults its own claimed-handle registry when the address domain matches
 the current Safebox host. This lets a Mainstay LAN address resolve without DNS
 or an HTTPS request. Other domains are looked up through their NIP-05 document.
-For a confirmed payment, Safebox Web asks Acorn to send ecash directly only
-when the recipient advertises the same normalized home-relay endpoint as the
-sender. A Safebox recipient on a different relay remains a Lightning payment.
-The address domain alone never establishes that the users share a relay.
+For a confirmed payment, Safebox Web asks Acorn to send ecash directly when the
+recipient uses the same normalized home-relay endpoint, or when the recipient
+advertises an external inbox relay and the source mint has a public HTTPS
+route. Acorn resolves the recipient's signed NIP-17 kind `10050` inbox record,
+with the NIP-05 relay as a discovery and fallback hint. A different domain does
+not by itself establish a route.
 
-Continuity mode is an explicit exception: after the user selects that mode,
-Safebox may address a direct transfer to a Safebox recipient on another relay.
-It does not silently replace a confirmed Lightning route with cross-relay
-ecash delivery.
+When the source mint is internal-only, Safebox does not export its proofs to an
+external recipient. A confirmed payment may instead continue through Lightning.
+
+Continuity mode remains explicit because it skips mint confirmation. It uses
+the same recipient inbox resolution and never falls back to Lightning.
 
 This is still a connected-mode path. Before sending, Safebox Web verifies the
 wallet's proof state with the issuing mint. If the mint cannot be reached, the
