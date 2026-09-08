@@ -10,6 +10,11 @@ from urllib.parse import urlsplit
 from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 
+from app.identity import fips_ipv6_address, service_npub
+
+
+SERVICE_MANAGEMENT_MODES = {"independent", "mainstay-managed"}
+
 
 def _env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -353,12 +358,23 @@ class Settings:
     clear_units: tuple[str, ...] = ()
     nip05_external_relays: tuple[str, ...] = ()
     background_job_threads: int = 2
+    service_nsec: str | None = None
+    service_management: str = "independent"
+    service_identity_file: Path = Path("data/safebox-web-service-identity.json")
 
     @property
     def onboard_invite_code(self) -> str:
         """Return the primary invite code used for app-generated links."""
 
         return self.onboard_invite_codes[0]
+
+    @property
+    def service_npub(self) -> str | None:
+        return service_npub(self.service_nsec) if self.service_nsec else None
+
+    @property
+    def service_fips_ipv6_address(self) -> str | None:
+        return fips_ipv6_address(self.service_npub) if self.service_npub else None
 
     def __post_init__(self) -> None:
         try:
@@ -367,6 +383,14 @@ class Settings:
             raise ValueError(
                 "SAFEBOX_COOKIE_KEY must be a valid URL-safe 32-byte application key"
             ) from exc
+        if self.service_management not in SERVICE_MANAGEMENT_MODES:
+            raise ValueError("unsupported Safebox Web service management mode")
+        if self.service_management == "mainstay-managed" and not self.service_nsec:
+            raise ValueError(
+                "mainstay-managed Safebox Web requires SAFEBOX_WEB_SERVICE_NSEC"
+            )
+        if self.service_nsec:
+            service_npub(self.service_nsec)
         if self.session_ttl_seconds < 60:
             raise ValueError("session lifetime must be at least 60 seconds")
         if self.wallet_load_timeout_seconds <= 0:
@@ -707,4 +731,14 @@ class Settings:
                 "SAFEBOX_NIP05_EXTERNAL_RELAYS"
             ),
             background_job_threads=background_job_threads,
+            service_nsec=os.getenv("SAFEBOX_WEB_SERVICE_NSEC") or None,
+            service_management=os.getenv(
+                "SAFEBOX_WEB_SERVICE_MANAGEMENT", "independent"
+            ),
+            service_identity_file=Path(
+                os.getenv(
+                    "SAFEBOX_WEB_SERVICE_IDENTITY_FILE",
+                    "data/safebox-web-service-identity.json",
+                )
+            ).expanduser(),
         )

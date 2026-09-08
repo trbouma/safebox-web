@@ -19,6 +19,9 @@ services:
       - "${SAFEBOX_WEB_WORKERS:-1}"
     environment:
       SAFEBOX_COOKIE_KEY: "${SAFEBOX_COOKIE_KEY:?Generate SAFEBOX_COOKIE_KEY before starting}"
+      SAFEBOX_WEB_SERVICE_NSEC: "${SAFEBOX_WEB_SERVICE_NSEC:-}"
+      SAFEBOX_WEB_SERVICE_MANAGEMENT: "${SAFEBOX_WEB_SERVICE_MANAGEMENT:-independent}"
+      SAFEBOX_WEB_SERVICE_IDENTITY_FILE: "/app/data/safebox-web-service-identity.json"
       SAFEBOX_SESSION_TTL_HOURS: "${SAFEBOX_SESSION_TTL_HOURS:-}"
       # Legacy fallback for deployments that have not migrated to hours.
       SAFEBOX_SESSION_TTL_SECONDS: "${SAFEBOX_SESSION_TTL_SECONDS:-}"

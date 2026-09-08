@@ -3296,6 +3296,27 @@ anyio = ">=3.6.2,<5"
 full = ["httpx (>=0.27.0,<0.29.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.18)", "pyyaml"]
 
 [[package]]
+name = "stroma-nostr"
+version = "0.1.0"
+description = "Minimal Nostr wire-format interface for Safebox Acorn"
+optional = false
+python-versions = ">=3.11,<3.14"
+files = []
+develop = false
+
+[package.dependencies]
+aiohttp = ">=3.10,<4"
+bech32 = ">=1.2,<2"
+coincurve = ">=20,<22"
+pycryptodome = ">=3.20,<4"
+
+[package.source]
+type = "git"
+url = "https://github.com/trbouma/stroma.git"
+reference = "main"
+resolved_reference = "f3c3f13de46595588eb69b7d8a22c71bbfe04d29"
+
+[[package]]
 name = "tibs"
 version = "0.5.7"
 description = "A sleek Python library for binary data."
@@ -3993,4 +4014,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.14"
-content-hash = "99a0d2987c18d7d10f8c0e5925107aebe7922450a5ff5d4c8b8206dbbf6e8cd4"
+content-hash = "3e75bda73dc689e0897ab63938458e8c6822cb6e71f3e042fdafa9980146cb7f"

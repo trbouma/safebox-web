@@ -84,6 +84,7 @@ from app.dependencies import (
     ensure_acorn_inbox_relays,
     ensure_acorn_mainstay_context,
 )
+from app.identity import bind_service_identity
 from app.models import ClaimedHandle, CurrencyRate
 from app.funds_finalization import (
     claim_finalization_job,
@@ -3423,6 +3424,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        bind_service_identity(
+            runtime_settings.service_identity_file,
+            npub=runtime_settings.service_npub,
+        )
         run_migrations(runtime_settings.database_url)
         app.state.database_engine = create_database_engine(
             runtime_settings.database_url
@@ -3705,6 +3710,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "ok",
             "service": "safebox-web",
             "version": APP_VERSION,
+        }
+
+    @app.get("/info", response_class=JSONResponse)
+    async def information() -> dict[str, object]:
+        return {
+            "name": "Safebox Web",
+            "version": APP_VERSION,
+            "description": "A local-first web interface for Safebox Acorns",
+            "service_identity": {
+                "npub": runtime_settings.service_npub,
+                "fips_ipv6_address": (
+                    runtime_settings.service_fips_ipv6_address
+                ),
+                "type": "safebox-web",
+                "management": runtime_settings.service_management,
+                "state": (
+                    "uncommissioned"
+                    if runtime_settings.service_npub
+                    else "unconfigured"
+                ),
+                "descriptor_event_id": None,
+                "operator": None,
+            },
         }
 
     @app.get("/rates", response_class=HTMLResponse)

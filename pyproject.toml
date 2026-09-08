@@ -24,6 +24,7 @@ cbor2 = ">=5.9,<6"
 httpx = ">=0.28,<1"
 monstr = ">=0.1.9,<0.2"
 safebox-acorn = {git = "https://github.com/trbouma/safebox-acorn.git", rev = "main", extras = ["bitcoin"]}
+stroma-nostr = {git = "https://github.com/trbouma/stroma.git", rev = "main"}
 aztec-py = "^1.2.1"
 
 [tool.poetry.group.dev.dependencies]

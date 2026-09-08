@@ -720,6 +720,8 @@ Review these deployment values in `.env` before starting:
 
 ```env
 SAFEBOX_COOKIE_KEY=<generated URL-safe 32-byte application key>
+SAFEBOX_WEB_SERVICE_NSEC=<optional dedicated application identity key>
+SAFEBOX_WEB_SERVICE_MANAGEMENT=independent
 SAFEBOX_ALLOW_INSECURE_HTTP=false
 SAFEBOX_ALLOW_INSECURE_MINTS=false
 SAFEBOX_ALLOWED_WS_RELAYS=
@@ -883,7 +885,7 @@ recovery, retirement, the singleton restriction, and remaining gateway gates.
 
 ### Secret inventory and ownership
 
-Safebox Web has four principal cryptographic secrets. They have different
+Safebox Web has five principal cryptographic secrets. They have different
 owners and must not be treated as one interchangeable pool of application
 configuration.
 
@@ -892,6 +894,7 @@ configuration.
 | Attached-user Acorn `nsec` | User | Encrypted session cookie and request-scoped web-process memory | Signing as that Acorn, reading ordinary private records, and controlling its funds and relay events |
 | Attached-user record protection key (RPK) | User | Optional encrypted session cookie; reserved for the proposed protected-record profile | Decrypting protected-record content if that profile is implemented and the corresponding encrypted record is available |
 | `SAFEBOX_COOKIE_KEY` | Safebox operator | Web-process secret used to authenticate and encrypt session cookies | Recovering user `nsec` and RPK values from captured cookies and forging sessions |
+| `SAFEBOX_WEB_SERVICE_NSEC` | Safebox operator | Stable identity of the Safebox Web application instance | Signing as the application service and replacing its identity if persistent-state checks are bypassed |
 | Service Acorn `nsec` | Safebox operator | Persistent worker state and worker-process memory | Controlling provider funds, signing as the provider Acorn, delivering ecash, and issuing provider receipts |
 
 Cookie encryption protects user secrets while the cookie is stored or in
@@ -899,6 +902,10 @@ transit. An authenticated route must decrypt them to use Acorn, so they exist in
 plaintext in that request's web-process memory. The service Acorn `nsec` is a
 different operator-owned key: it must never be placed in a user's cookie,
 returned by a route, or loaded into ordinary FastAPI application state.
+The application-service key is also distinct from both categories. Safebox Web
+publishes only its derived `npub` and FIPS IPv6 address at `/info`, and binds
+that `npub` to `data/safebox-web-service-identity.json` on first configured
+startup. Removing or changing the key after that point causes startup to fail.
 The RPK generation and recovery ceremony is currently scaffolding; protected-
 record encryption is not yet implemented.
 
