@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from ipaddress import ip_address
 from urllib.parse import unquote, urlsplit
 
 from bech32 import bech32_decode, bech32_encode, convertbits
@@ -25,6 +26,30 @@ from app.zap_handler import handle_zap_invoice_request
 
 logger = logging.getLogger("safebox_web.lnurl_pay")
 router = APIRouter()
+
+
+def _is_dns_fqdn(host: str | None) -> bool:
+    normalized = str(host or "").strip().rstrip(".")
+    if "." not in normalized:
+        return False
+    try:
+        ip_address(normalized)
+    except ValueError:
+        return True
+    return False
+
+
+def public_route_url(request: Request, route_name: str, **path_params) -> str:
+    """Use HTTPS for DNS names while retaining local HTTP addressing."""
+
+    url = request.url_for(route_name, **path_params)
+    if _is_dns_fqdn(url.hostname):
+        url = url.replace(scheme="https")
+    return str(url)
+
+
+def public_request_host(request: Request) -> str:
+    return request.url.hostname or "localhost"
 
 
 def encode_lnurl(url: str) -> str:
@@ -129,13 +154,12 @@ async def lnurl_pay_resolve(
     registration = _registration(request.app.state.database_engine, handle)
     if registration is None:
         return _error("Lightning address not found")
-    callback = str(
-        request.url_for(
-            "lnurl_pay_callback",
-            handle=registration.claimed_handle,
-        )
+    callback = public_route_url(
+        request,
+        "lnurl_pay_callback",
+        handle=registration.claimed_handle,
     )
-    host = request.url.hostname or "localhost"
+    host = public_request_host(request)
     provider_identity = get_provider_identity(request.app.state.database_engine)
     payload = {
         "callback": callback,
@@ -190,18 +214,17 @@ async def lnurl_pay_callback(
     if comment is not None and len(comment) > settings.lnurl_comment_allowed:
         return _error("Comment is longer than commentAllowed")
 
-    host = request.url.hostname or "localhost"
+    host = public_request_host(request)
     metadata = _metadata(registration.claimed_handle, host)
     if nostr:
         if get_provider_identity(request.app.state.database_engine) is None:
             return _error("Nostr zap service is not ready")
         try:
             expected_lnurl = encode_lnurl(
-                str(
-                    request.url_for(
-                        "lnurl_pay_resolve",
-                        handle=registration.claimed_handle,
-                    )
+                public_route_url(
+                    request,
+                    "lnurl_pay_resolve",
+                    handle=registration.claimed_handle,
                 )
             )
             payment = await handle_zap_invoice_request(

@@ -8,6 +8,14 @@ the proxy forwards plain HTTP over the private network to the Docker-published
 Safebox Web port. The application accepts that request only when Uvicorn trusts
 the immediate peer that supplied `X-Forwarded-Proto: https`.
 
+For Lightning-address callbacks, zap verification and LNURL QR codes, Safebox
+Web treats a DNS hostname containing a dot as a public name and always emits an
+`https://` URL. Single-label names such as `beelink` and `safebox-web`, plus
+numeric IP addresses, retain their request scheme for local operation. This
+keeps public LNURL output independent of Docker preserving the proxy's source
+address. Forwarded-header trust is still required for other request-aware
+behavior and must remain narrowly configured.
+
 Docker can introduce a non-obvious extra trust boundary. When `docker-proxy`
 forwards the published host port into the container, Uvicorn may see the Docker
 network gateway—not the reverse proxy's Tailscale address—as its immediate

@@ -4255,7 +4255,11 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
         return original_qr_svg(payload, include_acorn=include_acorn)
 
     monkeypatch.setattr(main_module, "_qr_svg", recording_qr_svg)
-    settings = replace(database_settings(tmp_path), service_acorn_enabled=True)
+    settings = replace(
+        database_settings(tmp_path),
+        service_acorn_enabled=True,
+        allow_insecure_http=True,
+    )
     app = create_app(settings)
     acorn = main_module.Acorn(
         nsec=TEST_NSEC,
@@ -4266,7 +4270,7 @@ def test_wallet_shows_plain_address_with_lnurl_qr(
     app.dependency_overrides[get_acorn] = lambda: acorn
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
 
-    with TestClient(app, base_url="https://safebox.example") as client:
+    with TestClient(app, base_url="http://safebox.example") as client:
         claim = client.post(
             "/handle",
             data={

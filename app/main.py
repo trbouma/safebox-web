@@ -117,6 +117,8 @@ from app.openetr import query_openetr_history
 from app.lnurl_pay import (
     encode_lnurl,
     lightning_address_from_lnurl,
+    public_request_host,
+    public_route_url,
     router as lnurl_pay_router,
 )
 from app.security import (
@@ -4930,14 +4932,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         address_qr = None
         if claimed_handle is not None:
             nip05_address = (
-                f"{claimed_handle.claimed_handle}@{request.url.hostname}"
+                f"{claimed_handle.claimed_handle}@"
+                f"{public_request_host(request)}"
             ).lower()
             if settings.service_acorn_enabled:
-                pay_endpoint = str(
-                    request.url_for(
-                        "lnurl_pay_resolve",
-                        handle=claimed_handle.claimed_handle,
-                    )
+                pay_endpoint = public_route_url(
+                    request,
+                    "lnurl_pay_resolve",
+                    handle=claimed_handle.claimed_handle,
                 )
                 lightning_lnurl = encode_lnurl(pay_endpoint)
                 address_qr = _qr_svg(lightning_lnurl, include_acorn=True)

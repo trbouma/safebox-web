@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import hashlib
 import json
 from time import time
@@ -157,6 +158,18 @@ def test_lnurl_discovery_and_callback_queue_invoice(tmp_path, monkeypatch) -> No
         assert payment.recipient_npub == "npub1alice"
         assert payment.recipient_relay == "wss://relay.example.com"
         assert payment.comment == "hello"
+
+
+def test_dns_hostname_uses_https_lnurl_origin(tmp_path) -> None:
+    settings = replace(payment_settings(tmp_path), allow_insecure_http=True)
+    app = create_app(settings)
+
+    with TestClient(app, base_url="http://public.example") as client:
+        add_registration(app.state.database_engine)
+        payload = client.get("/.well-known/lnurlp/alice").json()
+
+    assert payload["callback"] == "https://public.example/lnpay/alice"
+    assert "alice@public.example" in payload["metadata"]
 
 
 def test_lnurl_callback_rejects_invalid_or_unsupported_requests(tmp_path) -> None:
