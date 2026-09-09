@@ -773,6 +773,12 @@ def _mint_has_public_route(mint: str) -> bool:
     )
 
 
+def _clear_transfer_scope(mint: str) -> str:
+    """Return the wallet-facing scope derived from current mint reachability."""
+
+    return "across-networks" if _mint_has_public_route(mint) else "local-only"
+
+
 def _invoice_payment_form(
     *,
     csrf_token: str,
@@ -1286,6 +1292,7 @@ def _clear_balance_summary(
                 "display_name": unit,
                 "display_unit": unit,
                 "metadata_resolved": False,
+                "transfer_scope": _clear_transfer_scope(mint),
             },
         )
         row["amount"] += normalized_amount
@@ -1353,6 +1360,7 @@ def _clear_balance_summary(
                 "display_name": unit,
                 "display_unit": unit,
                 "metadata_resolved": False,
+                "transfer_scope": _clear_transfer_scope(mint),
             },
         )
         try:

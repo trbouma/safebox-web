@@ -3600,7 +3600,9 @@ def test_wallet_bootstraps_missing_balance_snapshot_from_authoritative_state(tmp
 
     assert response.status_code == 200
     assert "777 <span>sats</span>" in response.text
-    assert "12 cmu-bootstrap" in response.text
+    assert "Clear balance</strong>: 12 units." in response.text
+    assert "cmu-bootstrap" not in response.text
+    assert "<b>Transfer scope:</b> Across networks" in response.text
     assert acorn.loaded is True
     acorn.publish_balance_snapshot.assert_awaited_once_with(
         clear_balances=acorn.clear_balances,
@@ -3749,7 +3751,78 @@ def test_wallet_clear_snapshot_uses_friendly_cached_mint_metadata(tmp_path) -> N
 
     assert response.status_code == 200
     assert "Community Credits</strong>: 150 credits." in response.text
-    assert "cmu-friendly · https://clear.example" in response.text
+    assert "<b>Transfer scope:</b> Across networks" in response.text
+    clear_balance = response.text.split(
+        '<a class="wallet-balance clear-balance"', 1
+    )[1].split("</a>", 1)[0]
+    assert "cmu-friendly" not in clear_balance
+    assert "https://clear.example" not in clear_balance
+
+
+def test_wallet_marks_internal_clear_balance_local_only(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        clear_mints=("http://clear:3339",),
+    )
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn()
+    acorn.clear_balances = [{
+        "mint": "http://clear:3339",
+        "unit": "cmu-local",
+        "amount": 75,
+        "proof_count": 2,
+    }]
+    app.state.clear_mint_metadata_cache[(
+        "http://clear:3339",
+        "cmu-local",
+        "",
+    )] = (
+        time.monotonic(),
+        {
+            "display_name": "Local Service Credits",
+            "display_unit": "credits",
+            "metadata_resolved": True,
+        },
+    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/wallet")
+
+    assert response.status_code == 200
+    assert "Local Service Credits</strong>: 75 credits." in response.text
+    assert "<b>Transfer scope:</b> Local only" in response.text
+    clear_balance = response.text.split(
+        '<a class="wallet-balance clear-balance"', 1
+    )[1].split("</a>", 1)[0]
+    assert "cmu-local" not in clear_balance
+    assert "http://clear:3339" not in clear_balance
+
+
+@pytest.mark.parametrize(
+    ("mint", "expected_scope"),
+    (
+        ("http://clear:3339", "local-only"),
+        ("http://127.0.0.1:3339", "local-only"),
+        ("https://clear.example", "across-networks"),
+    ),
+)
+def test_clear_transfer_scope_uses_existing_public_mint_rule(
+    mint: str,
+    expected_scope: str,
+) -> None:
+    summary = main_module._clear_balance_summary(
+        [],
+        [{
+            "mint": mint,
+            "unit": "cmu-test",
+            "amount": 10,
+            "proof_count": 1,
+        }],
+    )
+
+    assert summary["balances"][0]["transfer_scope"] == expected_scope
 
 
 def test_transaction_page_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) -> None:
@@ -4719,6 +4792,7 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert "clear-event" in response.text
     assert "sender-pubke" in response.text
     assert "keyset-test" in response.text
+    assert "http://clear.example" in response.text
     assert "Delete pending transfer" in response.text
     assert "Accept Clear Transfer" in response.text
     assert 'action="/clear/receipts/accept"' in response.text
