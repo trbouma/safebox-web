@@ -857,6 +857,7 @@ class FakeBlobAcorn(FakeLoadedAcorn):
         blob_type: str | None = "text/plain",
         payload: dict | None = None,
         orig_sha256: str | None = "1ea23f2b" + "0" * 56,
+        identity_reference: bool = False,
     ) -> None:
         super().__init__()
         self.existing_labels = set(existing_labels or set())
@@ -866,6 +867,7 @@ class FakeBlobAcorn(FakeLoadedAcorn):
         self.blob_type = blob_type
         self.payload = payload or {"filename": "notes.txt", "description": "Private notes"}
         self.orig_sha256 = orig_sha256
+        self.identity_reference = identity_reference
         self.blob_reads: list[str] = []
 
     async def get_record_safebox(self, record_name: str):
@@ -876,7 +878,17 @@ class FakeBlobAcorn(FakeLoadedAcorn):
         return SimpleNamespace(
             type="blob",
             payload=self.payload,
-            blobref="https://blossom.example/encrypted-sha256",
+            blobref=(
+                None
+                if self.identity_reference
+                else "https://blossom.example/encrypted-sha256"
+            ),
+            blobsha256="ab" * 32,
+            blob_service_npubs=(
+                ["npub1identityresolvedgrove"]
+                if self.identity_reference
+                else []
+            ),
             blobtype=self.blob_type,
             origsha256=self.orig_sha256,
         )
@@ -9780,6 +9792,35 @@ def test_image_blob_uses_native_authenticated_inline_preview() -> None:
     assert preview.headers["content-disposition"].startswith("inline;")
     assert preview.headers["x-frame-options"] == "SAMEORIGIN"
     assert "frame-ancestors 'self'" in preview.headers["content-security-policy"]
+
+
+def test_identity_resolved_image_blob_remains_visible_and_retrievable() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeBlobAcorn(
+        existing_labels={"Grove Photo"},
+        downloaded_type="image/png",
+        downloaded_data=b"png bytes",
+        blob_type="image/png",
+        identity_reference=True,
+    )
+    app.dependency_overrides[get_record_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    detail = client.get("/record", params={"label": "Grove Photo"})
+    edit = client.get("/record/edit", params={"label": "Grove Photo"})
+    preview = client.get(
+        "/record/blob", params={"label": "Grove Photo", "inline": "1"}
+    )
+
+    assert detail.status_code == 200
+    assert '<img src="/record/blob?label=Grove+Photo&amp;inline=1"' in detail.text
+    assert 'href="/record/blob?label=Grove+Photo">Original</a>' in detail.text
+    assert "Record File type" in detail.text
+    assert edit.status_code == 200
+    assert "retain the existing Record File" in edit.text
+    assert preview.status_code == 200
+    assert preview.content == b"png bytes"
+    assert preview.headers["content-disposition"].startswith("inline;")
 
 
 def test_pdf_blob_uses_pdfjs_progressive_viewer_with_download_fallback() -> None:

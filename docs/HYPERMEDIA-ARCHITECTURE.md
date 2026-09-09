@@ -331,6 +331,14 @@ use transient system temporary storage and therefore does not claim that
 plaintext exists only in RAM, only that Safebox Web retains no application or
 database copy of the uploaded bytes.
 
+Safebox Web treats `blobsha256` as attachment presence. It does not require a
+stored `blobref`: identity-aware records instead carry `blob_service_npubs`,
+and Acorn resolves those stable Grove identities to currently eligible
+internal, local, external, or future FIPS routes when the authenticated blob
+resource is requested. A legacy `blobref` remains supported only for records
+whose Blossom provider does not expose a service identity. Presentation logic
+must not confuse an absent URL with an absent attachment.
+
 PKPASS Record File preview is a specialized server-rendered representation
 of the same attachment boundary. Safebox Web uses Acorn's effective MIME result
 to recognize `application/vnd.apple.pkpass`, reads the Wallet pass package only

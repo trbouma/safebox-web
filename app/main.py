@@ -2426,8 +2426,17 @@ def _record_original_filename(record_value) -> str:
     return ""
 
 
+def _record_has_blob(record_value) -> bool:
+    """Recognize both identity-resolved and legacy URL-backed attachments."""
+
+    return bool(
+        getattr(record_value, "blobsha256", None)
+        or getattr(record_value, "blobref", None)
+    )
+
+
 def _original_record_type_notice(record_value, blob_type: str | None) -> str | None:
-    if not getattr(record_value, "blobref", None):
+    if not _record_has_blob(record_value):
         return None
     effective_mime = _normalize_media_type(blob_type) or "application/octet-stream"
     filename = _record_original_filename(record_value)
@@ -8914,7 +8923,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payload=rendered_payload,
             payload_format=payload_format,
             updating=True,
-            has_blob=bool(getattr(record_value, "blobref", None)),
+            has_blob=_record_has_blob(record_value),
         )
 
     @app.post("/record/save", response_class=HTMLResponse)
@@ -9203,7 +9212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pkpass_preview = None
         json_credential_preview = None
         mdoc_preview = None
-        if blob_type == PKPASS_MIME_TYPE and getattr(record_value, "blobref", None):
+        if blob_type == PKPASS_MIME_TYPE and _record_has_blob(record_value):
             try:
                 _pkpass_blob_type, pkpass_blob_data = await asyncio.wait_for(
                     acorn.get_record_blobdata(label),
@@ -9216,8 +9225,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     label,
                     type(exc).__name__,
                 )
-        elif blob_type in JSON_CREDENTIAL_PREVIEW_TYPES and getattr(
-            record_value, "blobref", None
+        elif blob_type in JSON_CREDENTIAL_PREVIEW_TYPES and _record_has_blob(
+            record_value
         ):
             try:
                 _credential_blob_type, credential_blob_data = await asyncio.wait_for(
@@ -9233,7 +9242,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     label,
                     type(exc).__name__,
                 )
-        elif blob_type == MDOC_CBOR_MIME_TYPE and getattr(record_value, "blobref", None):
+        elif blob_type == MDOC_CBOR_MIME_TYPE and _record_has_blob(record_value):
             try:
                 _mdoc_blob_type, mdoc_blob_data = await asyncio.wait_for(
                     acorn.get_record_blobdata(label),
@@ -9291,7 +9300,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 title="Control History",
                 label=label,
                 record_url=record_url,
-                has_blob=bool(getattr(record_value, "blobref", None)),
+                has_blob=_record_has_blob(record_value),
                 blob_fingerprint=blob_fingerprint,
                 openetr_history=openetr_history,
                 durable_url=durable_url,
@@ -9313,7 +9322,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             saved=saved,
             record_type=str(record_value.type),
             payload=rendered_payload,
-            has_blob=bool(getattr(record_value, "blobref", None)),
+            has_blob=_record_has_blob(record_value),
             blob_type=blob_type,
             blob_type_notice=_original_record_type_notice(record_value, blob_type),
             blob_preview=blob_preview,
