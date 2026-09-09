@@ -3602,7 +3602,7 @@ def test_wallet_bootstraps_missing_balance_snapshot_from_authoritative_state(tmp
     assert "<span>₿</span>777" in response.text
     assert "Clear balance</strong>: 12 units." in response.text
     assert "cmu-bootstrap" not in response.text
-    assert "<b>Transfer scope:</b> Across networks" in response.text
+    assert "<b>Availability:</b> Across networks" in response.text
     assert acorn.loaded is True
     acorn.publish_balance_snapshot.assert_awaited_once_with(
         clear_balances=acorn.clear_balances,
@@ -3751,7 +3751,7 @@ def test_wallet_clear_snapshot_uses_friendly_cached_mint_metadata(tmp_path) -> N
 
     assert response.status_code == 200
     assert "Community Credits</strong>: 150 credits." in response.text
-    assert "<b>Transfer scope:</b> Across networks" in response.text
+    assert "<b>Availability:</b> Across networks" in response.text
     clear_balance = response.text.split(
         '<a class="wallet-balance clear-balance"', 1
     )[1].split("</a>", 1)[0]
@@ -3792,7 +3792,7 @@ def test_wallet_marks_internal_clear_balance_local_only(tmp_path) -> None:
 
     assert response.status_code == 200
     assert "Local Service Credits</strong>: 75 credits." in response.text
-    assert "<b>Transfer scope:</b> Local only" in response.text
+    assert "<b>Availability:</b> Local only" in response.text
     clear_balance = response.text.split(
         '<a class="wallet-balance clear-balance"', 1
     )[1].split("</a>", 1)[0]

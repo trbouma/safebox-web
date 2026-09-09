@@ -76,7 +76,7 @@
   {% set balance_name = balance.display_name if balance.display_name != balance.unit else _("Clear balance") %}
   {% set balance_unit = balance.display_unit if balance.display_unit != balance.unit else _("units") %}
   {% set transfer_scope = _("Across networks") if balance.transfer_scope == "across-networks" else _("Local only") %}
-  <p class="wallet-clear-balance"><strong>{{ balance_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance_unit }}. <span><b>{{ _("Transfer scope") }}:</b> {{ transfer_scope }}</span></p>
+  <p class="wallet-clear-balance"><strong>{{ balance_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance_unit }}. <span><b>{{ _("Availability") }}:</b> {{ transfer_scope }}</span></p>
   {% endfor %}
   {% else %}
   <p class="wallet-balance-state">{{ _("No Clear balances yet.") }}</p>
