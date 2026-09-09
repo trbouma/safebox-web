@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 {% if message %}<p class="error">{{ message }}</p>{% endif %}
-<p>Receive <strong>{{ state.amount | int }} sats</strong> through the Acorn home mint:</p>
+<p>Receive <strong>₿{{ state.amount | int }}</strong> through the Acorn home mint:</p>
 <p><code>{{ state.mint }}</code></p>
 <div class="invoice-qr">{{ invoice_svg | safe }}</div>
 <label for="invoice">Lightning invoice</label>

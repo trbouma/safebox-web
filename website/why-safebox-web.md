@@ -73,7 +73,7 @@ relay, and local Grove storage while an outside application provider is slow,
 unavailable, or being changed.
 
 Payments can move through clear states instead of failing invisibly. Acorns can
-hold ecash that was issued while its mint was reachable. During a service
+hold ecash that was issued while its mint was available. During a service
 interruption, Mainstay can help participants exchange that existing ecash
 through available local infrastructure and preserve the signed transfer events.
 The recipient can immediately see that funds have arrived, but Safebox keeps

@@ -190,12 +190,13 @@ In that model:
 Mainstay should describe changing conditions in plain continuity modes:
 **Connected Mode**, **Local Mode**, **Mobile Mode**, and **Community Mode**.
 Safebox Web already establishes Connected Mode and the confirmed-versus-pending
-language. Later modes can be determined from service reachability, local
-pairing, bridge state, and community mesh participation.
+language. Later modes can be determined from service availability, including
+eligible network paths, local pairing, bridge state, and community mesh
+participation.
 
 Continuity Payments are the payment expression of those modes. Safebox Web now
 demonstrates direct ecash delivery to another Safebox address and keeps
-unfinalized value visible as pending. If the mint is unreachable, finalization
+unfinalized value visible as pending. If the mint is unavailable, finalization
 can wait without changing the confirmed balance. Mainstay can carry that same
 interaction into Local, Mobile, and Community modes while Lockbox supplies the
 nearby services and storage.

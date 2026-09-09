@@ -9,7 +9,7 @@
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label for="payment_method">Balance to receive</label>
   <select id="payment_method" name="payment_method">
-    <option value="lightning">Lightning · SAT · {{ home_mint }}</option>
+    <option value="lightning">Lightning · ₿ · {{ home_mint }}</option>
     {% for balance in clear_balances %}
     <option value="{{ balance.asset_id }}">{{ balance.display_name }} · {{ balance.unit }} · {{ balance.mint }}</option>
     {% endfor %}
@@ -34,7 +34,7 @@ Acorn holds a confirmed Clear balance.</p>
   <form method="post" action="/receive-funds/check">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="deposit_token" value="{{ pending.state_token }}">
-    <button type="submit">Resume {{ "{:,}".format(pending.amount) }} sats · {{ pending.mint }}</button>
+    <button type="submit">Resume ₿{{ "{:,}".format(pending.amount) }} · {{ pending.mint }}</button>
   </form>
   {% endfor %}
 </details>

@@ -443,7 +443,7 @@ def _payment_form(
 ) -> str:
     if balance_status is None:
         balance_status = (
-            f"<p>Relay-visible proof total: <strong>{int(balance):,} sats</strong></p>"
+            f"<p>Relay-visible proof total: <strong>₿{int(balance):,}</strong></p>"
         )
     return render_template(
         "pay.html",
@@ -826,7 +826,7 @@ def _balance_status_html(
     verification_error: str | None,
 ) -> str:
     relay_html = (
-        f"<p>Relay-visible proof total: <strong>{int(relay_balance):,} sats</strong> "
+        f"<p>Relay-visible proof total: <strong>₿{int(relay_balance):,}</strong> "
         f"in {int(proof_count):,} proofs</p>"
     )
     if verification is None:
@@ -843,7 +843,7 @@ def _balance_status_html(
     status = str(verification.get("status", "inconclusive"))
     confirmed_html = (
         "<p>Confirmed cash balance: "
-        f"<strong>{confirmed_amount:,} sats</strong> in {confirmed_count:,} proofs</p>"
+        f"<strong>₿{confirmed_amount:,}</strong> in {confirmed_count:,} proofs</p>"
     )
     if status != "clean" or confirmed_amount != int(relay_balance):
         difference = max(0, int(relay_balance) - confirmed_amount)
@@ -852,7 +852,7 @@ def _balance_status_html(
             f"Verification status: {escape(status)}. "
         )
         if difference:
-            warning += f"The relay total includes {difference:,} sats that are not confirmed. "
+            warning += f"The relay total includes ₿{difference:,} that are not confirmed. "
         warning += "Do not make a transfer until the proof state has been reviewed.</p>"
         return relay_html + confirmed_html + warning
     return relay_html + confirmed_html
@@ -862,7 +862,7 @@ def _unchecked_balance_status_html(relay_balance: int, proof_count: int) -> str:
     """Describe relay-visible state without implying a mint check occurred."""
 
     return (
-        f"<p>Relay-visible proof total: <strong>{int(relay_balance):,} sats</strong> "
+        f"<p>Relay-visible proof total: <strong>₿{int(relay_balance):,}</strong> "
         f"in {int(proof_count):,} proofs</p>"
         "<p>Mint verification has not been run for this page load. Use "
         "<strong>Check Balance and Incoming Transfers</strong> when you need "
@@ -934,7 +934,10 @@ def _transaction_history_view(entries: list[dict]) -> list[dict]:
                     ("", ""),
                 )[0]
                 symbol_prefix = currency_symbol if currency_symbol else ""
-                tender = f"{symbol_prefix}{formatted_tender} {tendered_currency}"
+                if tendered_currency == "SAT":
+                    tender = f"₿{formatted_tender}"
+                else:
+                    tender = f"{symbol_prefix}{formatted_tender} {tendered_currency}"
         comment = str(entry.get("comment") or "").strip()
         # Preserve old journal data while presenting protocol-neutral language.
         comment = comment.replace("ecash transfer received", "funds transfer received")
@@ -3234,7 +3237,7 @@ def _receive_funds_form(
 ) -> str:
     if balance_status is None:
         balance_status = (
-            f"<p>Relay-visible proof total: <strong>{int(balance):,} sats</strong></p>"
+            f"<p>Relay-visible proof total: <strong>₿{int(balance):,}</strong></p>"
         )
     return render_template(
         "receive_funds.html",
@@ -6395,7 +6398,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         else:
             balance_status = (
                 f"<p>Locally held proof total: "
-                f"<strong>{int(acorn.get_balance()):,} sats</strong></p>"
+                f"<strong>₿{int(acorn.get_balance()):,}</strong></p>"
                 "<p>Continuity mode does not contact the mint. Received funds "
                 "remain provisional until later reconciliation.</p>"
             )
@@ -7873,20 +7876,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         terminal_error_amount = int(reconciliation.get("terminal_error_amount", 0))
         if confirmed_count and provisional_count:
             notice = (
-                f"Finalized {accepted_amount:,} sats. "
-                f"{provisional_amount:,} sats remain pending."
+                f"Finalized ₿{accepted_amount:,}. "
+                f"₿{provisional_amount:,} remain pending."
             )
         elif confirmed_count:
-            notice = f"Finalized {accepted_amount:,} sats."
+            notice = f"Finalized ₿{accepted_amount:,}."
         elif provisional_count:
-            notice = f"{provisional_amount:,} sats remain pending."
+            notice = f"₿{provisional_amount:,} remain pending."
         else:
             notice = "No pending transactions were found."
         if terminal_error_count:
             terminal_notice = (
                 f"Recorded {terminal_error_count:,} failed transaction"
                 f"{'s' if terminal_error_count != 1 else ''} totaling "
-                f"{terminal_error_amount:,} sats; no balance was credited."
+                f"₿{terminal_error_amount:,}; no balance was credited."
             )
             notice = (
                 terminal_notice
@@ -7898,7 +7901,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             removed_amount = int(stale_reconciliation.get("amount", 0))
             if removed:
                 notice = (
-                    f"Removed {removed_amount:,} sats in {removed:,} stale proof"
+                    f"Removed ₿{removed_amount:,} in {removed:,} stale proof"
                     f"{'s' if removed != 1 else ''}. {notice}"
                 )
             else:

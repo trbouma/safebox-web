@@ -240,7 +240,7 @@ async def fund_worker(
         effective_mint,
     )
 
-    print(f"Service Acorn funding amount: {amount} sats", flush=True)
+    print(f"Service Acorn funding amount: ₿{amount}", flush=True)
     print(f"Mint: {effective_mint}", flush=True)
     print(f"Quote: {quote.quote}", flush=True)
     print(f"Invoice:\n{quote.invoice}\n", flush=True)
@@ -313,7 +313,7 @@ def _parser() -> argparse.ArgumentParser:
         "fund",
         help="deposit an operating reserve into the service Acorn",
     )
-    fund_parser.add_argument("amount", type=int, help="reserve amount in sats")
+    fund_parser.add_argument("amount", type=int, help="reserve amount in ₿")
     fund_parser.add_argument(
         "--mint",
         default=None,
@@ -339,15 +339,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(json.dumps(result), flush=True)
             else:
                 print(
-                    f"Service Acorn reserve: {result['balance']} sats",
+                    f"Service Acorn reserve: ₿{result['balance']}",
                     flush=True,
                 )
         elif args.command == "fund":
             result = asyncio.run(fund_worker(settings, args.amount, mint=args.mint))
             print(
                 "Service Acorn funding confirmed: "
-                f"{result['amount']} sats deposited; "
-                f"balance={result['balance']} sats",
+                f"₿{result['amount']} deposited; "
+                f"balance=₿{result['balance']}",
                 flush=True,
             )
         else:

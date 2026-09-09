@@ -10,13 +10,13 @@
   <h2 id="transaction-balance-heading">Cash Balance</h2>
   {% if fiat_estimate %}
   <p class="wallet-balance-amount">≈ {{ fiat_estimate.currency_symbol }}{{ "{:,.2f}".format(fiat_estimate.amount) }} <span>{{ fiat_estimate.currency_code }}</span></p>
-  <p class="wallet-balance-sats">{{ "{:,}".format(wallet_balance) }} sats</p>
+  <p class="wallet-balance-sats">₿{{ "{:,}".format(wallet_balance) }}</p>
   {% if fiat_estimate.stale %}<p class="wallet-balance-rate-state">Cached rate may be stale.</p>{% endif %}
   {% else %}
-  <p class="wallet-balance-amount">{{ "{:,}".format(wallet_balance) }} <span>sats</span></p>
+  <p class="wallet-balance-amount"><span>₿</span>{{ "{:,}".format(wallet_balance) }}</p>
   {% endif %}
   <p class="wallet-balance-state">{% if wallet_balance_verified %}Confirmed cash balance.{% else %}Balance requires verification—review the advisory below.{% endif %}</p>
-  {% if pending_amount %}<p class="wallet-balance-state">Pending Cash transfers: {{ "{:,}".format(pending_amount) }} sats in {{ "{:,}".format(pending_count) }} transfer{% if pending_count != 1 %}s{% endif %}.</p>{% endif %}
+  {% if pending_amount %}<p class="wallet-balance-state">Pending Cash transfers: ₿{{ "{:,}".format(pending_amount) }} in {{ "{:,}".format(pending_count) }} transfer{% if pending_count != 1 %}s{% endif %}.</p>{% endif %}
 </a>
 {% endif %}
 {% if pending_transactions %}
@@ -29,7 +29,7 @@
       <span class="transaction-kind">{{ _("Pending Credit") }}</span>
       <time class="transaction-date">{{ pending.created }}</time>
     </header>
-    <div class="transaction-amount">+{{ "{:,}".format(pending.amount) }} sats</div>
+    <div class="transaction-amount">+₿{{ "{:,}".format(pending.amount) }}</div>
     <p class="pending-transaction-stage"><strong>{{ pending.stage }}</strong></p>
     {% if pending.comment %}<p class="transaction-note"><strong>Detail:</strong> {{ pending.comment }}</p>{% endif %}
     {% if pending.sender_short or pending.event_short %}
@@ -49,7 +49,7 @@
   <p>You can leave this page and return later. Current phase: {{ finalization_job.phase | lower }}.</p>
   {% elif finalization_job and finalization_job.status == "COMPLETE" %}
   <p role="status"><strong>Cash transaction finalization completed.</strong>
-    {% if finalization_job.confirmed_count %}Finalized {{ "{:,}".format(finalization_job.confirmed_amount) }} sats from {{ "{:,}".format(finalization_job.confirmed_count) }} transfer{% if finalization_job.confirmed_count != 1 %}s{% endif %}.{% endif %}
+    {% if finalization_job.confirmed_count %}Finalized ₿{{ "{:,}".format(finalization_job.confirmed_amount) }} from {{ "{:,}".format(finalization_job.confirmed_count) }} transfer{% if finalization_job.confirmed_count != 1 %}s{% endif %}.{% endif %}
   </p>
   {% elif finalization_job and finalization_job.status in ("PARTIAL", "FAILED", "INTERRUPTED") %}
   <p role="status"><strong>Cash transaction finalization requires another check.</strong>
@@ -73,11 +73,11 @@
       <span class="transaction-kind">{{ _(entry.direction) }}</span>
       <time class="transaction-date">{{ entry.created }}</time>
     </header>
-    <div class="transaction-amount">{{ entry.sign }}{{ entry.amount }} sats</div>
+    <div class="transaction-amount">{{ entry.sign }}₿{{ entry.amount }}</div>
     <dl class="transaction-details">
       <div><dt>{{ _("Tender") }}</dt><dd>{{ entry.tender }}</dd></div>
-      <div><dt>{{ _("Fees") }}</dt><dd>{{ entry.fees }} sats</dd></div>
-      <div><dt>{{ _("Balance") }}</dt><dd>{{ entry.balance }} sats</dd></div>
+      <div><dt>{{ _("Fees") }}</dt><dd>₿{{ entry.fees }}</dd></div>
+      <div><dt>{{ _("Balance") }}</dt><dd>₿{{ entry.balance }}</dd></div>
     </dl>
     {% if entry.error_message %}<p class="transaction-note"><strong>{{ _("Reason") }}:</strong> {{ _(entry.error_message) }}</p>{% endif %}
     {% if entry.comment %}<p class="transaction-note"><strong>{{ _("Note") }}:</strong> {{ entry.comment }}</p>{% endif %}

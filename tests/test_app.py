@@ -2253,7 +2253,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert "Protected Records" in response.text
     assert '<a class="wallet-balance" href="/transactions"' in response.text
     assert '<a class="wallet-balance clear-balance" href="/clear"' in response.text
-    assert "321 <span>sats</span>" in response.text
+    assert "<span>₿</span>321" in response.text
     assert "verification, transaction history, and pending transfers" in response.text
     assert "View transaction history" not in response.text
     assert "Before disconnecting, make sure you have your" in response.text
@@ -2608,7 +2608,7 @@ def test_silent_payment_detection_shows_available_sweep_form(
         )
 
     assert response.status_code == 200
-    assert "21,000 sats" in response.text
+    assert "₿21,000" in response.text
     assert "Confirmed and currently reported as unspent" in response.text
     assert 'action="/bitcoin/silent-payment/sweep/preview"' in response.text
     assert 'name="destination_address"' in response.text
@@ -2690,8 +2690,8 @@ def test_silent_payment_sweep_requires_review_then_confirmation(
         )
 
     assert review.status_code == 200
-    assert "20,800 sats" in review.text
-    assert "200 sats at 2.0 sat/vB" in review.text
+    assert "₿20,800" in review.text
+    assert "₿200 at 2.0 sat/vB" in review.text
     assert "Receive Funds" in review.text
     assert "signed-transaction" not in review.text
     assert unconfirmed.status_code == 400
@@ -3567,7 +3567,7 @@ def test_wallet_page_shows_snapshot_but_defers_verification_and_transfer_checks(
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "12,345 <span>sats</span>" in response.text
+    assert "<span>₿</span>12,345" in response.text
     assert "Relay-visible proof total" not in response.text
     assert "Confirmed cash balance" not in response.text
     assert "Previously confirmed balance" in response.text
@@ -3599,7 +3599,7 @@ def test_wallet_bootstraps_missing_balance_snapshot_from_authoritative_state(tmp
         response = client.get("/wallet")
 
     assert response.status_code == 200
-    assert "777 <span>sats</span>" in response.text
+    assert "<span>₿</span>777" in response.text
     assert "Clear balance</strong>: 12 units." in response.text
     assert "cmu-bootstrap" not in response.text
     assert "<b>Transfer scope:</b> Across networks" in response.text
@@ -3667,7 +3667,7 @@ def test_wallet_displays_cached_currency_estimate_without_mint_verification(tmp_
 
     assert response.status_code == 200
     assert 'class="wallet-balance-amount">≈ $100.00 <span>CAD</span>' in response.text
-    assert 'class="wallet-balance-sats">50,000 sats' in response.text
+    assert 'class="wallet-balance-sats">₿50,000' in response.text
     assert "Cached rate may be stale" not in response.text
 
 
@@ -3838,9 +3838,9 @@ def test_transaction_page_warns_when_relay_total_exceeds_mint_confirmed_balance(
         response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
-    assert "Relay-visible proof total: <strong>33,926 sats" in response.text
-    assert "Confirmed cash balance: <strong>52 sats" in response.text
-    assert "33,874 sats that are not confirmed" in response.text
+    assert "Relay-visible proof total: <strong>₿33,926" in response.text
+    assert "Confirmed cash balance: <strong>₿52" in response.text
+    assert "₿33,874 that are not confirmed" in response.text
     assert "Do not make a transfer" in response.text
 
 
@@ -3865,7 +3865,7 @@ def test_clear_page_shows_pending_clear_transfers_separately(tmp_path) -> None:
     assert "Clear Balances" in response.text
     assert "1 pending transfer across 1 Clear balance." in response.text
     assert "25 pending in 1 transfer" in response.text
-    assert "Pending Cash transfers: 25 sats" not in response.text
+    assert "Pending Cash transfers: ₿25" not in response.text
 
 
 def test_clear_page_defers_new_transfer_scan_until_requested(tmp_path) -> None:
@@ -4595,13 +4595,13 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert 'aria-label="Cash transaction history"' in response.text
     assert 'class="transaction-card credit"' in response.text
     assert 'class="transaction-card debit"' in response.text
-    assert "+21 sats" in response.text
-    assert "−6 sats" in response.text
-    assert response.text.index("−6 sats") < response.text.index("+21 sats")
+    assert "+₿21" in response.text
+    assert "−₿6" in response.text
+    assert response.text.index("−₿6") < response.text.index("+₿21")
     assert "<dt>Tender</dt><dd>$0.05 CAD</dd>" in response.text
-    assert "<dt>Tender</dt><dd>21.00 SAT</dd>" in response.text
-    assert "<dt>Fees</dt><dd>1 sats</dd>" in response.text
-    assert "52 sats" in response.text
+    assert "<dt>Tender</dt><dd>₿21.00</dd>" in response.text
+    assert "<dt>Fees</dt><dd>₿1</dd>" in response.text
+    assert "₿52" in response.text
     assert "safebox web deposit &lt;confirmed&gt;" in response.text
     assert "invoice-is-not-rendered" not in response.text
     assert "preimage-is-not-rendered" not in response.text
@@ -4706,7 +4706,7 @@ def test_transaction_history_displays_cached_currency_estimate(tmp_path) -> None
 
     assert response.status_code == 200
     assert 'class="wallet-balance-amount">≈ $50.00 <span>USD</span>' in response.text
-    assert 'class="wallet-balance-sats">50,000 sats' in response.text
+    assert 'class="wallet-balance-sats">₿50,000' in response.text
 
 
 def test_wallet_uses_manage_balances_as_the_balance_navigation(tmp_path) -> None:
@@ -4752,7 +4752,7 @@ def test_cash_transactions_do_not_include_clear_transfers(tmp_path) -> None:
     assert "Cash Balance" in balance_pane
     assert "Clear Balances" not in response.text
     assert "cmu-test" not in response.text
-    assert "Pending Cash transfers: 25 sats" not in response.text
+    assert "Pending Cash transfers: ₿25" not in response.text
 
 
 def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
@@ -5679,8 +5679,8 @@ def test_transaction_page_shows_persisted_payment_awaiting_confirmation(tmp_path
         response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
-    assert "Pending Cash transfers: 5 sats in 1 transfer." in response.text
-    assert "100 <span>sats</span>" in response.text
+    assert "Pending Cash transfers: ₿5 in 1 transfer." in response.text
+    assert "<span>₿</span>100" in response.text
 
 
 def test_transaction_page_previews_unprocessed_incoming_payments_without_receiving(
@@ -5695,8 +5695,8 @@ def test_transaction_page_previews_unprocessed_incoming_payments_without_receivi
         response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
-    assert "Pending Cash transfers: 7 sats in 2 transfers." in response.text
-    assert "100 <span>sats</span>" in response.text
+    assert "Pending Cash transfers: ₿7 in 2 transfers." in response.text
+    assert "<span>₿</span>100" in response.text
     assert acorn.preview_calls == 1
     assert acorn.receive_calls == 0
 
@@ -5737,21 +5737,21 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
         response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
-    assert "Pending Cash transfers: 12 sats in 3 transfers." in response.text
-    assert "100 <span>sats</span>" in response.text
+    assert "Pending Cash transfers: ₿12 in 3 transfers." in response.text
+    assert "<span>₿</span>100" in response.text
     assert "Pending Cash Transfers" in response.text
     assert "These Cash transfers have arrived for this Acorn" in response.text
     assert "Awaiting mint confirmation" in response.text
     assert "Received on relay; finalization pending" in response.text
-    assert "+5 sats" in response.text
-    assert "+4 sats" in response.text
-    assert "+3 sats" in response.text
+    assert "+₿5" in response.text
+    assert "+₿4" in response.text
+    assert "+₿3" in response.text
     assert "local market" in response.text
     assert "Community supplies" in response.text
     assert "<strong>Detail:</strong>" in response.text
     assert "sender-two-p" in response.text
-    assert response.text.index("+4 sats") < response.text.index("+3 sats")
-    assert response.text.index("+3 sats") < response.text.index("+5 sats")
+    assert response.text.index("+₿4") < response.text.index("+₿3")
+    assert response.text.index("+₿3") < response.text.index("+₿5")
     assert "No transaction history was found" in response.text
 
 
@@ -5785,8 +5785,8 @@ def test_pending_transaction_list_deduplicates_staged_event(tmp_path) -> None:
         response = client.get("/transactions?check=1")
 
     assert response.status_code == 200
-    assert "Pending Cash transfers: 9 sats in 1 transfer." in response.text
-    assert response.text.count("+9 sats") == 1
+    assert "Pending Cash transfers: ₿9 in 1 transfer." in response.text
+    assert response.text.count("+₿9") == 1
     assert "Awaiting mint confirmation" in response.text
 
 
@@ -5853,7 +5853,7 @@ def test_transaction_finalization_runs_in_background(tmp_path) -> None:
     assert background_thread_names
     assert background_thread_names[0].startswith("safebox-wallet-job")
     assert "Cash transaction finalization completed." in page.text
-    assert "Finalized 50 sats from 3 transfers." in page.text
+    assert "Finalized ₿50 from 3 transfers." in page.text
 
 
 def test_transaction_history_can_receive_incoming_ecash() -> None:
@@ -5885,9 +5885,9 @@ def test_transaction_history_can_receive_incoming_ecash() -> None:
     assert response.status_code == 200
     assert acorn.receive_calls == 1
     assert acorn.receive_finalize_values == [False]
-    assert "Finalized 3 sats." in response.text
+    assert "Finalized ₿3." in response.text
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
-    assert "+3 sats" in response.text
+    assert "+₿3" in response.text
     assert "funds transfer received" in response.text
 
 
@@ -5910,7 +5910,7 @@ def test_receive_incoming_ecash_warns_when_credit_history_is_missing() -> None:
     )
 
     assert response.status_code == 200
-    assert "Finalized 3 sats." in response.text
+    assert "Finalized ₿3." in response.text
     assert "wallet balance may already reflect the accepted funds" in response.text
     assert "Reload transaction history before relying on the journal" in response.text
 
@@ -5953,8 +5953,8 @@ def test_receive_continuity_payment_remains_pending_when_mint_is_unavailable(
     )
 
     assert response.status_code == 200
-    assert "5 sats remain pending." in response.text
-    assert "Received 0 sats" not in response.text
+    assert "₿5 remain pending." in response.text
+    assert "Received ₿0" not in response.text
     assert "wallet balance may already reflect" not in response.text
 
 
@@ -5995,8 +5995,8 @@ def test_receive_continuity_payment_confirms_pending_proofs() -> None:
     )
 
     assert response.status_code == 200
-    assert "Finalized 5 sats." in response.text
-    assert "+5 sats" in response.text
+    assert "Finalized ₿5." in response.text
+    assert "+₿5" in response.text
     assert "continuity payment confirmed: market" in response.text
 
 
@@ -6041,10 +6041,10 @@ def test_receive_records_terminal_spent_token_error_and_clears_pending_notice() 
     )
 
     assert response.status_code == 200
-    assert "Recorded 1 failed transaction totaling 21 sats" in response.text
+    assert "Recorded 1 failed transaction totaling ₿21" in response.text
     assert "no balance was credited" in response.text
     assert '<span class="transaction-kind">Error</span>' in response.text
-    assert "21 sats remain pending" not in response.text
+    assert "₿21 remain pending" not in response.text
 
 
 def test_receive_incoming_ecash_retries_until_credit_history_is_visible() -> None:
@@ -6077,8 +6077,8 @@ def test_receive_incoming_ecash_retries_until_credit_history_is_visible() -> Non
     )
 
     assert response.status_code == 200
-    assert "Finalized 23 sats." in response.text
-    assert "+23 sats" in response.text
+    assert "Finalized ₿23." in response.text
+    assert "+₿23" in response.text
     assert "wallet balance may already reflect the accepted funds" not in response.text
 
 
@@ -6165,7 +6165,7 @@ def test_force_finalization_repairs_all_proofs_before_receiving() -> None:
     assert acorn.repair_calls == 0
     assert acorn.stale_reconciliation_calls == 1
     assert acorn.receive_calls == 1
-    assert "Removed 5 sats in 2 stale proofs. Finalized 3 sats." in response.text
+    assert "Removed ₿5 in 2 stale proofs. Finalized ₿3." in response.text
 
 
 def test_force_finalization_requires_explicit_acknowledgement() -> None:
@@ -6211,7 +6211,7 @@ def test_payment_form_displays_balance_and_confirmation() -> None:
 
     assert response.status_code == 200
     assert "Transfer a Balance" in response.text
-    assert "500 sats" in response.text
+    assert "₿500" in response.text
     assert "Transfer Address" in response.text
     assert "Transfer From" in response.text
     assert "Balance Transfer Mode" in response.text
@@ -6948,7 +6948,7 @@ def test_scanned_invoice_renders_review_without_exposing_raw_invoice(monkeypatch
 
     assert response.status_code == 200
     assert "Review Lightning invoice" in response.text
-    assert "21 sats" in response.text
+    assert "₿21" in response.text
     assert "Coffee" in response.text
     assert 'name="invoice_state"' in response.text
     assert invoice not in response.text
@@ -6995,6 +6995,8 @@ def test_confirmed_scanned_invoice_runs_as_background_job(monkeypatch, tmp_path)
     assert response.status_code == 200
     assert "Transfer completed" in response.text
     assert "Total Fees" in response.text
+    assert "Paid ₿21 with fees ₿1 successful!" in response.text
+    assert "sats" not in response.text
     assert '<a class="nav-button" href="/transactions">Transaction History</a>' in response.text
     assert '<a class="nav-button" href="/wallet">Home</a>' in response.text
     assert response.text.count('href="/wallet"') == 1
@@ -7113,7 +7115,7 @@ def test_receive_funds_form_displays_home_mint_and_amount_field() -> None:
     response = client.get("/receive-funds")
 
     assert response.status_code == 200
-    assert "500 sats" in response.text
+    assert "₿500" in response.text
     assert "https://mint.example.com" in response.text
     assert 'name="amount"' in response.text
     assert (
@@ -7122,7 +7124,7 @@ def test_receive_funds_form_displays_home_mint_and_amount_field() -> None:
     )
     assert '<select id="payment_method" name="payment_method">' in response.text
     assert (
-        '<option value="lightning">Lightning · SAT · '
+        '<option value="lightning">Lightning · ₿ · '
         'https://mint.example.com</option>' in response.text
     )
     assert "Creating a transfer request. Please wait." in response.text
@@ -7276,7 +7278,7 @@ def test_receive_funds_persists_and_monitors_lightning_request(tmp_path) -> None
 
     assert response.status_code == 200
     assert "Lightning Payment Request" in response.text
-    assert "21 sats" in response.text
+    assert "₿21" in response.text
     assert "lnbc21n1pytestinvoice" in response.text
     assert '<div class="invoice-qr"><svg' in response.text
     assert 'action="/receive-funds/check"' in response.text
@@ -7536,7 +7538,7 @@ def test_safebox_lightning_address_prefers_direct_ecash_transfer(
     assert response.status_code == 200
     assert "Balance transferred" in response.text
     assert "Direct Safebox funds transfer sent" in response.text
-    assert "Total Fees: <strong>0 sats" in response.text
+    assert "Total Fees: <strong>₿0" in response.text
     assert "Mint Fees:" not in response.text
     assert acorn.payments == []
     assert acorn.ecash_transfers == [

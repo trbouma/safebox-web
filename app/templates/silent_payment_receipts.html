@@ -11,7 +11,7 @@
       <span class="transaction-kind">Matched output {{ receipt.vout }}</span>
       <span class="transaction-date">{{ receipt.availability | replace('_', ' ') }}</span>
     </div>
-    <p class="transaction-amount">{{ "{:,}".format(receipt.value) }} sats</p>
+    <p class="transaction-amount">₿{{ "{:,}".format(receipt.value) }}</p>
     <p>Outpoint: <code>{{ receipt.txid }}:{{ receipt.vout }}</code></p>
     {% if receipt.availability == "available" %}
     <p>Confirmed and currently reported as unspent.</p>

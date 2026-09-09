@@ -6,12 +6,12 @@
 <p>You can leave this page and return later. Current phase: {{ job.phase | lower }}.</p>
 {% elif job.status == "COMPLETE" %}
 <p class="success"><strong>Transfer completed.</strong></p>
-<p>Transferred: <strong>{{ "{:,}".format(job.amount) }} {% if job.payment_kind == "clear-request" %}{{ job.recipient }}{% else %}sats{% endif %}</strong></p>
-<p>Total Fees: <strong>{{ "{:,}".format(job.total_fees or 0) }} {% if job.payment_kind == "clear-request" %}{{ job.recipient }}{% else %}sats{% endif %}</strong></p>
-{% if job.mint_fees is not none %}<p>Mint Fees: <strong>{{ "{:,}".format(job.mint_fees) }} {% if job.payment_kind == "clear-request" %}{{ job.recipient }}{% else %}sats{% endif %}</strong></p>{% endif %}
-{% if job.lightning_fee is not none %}<p>Lightning Fee: <strong>{{ "{:,}".format(job.lightning_fee) }} sats</strong></p>{% endif %}
-{% if job.lightning_fee_reserve %}<p>Lightning Fee Reserve: <strong>{{ "{:,}".format(job.lightning_fee_reserve) }} sats</strong></p>{% endif %}
-{% if job.lightning_fee_return %}<p>Lightning Fee Returned: <strong>{{ "{:,}".format(job.lightning_fee_return) }} sats</strong></p>{% endif %}
+<p>Transferred: <strong>{% if job.payment_kind == "clear-request" %}{{ "{:,}".format(job.amount) }} {{ job.recipient }}{% else %}₿{{ "{:,}".format(job.amount) }}{% endif %}</strong></p>
+<p>Total Fees: <strong>{% if job.payment_kind == "clear-request" %}{{ "{:,}".format(job.total_fees or 0) }} {{ job.recipient }}{% else %}₿{{ "{:,}".format(job.total_fees or 0) }}{% endif %}</strong></p>
+{% if job.mint_fees is not none %}<p>Mint Fees: <strong>{% if job.payment_kind == "clear-request" %}{{ "{:,}".format(job.mint_fees) }} {{ job.recipient }}{% else %}₿{{ "{:,}".format(job.mint_fees) }}{% endif %}</strong></p>{% endif %}
+{% if job.lightning_fee is not none %}<p>Lightning Fee: <strong>₿{{ "{:,}".format(job.lightning_fee) }}</strong></p>{% endif %}
+{% if job.lightning_fee_reserve %}<p>Lightning Fee Reserve: <strong>₿{{ "{:,}".format(job.lightning_fee_reserve) }}</strong></p>{% endif %}
+{% if job.lightning_fee_return %}<p>Lightning Fee Returned: <strong>₿{{ "{:,}".format(job.lightning_fee_return) }}</strong></p>{% endif %}
 {% if job.payment_kind != "clear-request" %}<p>Transfer Address: <code>{{ job.recipient }}</code></p>{% endif %}
 {% if job.message %}<p>{{ job.message }}</p>{% endif %}
 {% elif job.error and job.error.startswith("Not a valid Lightning address") %}
@@ -25,9 +25,9 @@
 <p>{{ _("Do not retry blindly. Review transaction history and reconcile pending payments first.") }}</p>
 {% endif %}
 {% if job.total_fees %}
-<p>Known Fees Consumed: <strong>{{ "{:,}".format(job.total_fees) }} {% if job.payment_kind == "clear-request" %}{{ job.recipient }}{% else %}sats{% endif %}</strong></p>
-{% if job.mint_fees is not none %}<p>Mint Fees: <strong>{{ "{:,}".format(job.mint_fees) }} {% if job.payment_kind == "clear-request" %}{{ job.recipient }}{% else %}sats{% endif %}</strong></p>{% endif %}
-{% if job.lightning_fee is not none %}<p>Lightning Fee: <strong>{{ "{:,}".format(job.lightning_fee) }} sats</strong></p>{% endif %}
+<p>Known Fees Consumed: <strong>{% if job.payment_kind == "clear-request" %}{{ "{:,}".format(job.total_fees) }} {{ job.recipient }}{% else %}₿{{ "{:,}".format(job.total_fees) }}{% endif %}</strong></p>
+{% if job.mint_fees is not none %}<p>Mint Fees: <strong>{% if job.payment_kind == "clear-request" %}{{ "{:,}".format(job.mint_fees) }} {{ job.recipient }}{% else %}₿{{ "{:,}".format(job.mint_fees) }}{% endif %}</strong></p>{% endif %}
+{% if job.lightning_fee is not none %}<p>Lightning Fee: <strong>₿{{ "{:,}".format(job.lightning_fee) }}</strong></p>{% endif %}
 {% endif %}
 {% if job.error %}<p><strong>{{ _("Reason") }}:</strong> {{ job.error }}</p>{% endif %}
 {% endif %}

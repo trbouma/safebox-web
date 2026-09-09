@@ -10,8 +10,8 @@ outpoint and expected transaction id with a compatible network explorer or node 
 <dl class="invoice-review">
   <div><dt>Broadcast transaction id</dt><dd><code>{{ result.broadcast_txid }}</code></dd></div>
   <div><dt>Destination</dt><dd><code>{{ result.destination_address }}</code></dd></div>
-  <div><dt>Amount</dt><dd>{{ "{:,}".format(result.amount_sats) }} sats</dd></div>
-  <div><dt>Miner fee</dt><dd>{{ "{:,}".format(result.fee_sats) }} sats</dd></div>
+  <div><dt>Amount</dt><dd>₿{{ "{:,}".format(result.amount_sats) }}</dd></div>
+  <div><dt>Miner fee</dt><dd>₿{{ "{:,}".format(result.fee_sats) }}</dd></div>
 </dl>
 {% endif %}
 {% endblock %}

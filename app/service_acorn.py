@@ -168,7 +168,7 @@ async def start_service_acorn(
                 if balance > 0:
                     raise RuntimeError(
                         "Service Acorn migration refused: the existing wallet "
-                        f"still holds {balance} sats. Drain and reconcile it "
+                        f"still holds ₿{balance}. Drain and reconcile it "
                         "before retrying migration."
                     )
 

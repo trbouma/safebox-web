@@ -770,15 +770,17 @@ Or build and start both in one command:
 docker compose up --detach --build
 ```
 
-To pull the latest source, rebuild the image, and recreate the web and service
-Acorn containers in one step, run:
+For a standalone instance, update the source, rebuild the image, and recreate
+the web and service Acorn containers from its dedicated checkout with:
 
 ```sh
 ./refresh-containers.sh
 ```
 
-The script waits up to 60 seconds for the web container's `/health` endpoint
-and exits with an error if the refreshed application does not become healthy.
+The script refuses tracked working-tree changes, accepts only a fast-forward
+update, validates Compose, and waits up to 60 seconds for the web container's
+`/health` endpoint. A Safebox Web instance owned by Mainstay must instead be
+updated from its Mainstay deployment directory.
 
 Both containers use `safebox-web:local`; Compose overrides the command to run
 Uvicorn in one and the service Acorn worker in the other. Both are part of the

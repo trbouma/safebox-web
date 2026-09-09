@@ -6,6 +6,7 @@ import asyncio
 from datetime import timedelta
 import inspect
 import logging
+import re
 import secrets
 from typing import Any, Callable
 
@@ -25,6 +26,18 @@ JOB_HEARTBEAT_SECONDS = 30
 INVALID_LIGHTNING_ADDRESS_MESSAGE = (
     "Not a valid Lightning address. Check the address and try again."
 )
+
+
+def _display_payment_message(message: str) -> str:
+    """Apply Safebox display-unit conventions to component messages."""
+
+    normalized = re.sub(
+        r"\b([0-9][0-9,]*(?:\.[0-9]+)?)\s+sats\b",
+        r"₿\1",
+        str(message),
+        flags=re.IGNORECASE,
+    )
+    return re.sub(r"\bsats\b", "₿", normalized, flags=re.IGNORECASE)
 
 
 def _public_payment_error(exc: Exception, payment_kind: str) -> str:
@@ -350,7 +363,7 @@ async def run_outgoing_payment_job(
             lightning_fee=getattr(fees, "lightning_fee", None),
             lightning_fee_reserve=getattr(fees, "lightning_fee_reserve", None),
             lightning_fee_return=getattr(fees, "lightning_fee_return", None),
-            message=str(message).splitlines()[0],
+            message=_display_payment_message(str(message).splitlines()[0]),
         )
     except asyncio.CancelledError:
         update_outgoing_payment_job(

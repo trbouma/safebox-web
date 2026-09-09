@@ -1,5 +1,10 @@
 # Safebox Web Deployment Runbook
 
+This runbook describes a standalone Safebox Web instance. When Safebox Web is
+part of a Mainstay instance, Mainstay owns its configuration, persistent state,
+start, update, and recovery lifecycle; operate it from the Mainstay deployment
+directory.
+
 ## Deployment model
 
 Safebox Web builds **one Docker image** and runs it as **two containers with
@@ -305,6 +310,18 @@ Use small test amounts until the remaining release gates in
 [Lightning Payments to Acorn Handles](LIGHTNING-HANDLE-PAYMENTS.md) are closed.
 
 ## Routine operations
+
+Use a dedicated checkout or release directory for each standalone instance.
+For a routine source update, run:
+
+```sh
+./refresh-containers.sh
+```
+
+The script refuses tracked working-tree changes, performs only a fast-forward
+source update, validates Compose, rebuilds and recreates both roles, and waits
+for the web health check. It does not rotate identities, retire the service
+Acorn, change commissioning, or delete persistent state.
 
 Restart both roles without rebuilding:
 
