@@ -53,6 +53,13 @@ from acorn import (
     record_protection_key_from_recovery_phrase,
     record_protection_recovery_phrase,
 )
+try:
+    from acorn import TransferRelayUnavailable
+except ImportError:
+    class TransferRelayUnavailable(ConnectionError):
+        """Compatibility type until the pinned Acorn revision is updated."""
+
+
 from acorn.func_utils import (
     generate_seed_phrase_and_nsec,
     npub_to_hex,
@@ -6577,6 +6584,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ),
                     timeout=settings.payment_timeout_seconds,
                 )
+            except TransferRelayUnavailable as exc:
+                logger.warning(
+                    "Clear payment relay unavailable recipient=%s mint=%s unit=%s",
+                    clear_recipient["npub"],
+                    selected_clear["mint"],
+                    selected_clear["unit"],
+                )
+                return HTMLResponse(
+                    _page(
+                        "Recipient relay unavailable",
+                        f"<p>{escape(str(exc))}</p>"
+                        '<p><a href="/pay">Return to transfer</a></p>',
+                    ),
+                    status_code=503,
+                )
             except TimeoutError:
                 logger.warning(
                     "Clear payment timed out outcome=unknown recipient=%s mint=%s unit=%s",
@@ -6739,6 +6761,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         ),
                     ),
                     timeout=settings.payment_timeout_seconds,
+                )
+            except TransferRelayUnavailable as exc:
+                logger.warning(
+                    "direct safebox ecash relay unavailable recipient=%s relay=%s",
+                    direct_recipient["npub"],
+                    route_description,
+                )
+                return HTMLResponse(
+                    _page(
+                        "Recipient relay unavailable",
+                        f"<p>{escape(str(exc))}</p>"
+                        '<p><a href="/pay">Return to transfer</a></p>',
+                    ),
+                    status_code=503,
                 )
             except TimeoutError:
                 logger.warning(

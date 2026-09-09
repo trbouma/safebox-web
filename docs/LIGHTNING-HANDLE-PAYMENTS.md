@@ -197,6 +197,12 @@ external recipient. A confirmed payment may instead continue through Lightning.
 Continuity mode remains explicit because it skips mint confirmation. It uses
 the same recipient inbox resolution and never falls back to Lightning.
 
+Before exporting Cash or Clear bearer proofs, Acorn gives each selected
+recipient relay a bounded connection preflight. If no relay is reachable,
+Safebox Web reports `Recipient relay unavailable` and confirms that no value
+was sent. A timeout after proof export or publication has begun remains an
+unresolved outcome and still requires transaction review before retrying.
+
 This is still a connected-mode path. Before sending, Safebox Web verifies the
 wallet's proof state with the issuing mint. If the mint cannot be reached, the
 app blocks the payment for now and reports that Continuity Payments are not

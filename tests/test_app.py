@@ -6267,6 +6267,61 @@ def test_clear_payment_sends_public_mint_unknown_to_compatible_receiver(
     ]
 
 
+def test_clear_payment_reports_unavailable_recipient_relay(monkeypatch) -> None:
+    recipient_npub = main_module.Keys.hex_to_bech32("11" * 32, prefix="npub")
+
+    class UnreachableRelayAcorn(FakeLoadedAcorn):
+        async def send_clear_transfer(self, **kwargs):
+            self.clear_transfers.append(dict(kwargs))
+            raise main_module.TransferRelayUnavailable(
+                "Recipient relay unavailable after 5 seconds. No value was sent."
+            )
+
+    monkeypatch.setattr(
+        main_module,
+        "_resolve_safebox_clear_recipient",
+        AsyncMock(
+            return_value={
+                "npub": recipient_npub,
+                "relay_hints": ["wss://unavailable.example"],
+            }
+        ),
+    )
+    app = create_app(TEST_SETTINGS)
+    acorn = UnreachableRelayAcorn(balance=500)
+    acorn.clear_balances = [
+        {
+            "mint": "https://clear.one",
+            "unit": "cmu-one",
+            "amount": 25,
+            "proof_count": 3,
+        }
+    ]
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "payment_asset": main_module._encode_clear_payment_asset(
+                "https://clear.one",
+                "cmu-one",
+            ),
+            "lightning_address": "alice@example.com",
+            "amount": "5",
+            "comment": "meeting room",
+            "payment_mode": "confirmed",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 503
+    assert "Recipient relay unavailable" in response.text
+    assert "No value was sent" in response.text
+    assert len(acorn.clear_transfers) == 1
+
+
 def test_local_clear_payment_uses_internal_relay_without_https(
     monkeypatch, tmp_path,
 ) -> None:
@@ -7684,6 +7739,51 @@ def test_safebox_direct_ecash_transfer_exception_shows_safe_reason(
     assert "funds delivery could not be completed" in response.text
     assert "Mint swap unavailable &lt;retry later&gt;" in response.text
     assert "<retry later>" not in response.text
+    assert acorn.payments == []
+    assert len(acorn.ecash_transfers) == 1
+
+
+def test_safebox_direct_ecash_reports_unavailable_recipient_relay(
+    monkeypatch,
+) -> None:
+    recipient_npub = main_module.Keys.hex_to_bech32("11" * 32, prefix="npub")
+
+    class UnreachableRelayAcorn(FakeLoadedAcorn):
+        async def send_ecash_transfer(self, **kwargs):
+            self.ecash_transfers.append(dict(kwargs))
+            raise main_module.TransferRelayUnavailable(
+                "Recipient relay unavailable after 5 seconds. No value was sent."
+            )
+
+    monkeypatch.setattr(
+        main_module,
+        "_resolve_safebox_lightning_recipient",
+        AsyncMock(
+            return_value={
+                "npub": recipient_npub,
+                "relay_hints": ["wss://unavailable.example"],
+            }
+        ),
+    )
+    app = create_app(TEST_SETTINGS)
+    acorn = UnreachableRelayAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "lightning_address": "alice@example.com",
+            "amount": "21",
+            "comment": "direct please",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 503
+    assert "Recipient relay unavailable" in response.text
+    assert "No value was sent" in response.text
     assert acorn.payments == []
     assert len(acorn.ecash_transfers) == 1
 
