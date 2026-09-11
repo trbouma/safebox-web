@@ -324,6 +324,7 @@ class Settings:
     onboard_invite_codes: tuple[str, ...] = ("INVITEME",)
     blossom_home_server: str = "https://blossom.getsafebox.app"
     mainstay_context_url: str | None = None
+    mainstay_instance_name: str | None = None
     max_blob_bytes: int = DEFAULT_MAX_BLOB_BYTES
     bitcoin_api_base: str = DEFAULT_BITCOIN_API_BASE
     bitcoin_lookup_timeout_seconds: float = DEFAULT_BITCOIN_LOOKUP_TIMEOUT_SECONDS
@@ -660,6 +661,9 @@ class Settings:
             ).strip(),
             mainstay_context_url=(
                 os.getenv("SAFEBOX_MAINSTAY_CONTEXT_URL", "").strip() or None
+            ),
+            mainstay_instance_name=(
+                os.getenv("SAFEBOX_MAINSTAY_INSTANCE_NAME", "").strip() or None
             ),
             max_blob_bytes=max_blob_bytes,
             bitcoin_api_base=os.getenv(

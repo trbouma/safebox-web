@@ -169,27 +169,69 @@ def test_wallet_scan_and_silent_payment_labels_are_localized(
 
 
 @pytest.mark.parametrize(
-    ("language", "availability", "private", "local", "across_networks"),
     (
-        ("fr", "Disponibilité", "Privée", "Locale", "Entre réseaux"),
-        ("es", "Disponibilidad", "Privada", "Local", "Entre redes"),
-        ("pt", "Disponibilidade", "Privada", "Local", "Entre redes"),
-        ("de", "Verfügbarkeit", "Privat", "Lokal", "Netzwerkübergreifend"),
-        ("it", "Disponibilità", "Privata", "Locale", "Tra reti"),
-        ("zh-Hans", "可用范围", "实例内", "本地", "跨网络"),
-        ("iu", "Availability", "Private", "Local", "Across networks"),
+        "language",
+        "availability",
+        "within_instance",
+        "local_network",
+        "across_networks",
+    ),
+    (
+        (
+            "fr",
+            "Disponibilité",
+            "Dans cette instance",
+            "Sur le réseau local",
+            "Entre réseaux",
+        ),
+        (
+            "es",
+            "Disponibilidad",
+            "Dentro de esta instancia",
+            "En la red local",
+            "Entre redes",
+        ),
+        (
+            "pt",
+            "Disponibilidade",
+            "Nesta instância",
+            "Na rede local",
+            "Entre redes",
+        ),
+        (
+            "de",
+            "Verfügbarkeit",
+            "Innerhalb dieser Instanz",
+            "Im lokalen Netzwerk",
+            "Netzwerkübergreifend",
+        ),
+        (
+            "it",
+            "Disponibilità",
+            "In questa istanza",
+            "Sulla rete locale",
+            "Tra reti",
+        ),
+        ("zh-Hans", "可用范围", "在此实例内", "在本地网络上", "跨网络"),
+        (
+            "iu",
+            "Availability",
+            "Within this instance",
+            "On the local network",
+            "Across networks",
+        ),
     ),
 )
 def test_clear_availability_labels_are_localized(
     language: str,
     availability: str,
-    private: str,
-    local: str,
+    within_instance: str,
+    local_network: str,
     across_networks: str,
 ) -> None:
     translations = translations_for(language)
 
     assert translations.gettext("Availability") == availability
-    assert translations.gettext("Private") == private
-    assert translations.gettext("Local") == local
+    assert translations.gettext("Within this instance") == within_instance
+    assert translations.gettext("On the local network") == local_network
     assert translations.gettext("Across networks") == across_networks

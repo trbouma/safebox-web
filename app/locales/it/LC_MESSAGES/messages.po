@@ -127,11 +127,11 @@ msgstr "Ricevi un pagamento silenzioso"
 msgid "Availability"
 msgstr "Disponibilità"
 
-msgid "Private"
-msgstr "Privata"
+msgid "Within this instance"
+msgstr "In questa istanza"
 
-msgid "Local"
-msgstr "Locale"
+msgid "On the local network"
+msgstr "Sulla rete locale"
 
 msgid "Across networks"
 msgstr "Tra reti"

@@ -127,11 +127,11 @@ msgstr "接收静默支付"
 msgid "Availability"
 msgstr "可用范围"
 
-msgid "Private"
-msgstr "实例内"
+msgid "Within this instance"
+msgstr "在此实例内"
 
-msgid "Local"
-msgstr "本地"
+msgid "On the local network"
+msgstr "在本地网络上"
 
 msgid "Across networks"
 msgstr "跨网络"

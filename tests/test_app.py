@@ -923,7 +923,8 @@ def test_settings_load_cookie_key_from_working_directory_env_file(
         "SAFEBOX_ALLOW_INSECURE_HTTP=true\n"
         "SAFEBOX_ALLOW_INSECURE_MINTS=true\n"
         "SAFEBOX_SESSION_TTL_HOURS=2\n"
-        "SAFEBOX_BACKGROUND_JOB_THREADS=3\n",
+        "SAFEBOX_BACKGROUND_JOB_THREADS=3\n"
+        "SAFEBOX_MAINSTAY_INSTANCE_NAME=Cedar Resort\n",
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
@@ -933,6 +934,7 @@ def test_settings_load_cookie_key_from_working_directory_env_file(
     monkeypatch.delenv("SAFEBOX_SESSION_TTL_HOURS", raising=False)
     monkeypatch.delenv("SAFEBOX_SESSION_TTL_SECONDS", raising=False)
     monkeypatch.delenv("SAFEBOX_BACKGROUND_JOB_THREADS", raising=False)
+    monkeypatch.delenv("SAFEBOX_MAINSTAY_INSTANCE_NAME", raising=False)
 
     settings = Settings.from_env()
 
@@ -941,6 +943,7 @@ def test_settings_load_cookie_key_from_working_directory_env_file(
     assert settings.allow_insecure_mints is True
     assert settings.session_ttl_seconds == 7200
     assert settings.background_job_threads == 3
+    assert settings.mainstay_instance_name == "Cedar Resort"
 
 
 def test_default_session_lifetime_is_30_days() -> None:
@@ -3759,10 +3762,11 @@ def test_wallet_clear_snapshot_uses_friendly_cached_mint_metadata(tmp_path) -> N
     assert "https://clear.example" not in clear_balance
 
 
-def test_wallet_marks_internal_clear_balance_private(tmp_path) -> None:
+def test_wallet_marks_clear_balance_available_within_named_instance(tmp_path) -> None:
     settings = replace(
         database_settings(tmp_path),
         clear_mints=("http://clear:3339",),
+        mainstay_instance_name="Cedar Resort",
     )
     app = create_app(settings)
     acorn = FakeLoadedAcorn()
@@ -3792,7 +3796,7 @@ def test_wallet_marks_internal_clear_balance_private(tmp_path) -> None:
 
     assert response.status_code == 200
     assert "Local Service Credits</strong>: 75 credits." in response.text
-    assert "<b>Availability:</b> Private" in response.text
+    assert "<b>Availability:</b> Within this instance (Cedar Resort)" in response.text
     clear_balance = response.text.split(
         '<a class="wallet-balance clear-balance"', 1
     )[1].split("</a>", 1)[0]
@@ -3803,14 +3807,14 @@ def test_wallet_marks_internal_clear_balance_private(tmp_path) -> None:
 @pytest.mark.parametrize(
     ("mint", "expected_availability"),
     (
-        ("http://clear:3339", "private"),
-        ("http://127.0.0.1:3339", "private"),
-        ("https://localhost:3339", "private"),
+        ("http://clear:3339", "instance"),
+        ("http://127.0.0.1:3339", "instance"),
+        ("https://localhost:3339", "instance"),
         ("http://192.168.1.20:3339", "local"),
         ("https://clear.community.local", "local"),
         ("https://[2001:db8::20]:3339", "local"),
         ("https://[2606:4700:4700::1111]", "across-networks"),
-        ("http://clear.example", "private"),
+        ("http://clear.example", "instance"),
         ("https://clear.example", "across-networks"),
     ),
 )
@@ -6597,7 +6601,7 @@ def test_clear_payment_rejects_internal_mint_for_external_recipient(
     )
 
     assert response.status_code == 422
-    assert "is private to this Mainstay instance" in response.text
+    assert "is available only within this Mainstay instance" in response.text
     assert "No value was sent" in response.text
     assert acorn.clear_transfers == []
     assert acorn.payments == []

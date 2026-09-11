@@ -78,11 +78,11 @@
   {% if balance.availability == "across-networks" %}
     {% set availability = _("Across networks") %}
   {% elif balance.availability == "local" %}
-    {% set availability = _("Local") %}
+    {% set availability = _("On the local network") %}
   {% else %}
-    {% set availability = _("Private") %}
+    {% set availability = _("Within this instance") %}
   {% endif %}
-  <p class="wallet-clear-balance"><strong>{{ balance_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance_unit }}. <span><b>{{ _("Availability") }}:</b> {{ availability }}</span></p>
+  <p class="wallet-clear-balance"><strong>{{ balance_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance_unit }}. <span><b>{{ _("Availability") }}:</b> {{ availability }}{% if balance.availability == "instance" and mainstay_instance_name %} ({{ mainstay_instance_name }}){% endif %}</span></p>
   {% endfor %}
   {% else %}
   <p class="wallet-balance-state">{{ _("No Clear balances yet.") }}</p>

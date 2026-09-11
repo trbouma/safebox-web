@@ -775,7 +775,7 @@ def _mint_has_public_route(mint: str) -> bool:
 
 
 def _clear_availability(mint: str) -> str:
-    """Return wallet-facing availability from the current advisory mint route."""
+    """Return the availability state derived from the advisory mint route."""
 
     normalized = str(mint or "").strip().rstrip("/")
     try:
@@ -783,7 +783,7 @@ def _clear_availability(mint: str) -> str:
         hostname = str(parsed.hostname or "").lower().rstrip(".")
         parsed_port = parsed.port
     except ValueError:
-        return "private"
+        return "instance"
     if (
         parsed.scheme.lower() not in {"http", "https"}
         or not hostname
@@ -793,25 +793,25 @@ def _clear_availability(mint: str) -> str:
         or parsed.query
         or parsed.fragment
     ):
-        return "private"
+        return "instance"
 
     if hostname == "localhost" or hostname.endswith(".localhost"):
-        return "private"
+        return "instance"
     try:
         address = ip_address(hostname)
     except ValueError:
         address = None
     if address is not None:
         if address.is_loopback:
-            return "private"
+            return "instance"
         if address.is_private or address.is_link_local:
             return "local"
     elif "." not in hostname:
-        return "private"
+        return "instance"
     if hostname.endswith((".local", ".lan", ".internal", ".home.arpa")):
         return "local"
 
-    return "across-networks" if _mint_has_public_route(mint) else "private"
+    return "across-networks" if _mint_has_public_route(mint) else "instance"
 
 
 def _invoice_payment_form(
@@ -5092,6 +5092,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 request.query_params.get("preferences") == "updated"
             ),
             clear_summary=clear_summary,
+            mainstay_instance_name=settings.mainstay_instance_name,
             onboard_invite_path="/invite",
             csrf_token=csrf_token,
         )
@@ -6585,9 +6586,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if selected_clear is not None:
             clear_recipient = _resolve_local_safebox_recipient(request, recipient)
             if clear_recipient is None:
-                if _clear_availability(str(selected_clear["mint"])) == "private":
+                if _clear_availability(str(selected_clear["mint"])) == "instance":
                     return payment_error(
-                        "That Clear Balance is private to this Mainstay instance "
+                        "That Clear Balance is available only within this Mainstay instance "
                         "and cannot be sent outside it. No value was sent.",
                         422,
                     )
@@ -6707,7 +6708,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status_code=502,
                 )
             event_id = str(delivery.get("event_id") or "")
-            message = "Private Clear transfer sent."
+            message = "Clear transfer sent."
             if event_id:
                 message += f" Event: {event_id}."
             message += (
