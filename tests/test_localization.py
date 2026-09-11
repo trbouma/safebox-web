@@ -166,3 +166,30 @@ def test_wallet_scan_and_silent_payment_labels_are_localized(
 
     assert translations.gettext("Scan") == scan
     assert translations.gettext("Receive Silent Payment") == receive_silent_payment
+
+
+@pytest.mark.parametrize(
+    ("language", "availability", "private", "local", "across_networks"),
+    (
+        ("fr", "Disponibilité", "Privée", "Locale", "Entre réseaux"),
+        ("es", "Disponibilidad", "Privada", "Local", "Entre redes"),
+        ("pt", "Disponibilidade", "Privada", "Local", "Entre redes"),
+        ("de", "Verfügbarkeit", "Privat", "Lokal", "Netzwerkübergreifend"),
+        ("it", "Disponibilità", "Privata", "Locale", "Tra reti"),
+        ("zh-Hans", "可用范围", "实例内", "本地", "跨网络"),
+        ("iu", "Availability", "Private", "Local", "Across networks"),
+    ),
+)
+def test_clear_availability_labels_are_localized(
+    language: str,
+    availability: str,
+    private: str,
+    local: str,
+    across_networks: str,
+) -> None:
+    translations = translations_for(language)
+
+    assert translations.gettext("Availability") == availability
+    assert translations.gettext("Private") == private
+    assert translations.gettext("Local") == local
+    assert translations.gettext("Across networks") == across_networks

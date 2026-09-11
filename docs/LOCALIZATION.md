@@ -15,8 +15,10 @@ surface is deliberately limited to the connected-wallet heading and
 short, stable controls: mode, balance headings, primary resource actions,
 Preferences, Advisories, and Disconnect. The balance-status messages and the
 Disconnect pane's recovery warning and acknowledgement are also translated as
-complete messages. Other informational, recovery, security, payment, and error
-text remains English until it receives contextual review.
+complete messages. Clear balance availability indicators are translated for
+the major-language catalogs; Inuktitut retains the reviewed English fallback
+for those newer terms. Other informational, recovery, security, payment, and
+error text remains English until it receives contextual review.
 
 The Inuktitut catalog contains only seven provisional demonstration messages:
 Safebox is Connected (`Safebox ᐊᑕᔪᖅ`), Home (`ᐱᒋᐊᕐᕕᒃ`),

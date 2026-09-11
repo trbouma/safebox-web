@@ -123,3 +123,15 @@ msgstr "Scanner"
 
 msgid "Receive Silent Payment"
 msgstr "Recevoir un paiement silencieux"
+
+msgid "Availability"
+msgstr "Disponibilité"
+
+msgid "Private"
+msgstr "Privée"
+
+msgid "Local"
+msgstr "Locale"
+
+msgid "Across networks"
+msgstr "Entre réseaux"

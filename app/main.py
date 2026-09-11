@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from html import escape
 import inspect
+from ipaddress import ip_address
 import json
 import logging
 import mimetypes
@@ -773,10 +774,44 @@ def _mint_has_public_route(mint: str) -> bool:
     )
 
 
-def _clear_transfer_scope(mint: str) -> str:
-    """Return the wallet-facing scope derived from current mint reachability."""
+def _clear_availability(mint: str) -> str:
+    """Return wallet-facing availability from the current advisory mint route."""
 
-    return "across-networks" if _mint_has_public_route(mint) else "local-only"
+    normalized = str(mint or "").strip().rstrip("/")
+    try:
+        parsed = urlsplit(normalized)
+        hostname = str(parsed.hostname or "").lower().rstrip(".")
+        parsed_port = parsed.port
+    except ValueError:
+        return "private"
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or (parsed_port is not None and not 1 <= parsed_port <= 65535)
+        or parsed.query
+        or parsed.fragment
+    ):
+        return "private"
+
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        return "private"
+    try:
+        address = ip_address(hostname)
+    except ValueError:
+        address = None
+    if address is not None:
+        if address.is_loopback:
+            return "private"
+        if address.is_private or address.is_link_local:
+            return "local"
+    elif "." not in hostname:
+        return "private"
+    if hostname.endswith((".local", ".lan", ".internal", ".home.arpa")):
+        return "local"
+
+    return "across-networks" if _mint_has_public_route(mint) else "private"
 
 
 def _invoice_payment_form(
@@ -1295,7 +1330,7 @@ def _clear_balance_summary(
                 "display_name": unit,
                 "display_unit": unit,
                 "metadata_resolved": False,
-                "transfer_scope": _clear_transfer_scope(mint),
+                "availability": _clear_availability(mint),
             },
         )
         row["amount"] += normalized_amount
@@ -1363,7 +1398,7 @@ def _clear_balance_summary(
                 "display_name": unit,
                 "display_unit": unit,
                 "metadata_resolved": False,
-                "transfer_scope": _clear_transfer_scope(mint),
+                "availability": _clear_availability(mint),
             },
         )
         try:
@@ -6550,10 +6585,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if selected_clear is not None:
             clear_recipient = _resolve_local_safebox_recipient(request, recipient)
             if clear_recipient is None:
-                if not _mint_has_public_route(str(selected_clear["mint"])):
+                if _clear_availability(str(selected_clear["mint"])) == "private":
                     return payment_error(
-                        "That Clear Balance uses an internal-only mint and cannot "
-                        "be sent outside this Safebox instance. No value was sent.",
+                        "That Clear Balance is private to this Mainstay instance "
+                        "and cannot be sent outside it. No value was sent.",
                         422,
                     )
                 clear_recipient = await _resolve_safebox_clear_recipient(

@@ -3759,7 +3759,7 @@ def test_wallet_clear_snapshot_uses_friendly_cached_mint_metadata(tmp_path) -> N
     assert "https://clear.example" not in clear_balance
 
 
-def test_wallet_marks_internal_clear_balance_local_only(tmp_path) -> None:
+def test_wallet_marks_internal_clear_balance_private(tmp_path) -> None:
     settings = replace(
         database_settings(tmp_path),
         clear_mints=("http://clear:3339",),
@@ -3792,7 +3792,7 @@ def test_wallet_marks_internal_clear_balance_local_only(tmp_path) -> None:
 
     assert response.status_code == 200
     assert "Local Service Credits</strong>: 75 credits." in response.text
-    assert "<b>Availability:</b> Local only" in response.text
+    assert "<b>Availability:</b> Private" in response.text
     clear_balance = response.text.split(
         '<a class="wallet-balance clear-balance"', 1
     )[1].split("</a>", 1)[0]
@@ -3801,16 +3801,22 @@ def test_wallet_marks_internal_clear_balance_local_only(tmp_path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("mint", "expected_scope"),
+    ("mint", "expected_availability"),
     (
-        ("http://clear:3339", "local-only"),
-        ("http://127.0.0.1:3339", "local-only"),
+        ("http://clear:3339", "private"),
+        ("http://127.0.0.1:3339", "private"),
+        ("https://localhost:3339", "private"),
+        ("http://192.168.1.20:3339", "local"),
+        ("https://clear.community.local", "local"),
+        ("https://[2001:db8::20]:3339", "local"),
+        ("https://[2606:4700:4700::1111]", "across-networks"),
+        ("http://clear.example", "private"),
         ("https://clear.example", "across-networks"),
     ),
 )
-def test_clear_transfer_scope_uses_existing_public_mint_rule(
+def test_clear_availability_uses_three_route_boundaries(
     mint: str,
-    expected_scope: str,
+    expected_availability: str,
 ) -> None:
     summary = main_module._clear_balance_summary(
         [],
@@ -3822,7 +3828,7 @@ def test_clear_transfer_scope_uses_existing_public_mint_rule(
         }],
     )
 
-    assert summary["balances"][0]["transfer_scope"] == expected_scope
+    assert summary["balances"][0]["availability"] == expected_availability
 
 
 def test_transaction_page_warns_when_relay_total_exceeds_mint_confirmed_balance(tmp_path) -> None:
@@ -6353,6 +6359,61 @@ def test_clear_payment_sends_public_mint_unknown_to_compatible_receiver(
     ]
 
 
+def test_clear_payment_sends_local_mint_to_compatible_local_instance(
+    monkeypatch,
+) -> None:
+    recipient_npub = main_module.Keys.hex_to_bech32("11" * 32, prefix="npub")
+    resolver = AsyncMock(
+        return_value={
+            "npub": recipient_npub,
+            "relay_hints": ["wss://relay.community.local"],
+            "route_scope": "local",
+        }
+    )
+    monkeypatch.setattr(main_module, "_resolve_safebox_clear_recipient", resolver)
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    acorn.clear_balances = [
+        {
+            "mint": "http://192.168.1.20:3339",
+            "unit": "cmu-local",
+            "amount": 25,
+            "proof_count": 3,
+        }
+    ]
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+
+    response = client.post(
+        "/pay",
+        data={
+            "csrf_token": valid_csrf_token(),
+            "payment_asset": main_module._encode_clear_payment_asset(
+                "http://192.168.1.20:3339",
+                "cmu-local",
+            ),
+            "lightning_address": "alice@community.local",
+            "amount": "5",
+            "comment": "local network transfer",
+            "payment_mode": "confirmed",
+            "confirmed": "yes",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    resolver.assert_awaited_once()
+    assert acorn.clear_transfers == [
+        {
+            "amount": 5,
+            "recipient": recipient_npub,
+            "relay_hints": ["wss://relay.community.local"],
+            "mint": "http://192.168.1.20:3339",
+            "unit": "cmu-local",
+            "comment": "local network transfer",
+        }
+    ]
+
+
 def test_clear_payment_reports_unavailable_recipient_relay(monkeypatch) -> None:
     recipient_npub = main_module.Keys.hex_to_bech32("11" * 32, prefix="npub")
 
@@ -6536,7 +6597,7 @@ def test_clear_payment_rejects_internal_mint_for_external_recipient(
     )
 
     assert response.status_code == 422
-    assert "uses an internal-only mint" in response.text
+    assert "is private to this Mainstay instance" in response.text
     assert "No value was sent" in response.text
     assert acorn.clear_transfers == []
     assert acorn.payments == []

@@ -123,3 +123,15 @@ msgstr "Escanear"
 
 msgid "Receive Silent Payment"
 msgstr "Recibir un pago silencioso"
+
+msgid "Availability"
+msgstr "Disponibilidad"
+
+msgid "Private"
+msgstr "Privada"
+
+msgid "Local"
+msgstr "Local"
+
+msgid "Across networks"
+msgstr "Entre redes"

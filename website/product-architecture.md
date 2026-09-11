@@ -201,6 +201,13 @@ can wait without changing the confirmed balance. Mainstay can carry that same
 interaction into Local, Mobile, and Community modes while Lockbox supplies the
 nearby services and storage.
 
+Clear balances use a separate three-state availability indication. **Private**
+means the usable route remains within one Mainstay instance, **Local** means
+participating instances share eligible local infrastructure, and **Across
+networks** means the route crosses that local network boundary. These labels
+describe current routes, not acceptance, treasury authority, or a permanent
+property of the Mint Notes.
+
 ## Related repositories
 
 - [Safebox Acorn](https://github.com/trbouma/safebox-acorn)
