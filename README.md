@@ -23,6 +23,13 @@ working draft of DGSI 103 Part 4. The
 records implemented alignment, dependencies, material gaps, and the evidence
 needed before making any formal conformance claim.
 
+The relationship between Android's hardware-backed credential architecture and
+Safebox's relay-backed continuity model is examined in
+[Android High-Assurance Credentials and Relay-Backed Continuity](docs/ANDROID-HIGH-ASSURANCE-CREDENTIALS-AND-RELAY-BACKED-CONTINUITY.md).
+The corresponding public-facing argument appears in the
+[Beyond the Device-Bound Wallet](website/policy-briefs/beyond-the-device-bound-wallet.md)
+policy brief.
+
 Informational fiat estimates use a database-backed cache refreshed by the
 singleton worker; web requests do not contact the external rate provider. See
 the [Informational Currency Rate Cache](docs/CURRENCY-RATE-CACHE.md) for process,

@@ -51,6 +51,9 @@ nav:
       - Verifiable Records: records-and-wallet-passes.md
       - Receiving Funds: receiving-funds.md
       - Local-First Stack: local-first-stack.md
+  - Policy Briefs:
+      - Overview: policy-briefs/index.md
+      - Beyond the Device-Bound Wallet: policy-briefs/beyond-the-device-bound-wallet.md
   - Project Status: project-status.md
 
 markdown_extensions:
