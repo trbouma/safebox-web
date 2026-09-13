@@ -36,6 +36,16 @@ service_acorn_runtime: ServiceAcornRuntime | None = None
 service_acorn: Acorn | None = None
 
 
+def _configure_operational_logging() -> None:
+    """Keep worker INFO logs visible after Alembic configures logging."""
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        force=True,
+    )
+
+
 def _require_enabled(settings: ServiceAcornSettings) -> None:
     if not settings.service_acorn_enabled:
         raise RuntimeError(
@@ -108,6 +118,10 @@ async def run_worker(
         _install_stop_handlers(worker_stop)
 
     run_migrations(settings.database_url)
+    # Alembic's logging configuration intentionally keeps its root logger at
+    # WARN. Restore the standalone worker's operational INFO logs after the
+    # migration completes so readiness and queue progress remain observable.
+    _configure_operational_logging()
     engine = create_database_engine(settings.database_url)
     try:
         runtime = await start_service_acorn(settings)
@@ -325,10 +339,7 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    _configure_operational_logging()
     settings = ServiceAcornSettings.from_env()
     try:
         if args.command == "retire":
