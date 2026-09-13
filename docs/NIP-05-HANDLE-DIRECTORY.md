@@ -66,7 +66,11 @@ encrypted browser session. The submitted form cannot choose a different
 public key or relay: Safebox takes both from that authenticated Acorn instance.
 
 Submitting the existing handle with the same Acorn is idempotent and updates
-the stored home relay. The same authenticated Acorn may rename its mapping to
+the stored home relay. Safebox also refreshes that route automatically whenever
+the authenticated Acorn opens its wallet or handle page. This makes a normal
+post-migration connection self-healing without letting a form parameter choose
+the destination: the route always comes from the Acorn established by the
+encrypted session. The same authenticated Acorn may rename its mapping to
 another unclaimed handle or explicitly remove the mapping. Renaming or removal
 immediately releases the old public name, which may then be claimed by another
 Acorn. The interface warns about this consequence and requires explicit
@@ -123,6 +127,24 @@ belongs to this Safebox instance, Safebox routes the Clear gift wrap explicitly
 to the recipient's internal home relay without requiring HTTPS discovery. Clear
 transfers to another instance continue through external NIP-05 discovery and
 the recipient's signed inbox record.
+
+Provider-payment rows snapshot the recipient public key and relay when an
+invoice request is created. An authenticated route refresh affects subsequent
+requests; it does not silently rewrite an already-issued invoice's destination.
+This preserves an auditable relationship between a payment request and the
+route selected for its eventual delivery.
+
+### Relay-migration reliability finding
+
+In September 2026, testing found a handle whose directory row still named an
+older relay even though the connected Acorn and public NIP-05 hint used the new
+relay. Lightning settlement and ecash delivery had therefore succeeded as
+separate operations, but the recipient's ordinary scan watched a different
+location. The automatic authenticated refresh above fixes the directory drift.
+Acorn independently uses relay-set-scoped receive checkpoints so moving relays
+also triggers a safe historical scan instead of inheriting an unrelated newer
+timestamp. Spent historical replays are classified by event ID and mint state
+rather than being left indefinitely pending.
 
 When Safebox creates, loads, or refreshes a handle for an Acorn, it checks the
 configured external relays for that Acorn's signed kind `10050` record. If no

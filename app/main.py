@@ -3196,6 +3196,35 @@ def _normalize_handle(value: str) -> str:
     return handle
 
 
+def _claimed_handle_for_acorn(
+    session,
+    *,
+    npub: str,
+    home_relay: str,
+) -> ClaimedHandle | None:
+    """Return a component's handle and refresh its authenticated relay route."""
+
+    registration = session.exec(
+        select(ClaimedHandle).where(ClaimedHandle.npub == npub)
+    ).first()
+    if (
+        registration is not None
+        and str(registration.home_relay) != str(home_relay)
+    ):
+        previous_relay = registration.home_relay
+        registration.home_relay = home_relay
+        session.add(registration)
+        session.commit()
+        session.refresh(registration)
+        logger.info(
+            "authenticated handle route refreshed handle=%s old_relay=%s new_relay=%s",
+            registration.claimed_handle,
+            previous_relay,
+            home_relay,
+        )
+    return registration
+
+
 def _assign_default_handle(
     session,
     *,
@@ -4984,11 +5013,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             session_credentials,
             settings,
         )
-        claimed_handle = session.exec(
-            select(ClaimedHandle).where(
-                ClaimedHandle.npub == acorn.pubkey_bech32
-            )
-        ).first()
+        claimed_handle = _claimed_handle_for_acorn(
+            session,
+            npub=acorn.pubkey_bech32,
+            home_relay=acorn.home_relay,
+        )
         nip05_address = None
         lightning_lnurl = None
         address_qr = None
@@ -5281,11 +5310,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         acorn: AcornDependency,
         session: DatabaseSessionDependency,
     ) -> str:
-        existing = session.exec(
-            select(ClaimedHandle).where(
-                ClaimedHandle.npub == acorn.pubkey_bech32
-            )
-        ).first()
+        existing = _claimed_handle_for_acorn(
+            session,
+            npub=acorn.pubkey_bech32,
+            home_relay=acorn.home_relay,
+        )
         return _handle_form(
             CsrfProtector(request.app.state.settings).issue(),
             existing=existing,

@@ -4174,15 +4174,16 @@ def test_connected_acorn_can_claim_and_resolve_a_nip05_handle(tmp_path) -> None:
 
         # The same component can idempotently refresh its current relay.
         acorn.home_relay = "wss://relay.two.example"
-        refreshed = client.post(
-            "/handle",
-            data={
-                "csrf_token": CsrfProtector(settings).issue(),
-                "claimed_handle": "alice",
-            },
-            follow_redirects=False,
-        )
-        assert refreshed.status_code == 303
+        refreshed = client.get("/wallet")
+        assert refreshed.status_code == 200
+        with Session(app.state.database_engine) as database_session:
+            refreshed_registration = database_session.exec(
+                main_module.select(ClaimedHandle).where(
+                    ClaimedHandle.npub == acorn.pubkey_bech32
+                )
+            ).first()
+            assert refreshed_registration is not None
+            assert refreshed_registration.home_relay == "wss://relay.two.example"
         assert client.get(
             "/.well-known/nostr.json", params={"name": "alice"}
         ).json() == {
