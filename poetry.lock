@@ -356,16 +356,16 @@ files = [
 [package.dependencies]
 cbor2 = {version = ">=5.5.0,<7.0.0", markers = "python_version >= \"3.9\""}
 coincurve = [
-    {version = ">=18.0.0", markers = "python_version == \"3.11\""},
     {version = ">=21.0.0", markers = "python_version >= \"3.13\""},
+    {version = ">=18.0.0", markers = "python_version == \"3.11\""},
     {version = ">=19.0.1", markers = "python_version >= \"3.12\" and python_version < \"3.13\""},
 ]
 crcmod = ">=1.7,<2.0"
 ecdsa = ">=0.17,<1.0"
 ed25519-blake2b-fork = ">=1.4.2,<2.0.0"
 py-sr25519-bindings = [
-    {version = ">=0.2.0,<1.0.0", markers = "python_version >= \"3.11\" and python_version < \"3.13\""},
     {version = ">=0.2.2,<1.0.0", markers = "python_version >= \"3.13\""},
+    {version = ">=0.2.0,<1.0.0", markers = "python_version >= \"3.11\" and python_version < \"3.13\""},
 ]
 pycryptodome = ">=3.15,<4.0"
 pynacl = ">=1.5,<2.0"
@@ -619,8 +619,8 @@ files = [
 
 [package.dependencies]
 cffi = [
-    {version = ">=1.6", markers = "python_version < \"3.13\""},
     {version = ">=1.17", markers = "python_version == \"3.13\""},
+    {version = ">=1.6", markers = "python_version < \"3.13\""},
 ]
 
 [[package]]
@@ -3112,7 +3112,7 @@ pyyaml = "^6.0.1"
 qrcode = "^7.4.2"
 requests = "^2.32.3"
 secp256k1 = ">=0.14.0"
-stroma-nostr = {git = "https://github.com/trbouma/stroma.git", rev = "84336a9c6f73aedcafd834e6c4fd7523808fe747"}
+stroma-nostr = {git = "https://github.com/trbouma/stroma.git", branch = "main"}
 wheel = "^0.43.0"
 
 [package.extras]
@@ -3123,7 +3123,7 @@ post-quantum = ["liboqs-python (>=0.14.1,<0.17.0)"]
 type = "git"
 url = "https://github.com/trbouma/safebox-acorn.git"
 reference = "main"
-resolved_reference = "a16c117c0d4c2c22c4b94524b6a74b3dd3206d33"
+resolved_reference = "6e46068b634a22817b9b8edb3bc1756086cb9884"
 
 [[package]]
 name = "secp256k1"
@@ -3338,8 +3338,8 @@ pycryptodome = ">=3.20,<4"
 [package.source]
 type = "git"
 url = "https://github.com/trbouma/stroma.git"
-reference = "84336a9c6f73aedcafd834e6c4fd7523808fe747"
-resolved_reference = "84336a9c6f73aedcafd834e6c4fd7523808fe747"
+reference = "main"
+resolved_reference = "ffe13f10555945b32a353ade5c330989a910ac96"
 
 [[package]]
 name = "tibs"
@@ -4039,4 +4039,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.14"
-content-hash = "15f72a69be879979d8cc3d5f5e3f28b8079778e0833b8465389f74eec2368af6"
+content-hash = "306f62b6b05ae3b144484361cfa9c20b445a5cc553e57474eefda47f32246939"
