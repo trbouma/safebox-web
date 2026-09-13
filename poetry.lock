@@ -356,16 +356,16 @@ files = [
 [package.dependencies]
 cbor2 = {version = ">=5.5.0,<7.0.0", markers = "python_version >= \"3.9\""}
 coincurve = [
-    {version = ">=21.0.0", markers = "python_version >= \"3.13\""},
     {version = ">=18.0.0", markers = "python_version == \"3.11\""},
+    {version = ">=21.0.0", markers = "python_version >= \"3.13\""},
     {version = ">=19.0.1", markers = "python_version >= \"3.12\" and python_version < \"3.13\""},
 ]
 crcmod = ">=1.7,<2.0"
 ecdsa = ">=0.17,<1.0"
 ed25519-blake2b-fork = ">=1.4.2,<2.0.0"
 py-sr25519-bindings = [
-    {version = ">=0.2.2,<1.0.0", markers = "python_version >= \"3.13\""},
     {version = ">=0.2.0,<1.0.0", markers = "python_version >= \"3.11\" and python_version < \"3.13\""},
+    {version = ">=0.2.2,<1.0.0", markers = "python_version >= \"3.13\""},
 ]
 pycryptodome = ">=3.15,<4.0"
 pynacl = ">=1.5,<2.0"
@@ -619,8 +619,8 @@ files = [
 
 [package.dependencies]
 cffi = [
-    {version = ">=1.17", markers = "python_version == \"3.13\""},
     {version = ">=1.6", markers = "python_version < \"3.13\""},
+    {version = ">=1.17", markers = "python_version == \"3.13\""},
 ]
 
 [[package]]
@@ -4039,4 +4039,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.14"
-content-hash = "3e75bda73dc689e0897ab63938458e8c6822cb6e71f3e042fdafa9980146cb7f"
+content-hash = "15f72a69be879979d8cc3d5f5e3f28b8079778e0833b8465389f74eec2368af6"
