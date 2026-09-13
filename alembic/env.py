@@ -14,7 +14,11 @@ import app.models  # noqa: F401  # populate SQLModel metadata
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # Migrations run inside both the web process and the standalone provider
+    # worker.  Preserve application loggers that were configured before
+    # Alembic so startup readiness, queue progress, and failures remain
+    # observable after the schema upgrade completes.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = SQLModel.metadata
 
