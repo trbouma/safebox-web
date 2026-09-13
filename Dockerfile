@@ -31,7 +31,9 @@ WORKDIR /app
 # to a resolved Git commit by poetry.lock. Copying these files first preserves
 # Docker's dependency cache until either dependency definition changes.
 COPY pyproject.toml poetry.lock ./
-RUN poetry install --only main --no-root --no-ansi
+RUN poetry config installer.parallel false \
+    && poetry config experimental.system-git-client true \
+    && poetry install --only main --no-root --no-ansi -vvv
 
 
 FROM python:3.11-slim-bookworm AS runtime
