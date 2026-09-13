@@ -3106,13 +3106,13 @@ filetype = "^1.2.0"
 hotel-names = "^0.0.1"
 httpx = "^0.28.1"
 mnemonic = "^0.21"
-monstr = "^0.1.9"
 pydantic = "^2.8.2"
 python-blossom = "^1.0.2"
 pyyaml = "^6.0.1"
 qrcode = "^7.4.2"
 requests = "^2.32.3"
 secp256k1 = ">=0.14.0"
+stroma-nostr = {git = "https://github.com/trbouma/stroma.git", rev = "84336a9c6f73aedcafd834e6c4fd7523808fe747"}
 wheel = "^0.43.0"
 
 [package.extras]
@@ -3123,7 +3123,7 @@ post-quantum = ["liboqs-python (>=0.14.1,<0.17.0)"]
 type = "git"
 url = "https://github.com/trbouma/safebox-acorn.git"
 reference = "main"
-resolved_reference = "cfa633bb2322878fb357042b48058620bb839ef5"
+resolved_reference = "a16c117c0d4c2c22c4b94524b6a74b3dd3206d33"
 
 [[package]]
 name = "secp256k1"
@@ -3338,8 +3338,8 @@ pycryptodome = ">=3.20,<4"
 [package.source]
 type = "git"
 url = "https://github.com/trbouma/stroma.git"
-reference = "main"
-resolved_reference = "f3c3f13de46595588eb69b7d8a22c71bbfe04d29"
+reference = "84336a9c6f73aedcafd834e6c4fd7523808fe747"
+resolved_reference = "84336a9c6f73aedcafd834e6c4fd7523808fe747"
 
 [[package]]
 name = "tibs"

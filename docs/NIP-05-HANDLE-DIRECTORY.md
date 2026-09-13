@@ -146,6 +146,9 @@ also triggers a safe historical scan instead of inheriting an unrelated newer
 timestamp. Spent historical replays are classified by event ID and mint state
 rather than being left indefinitely pending.
 
+The complete cross-repository incident analysis and corrected invariants are in
+[Relay Migration and Incoming Funds Design Correction](https://github.com/trbouma/safebox-acorn/blob/main/docs/RELAY-MIGRATION-AND-INCOMING-FUNDS-DESIGN-CORRECTION-2026-09.md).
+
 When Safebox creates, loads, or refreshes a handle for an Acorn, it checks the
 configured external relays for that Acorn's signed kind `10050` record. If no
 valid record exists, Safebox asks the Acorn to publish one containing
