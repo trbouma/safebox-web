@@ -182,21 +182,6 @@ frozenlist = ">=1.1.0"
 typing-extensions = {version = ">=4.2", markers = "python_version < \"3.13\""}
 
 [[package]]
-name = "aiosqlite"
-version = "0.22.1"
-description = "asyncio bridge to the standard sqlite3 module"
-optional = false
-python-versions = ">=3.9"
-files = [
-    {file = "aiosqlite-0.22.1-py3-none-any.whl", hash = "sha256:21c002eb13823fad740196c5a2e9d8e62f6243bd9e7e4a1f87fb5e44ecb4fceb"},
-    {file = "aiosqlite-0.22.1.tar.gz", hash = "sha256:043e0bd78d32888c0a9ca90fc788b38796843360c855a7262a532813133a0650"},
-]
-
-[package.extras]
-dev = ["attribution (==1.8.0)", "black (==25.11.0)", "build (>=1.2)", "coverage[toml] (==7.10.7)", "flake8 (==7.3.0)", "flake8-bugbear (==24.12.12)", "flit (==3.12.0)", "mypy (==1.19.0)", "ufmt (==2.8.0)", "usort (==1.0.8.post1)"]
-docs = ["sphinx (==8.1.3)", "sphinx-mdinclude (==0.6.2)"]
-
-[[package]]
 name = "alembic"
 version = "1.20.0"
 description = "A database migration tool for SQLAlchemy."
@@ -621,17 +606,6 @@ files = [
 cffi = [
     {version = ">=1.6", markers = "python_version < \"3.13\""},
     {version = ">=1.17", markers = "python_version == \"3.13\""},
-]
-
-[[package]]
-name = "cachetools"
-version = "7.1.8"
-description = "Extensible memoizing collections and decorators"
-optional = false
-python-versions = ">=3.10"
-files = [
-    {file = "cachetools-7.1.8-py3-none-any.whl", hash = "sha256:a81e3844acaa7355b6567f97bd67a94a14ec3a9bc2cbbdae45b9592cc036775b"},
-    {file = "cachetools-7.1.8.tar.gz", hash = "sha256:1221d547a0b24b7f26fa891d40d488b5258beab9aebd8ed68c729be3af849c43"},
 ]
 
 [[package]]
@@ -1948,27 +1922,6 @@ files = [
     {file = "mnemonic-0.21-py3-none-any.whl", hash = "sha256:72dc9de16ec5ef47287237b9b6943da11647a03fe7cf1f139fc3d7c4a7439288"},
     {file = "mnemonic-0.21.tar.gz", hash = "sha256:1fe496356820984f45559b1540c80ff10de448368929b9c60a2b55744cc88acf"},
 ]
-
-[[package]]
-name = "monstr"
-version = "0.1.9"
-description = "Monstr: Python Nostr module. Python code for working with nostr."
-optional = false
-python-versions = "*"
-files = [
-    {file = "monstr-0.1.9-py2.py3-none-any.whl", hash = "sha256:02ea958acdd3c273e398cde898d235e7c3f9dc506698976cb913d6ea1c9f78f3"},
-    {file = "monstr-0.1.9.tar.gz", hash = "sha256:1778efe0dd53fc38c10aa6a48ee2473f28b1f6e276ce5ecb149b93b855232c84"},
-]
-
-[package.dependencies]
-aioconsole = ">=0.6.0"
-aiohttp = ">=3.8.4"
-aiosqlite = ">=0.18.0"
-bech32 = ">=1.2.0"
-cachetools = ">=5.3.0"
-cryptography = ">=39.0.1"
-pycryptodome = ">=3.20.0"
-secp256k1 = ">=0.14.0"
 
 [[package]]
 name = "multidict"
@@ -4039,4 +3992,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.14"
-content-hash = "306f62b6b05ae3b144484361cfa9c20b445a5cc553e57474eefda47f32246939"
+content-hash = "3e1ea767f091d90fe78d2eeae69d543f3f0053c6cdf5412153477882a19b1d9a"

@@ -7,7 +7,7 @@ import ipaddress
 import json
 from urllib.parse import urlsplit
 
-from monstr.event.event import Event
+from stroma import Event
 
 
 MAX_ZAP_REQUEST_BYTES = 65_536

@@ -11,8 +11,7 @@ from bech32 import bech32_decode, convertbits
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from acorn import RetryablePreSwapError
-from monstr.encrypt import Keys
-from monstr.event.event import Event
+from stroma import Event, Keys
 from sqlmodel import Session, select
 
 from app.config import Settings

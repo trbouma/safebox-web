@@ -13,9 +13,7 @@ import re
 from typing import Any, Iterable
 from urllib.parse import urlsplit
 
-from monstr.client.client import ClientPool
-from monstr.encrypt import Keys
-from monstr.event.event import Event
+from stroma import ClientPool, Event, Keys
 
 
 ANCHOR_KIND = 1415

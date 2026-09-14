@@ -15,7 +15,7 @@ import uuid
 import bolt11
 import httpx
 from acorn import RetryablePreSwapError
-from monstr.client.client import ClientPool
+from stroma import ClientPool
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 

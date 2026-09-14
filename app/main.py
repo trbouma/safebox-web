@@ -34,7 +34,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 import httpx
-from monstr.encrypt import Keys
+from stroma import Keys
 import qrcode
 import qrcode.image.svg
 from sqlalchemy.exc import IntegrityError

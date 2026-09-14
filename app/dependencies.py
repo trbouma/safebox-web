@@ -16,7 +16,7 @@ from acorn.service_resolution import (
     ServiceEndpoint,
 )
 from fastapi import Depends, HTTPException, Request, status
-from monstr.encrypt import Keys
+from stroma import Keys
 from sqlmodel import Session
 
 from app.config import Settings

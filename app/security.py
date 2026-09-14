@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from mnemonic import Mnemonic
-from monstr.encrypt import Keys
+from stroma import Keys
 from starlette.requests import Request
 from starlette.responses import Response
 
