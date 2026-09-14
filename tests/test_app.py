@@ -5474,6 +5474,8 @@ def test_clear_page_resolves_aliases_without_summing_distinct_balances(
     assert "2 pending transfers across 2 Clear balances." in response.text
     assert "Clear Lab Credits" in response.text
     assert "Harbour Lab Credits" in response.text
+    assert "+25 Clear Lab Credits" in response.text
+    assert "+25 Harbour Lab Credits" in response.text
     assert "25 pending in 1 transfer" in response.text
     assert "cmu-new" in response.text
     assert "cmu-old" in response.text

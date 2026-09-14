@@ -5,8 +5,7 @@
     <span class="transaction-kind">{% if pending %}Pending Clear Transfer{% else %}{{ entry.status_label }} Clear Transaction{% endif %}</span>
     <time class="transaction-date">{{ entry.created }}</time>
   </header>
-  <div class="transaction-amount">{% if entry.direction == "out" %}-{% else %}+{% endif %}{{ "{:,}".format(entry.amount) }} {{ entry.display_unit }}</div>
-  <p class="clear-transaction-name"><strong>{{ entry.display_name }}</strong></p>
+  <div class="transaction-amount">{% if entry.direction == "out" %}-{% else %}+{% endif %}{{ "{:,}".format(entry.amount) }} {{ entry.display_name }}</div>
   <dl class="transaction-details clear-transaction-details">
     <div><dt>Status</dt><dd>{{ entry.status_label }}</dd></div>
     <div><dt>CMU</dt><dd>{{ entry.unit }}</dd></div>
