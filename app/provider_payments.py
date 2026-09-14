@@ -15,6 +15,7 @@ import uuid
 import bolt11
 import httpx
 from acorn import RetryablePreSwapError
+from sqlalchemy import update
 from stroma import ClientPool
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
@@ -226,6 +227,47 @@ def reconcile_legacy_settlement_timeouts(engine: Engine) -> int:
     return recovered
 
 
+def quarantine_abandoned_provider_claims(
+    engine: Engine,
+    *,
+    stale_after: timedelta = timedelta(minutes=15),
+) -> dict[str, int]:
+    """Move crash-abandoned claims to explicit manual-review states.
+
+    Retrying either invoice creation or ecash publication after an unknown
+    outcome can duplicate a financial operation. Startup recovery therefore
+    makes ambiguity visible instead of guessing that the operation failed.
+    """
+
+    cutoff = utc_now() - stale_after
+    transitions = {
+        "WORKER_QUOTE_CREATING": (
+            "FAILED",
+            "Invoice creation was interrupted; verify mint state before retrying",
+        ),
+        "DELIVERING": (
+            "DELIVERY_FAILED",
+            "Delivery was interrupted; verify recipient and service Acorn state",
+        ),
+        "RECEIPT_PUBLISHING": (
+            "RECEIPT_FAILED",
+            "Ecash delivered; zap receipt publication was interrupted",
+        ),
+    }
+    recovered: dict[str, int] = {}
+    with Session(engine) as session:
+        for source, (target, error) in transitions.items():
+            result = session.exec(
+                update(ProviderPayment)
+                .where(ProviderPayment.status == source)
+                .where(ProviderPayment.updated_at < cutoff)
+                .values(status=target, error=error, next_check_at=None, updated_at=utc_now())
+            )
+            recovered[source] = int(result.rowcount or 0)
+        session.commit()
+    return recovered
+
+
 def update_provider_payment(engine: Engine, payment_id: str, **changes) -> None:
     with Session(engine) as session:
         payment = session.exec(
@@ -238,6 +280,68 @@ def update_provider_payment(engine: Engine, payment_id: str, **changes) -> None:
         payment.updated_at = utc_now()
         session.add(payment)
         session.commit()
+
+
+def transition_provider_payment(
+    engine: Engine,
+    payment_id: str,
+    *,
+    expected_status: str | tuple[str, ...],
+    **changes,
+) -> ProviderPayment | None:
+    """Apply one compare-and-swap transition and return the refreshed row.
+
+    External operations can complete after another actor has advanced or
+    quarantined a payment. Requiring the state observed by the caller prevents
+    stale results from overwriting that newer decision.
+    """
+
+    expected = (
+        (expected_status,)
+        if isinstance(expected_status, str)
+        else tuple(expected_status)
+    )
+    if not expected:
+        raise ValueError("At least one expected provider-payment status is required")
+    values = {**changes, "updated_at": utc_now()}
+    with Session(engine) as session:
+        result = session.exec(
+            update(ProviderPayment)
+            .where(ProviderPayment.payment_id == payment_id)
+            .where(ProviderPayment.status.in_(expected))
+            .values(**values)
+        )
+        session.commit()
+        if not result.rowcount:
+            return None
+    return get_provider_payment(engine, payment_id)
+
+
+def claim_next_provider_payment(
+    engine: Engine,
+    status: str,
+    *,
+    claimed_status: str,
+    **changes,
+) -> ProviderPayment | None:
+    """Atomically claim the oldest due row in ``status``.
+
+    Candidate selection and claiming are separate database statements, so a
+    competing worker may see the same candidate. The conditional UPDATE is the
+    serialization point: only one actor can change the expected status.
+    """
+
+    while candidate := next_provider_payment(engine, status):
+        claimed = transition_provider_payment(
+            engine,
+            candidate.payment_id,
+            expected_status=status,
+            status=claimed_status,
+            **changes,
+        )
+        if claimed is not None:
+            return claimed
+    return None
 
 
 def update_provider_zap(engine: Engine, payment_id: str, **changes) -> None:
@@ -330,9 +434,10 @@ async def create_zap_invoice(
             zap,
             require_description_hash=require_description_hash,
         )
-        update_provider_payment(
+        transitioned = transition_provider_payment(
             engine,
             payment_id,
+            expected_status="QUOTE_CREATING",
             status="INVOICE_PENDING",
             mint_quote=quote.quote,
             invoice=quote.invoice,
@@ -340,21 +445,22 @@ async def create_zap_invoice(
             next_check_at=utc_now(),
         )
         logger.info(
-            "provider zap invoice ready payment_id=%s handle=%s amount_sat=%s description_hash_bound=%s",
+            "provider zap invoice ready payment_id=%s handle=%s amount_sat=%s "
+            "description_hash_bound=%s",
             payment_id,
             payment.claimed_handle,
             payment.amount_sat,
             quote.description_hash_bound,
         )
-        prepared = get_provider_payment(engine, payment_id)
-        if prepared is None:
-            raise RuntimeError("Durable zap payment disappeared after quote creation")
-        return prepared
+        if transitioned is None:
+            raise RuntimeError("Zap invoice state changed while creating the quote")
+        return transitioned
     except Exception as exc:
         logger.exception("provider zap invoice creation failed payment_id=%s", payment_id)
-        update_provider_payment(
+        transition_provider_payment(
             engine,
             payment_id,
+            expected_status="QUOTE_CREATING",
             status="FAILED",
             error=f"Zap invoice creation failed: {type(exc).__name__}",
         )
@@ -389,7 +495,13 @@ async def process_provider_payments_once(
     """Process at most one item from each safe payment transition."""
 
     changed = False
-    quote_request = next_provider_payment(engine, "QUOTE_PENDING")
+    quote_request = claim_next_provider_payment(
+        engine,
+        "QUOTE_PENDING",
+        claimed_status="WORKER_QUOTE_CREATING",
+        error=None,
+        next_check_at=None,
+    )
     if quote_request is not None:
         try:
             zap = get_provider_zap(engine, quote_request.payment_id)
@@ -406,9 +518,10 @@ async def process_provider_payments_once(
                     zap,
                     require_description_hash=nip57_require_description_hash,
                 )
-            update_provider_payment(
+            transition_provider_payment(
                 engine,
                 quote_request.payment_id,
+                expected_status="WORKER_QUOTE_CREATING",
                 status="INVOICE_PENDING",
                 mint_quote=quote.quote,
                 invoice=quote.invoice,
@@ -426,9 +539,10 @@ async def process_provider_payments_once(
                 "provider invoice creation failed payment_id=%s",
                 quote_request.payment_id,
             )
-            update_provider_payment(
+            transition_provider_payment(
                 engine,
                 quote_request.payment_id,
+                expected_status="WORKER_QUOTE_CREATING",
                 status="FAILED",
                 error=f"Invoice creation failed: {type(exc).__name__}",
             )
@@ -478,9 +592,10 @@ async def process_provider_payments_once(
                 or attempts >= MAX_PROVIDER_SETTLEMENT_ATTEMPTS
             )
         )
-        update_provider_payment(
+        transitioned = transition_provider_payment(
             engine,
             invoice.payment_id,
+            expected_status=invoice.status,
             status=(
                 "SETTLED"
                 if paid
@@ -512,6 +627,13 @@ async def process_provider_payments_once(
                 )
             ),
         )
+        if transitioned is None:
+            logger.warning(
+                "provider settlement result discarded after concurrent state "
+                "change payment_id=%s expected_status=%s",
+                invoice.payment_id,
+                invoice.status,
+            )
         if paid:
             logger.info(
                 "provider invoice settled payment_id=%s amount_sat=%s",
@@ -533,19 +655,22 @@ async def process_provider_payments_once(
             )
         changed = True
 
-    settled = next_provider_payment(engine, "SETTLED")
+    settled_candidate = next_provider_payment(engine, "SETTLED")
+    settled = None
+    if settled_candidate is not None:
+        settled = transition_provider_payment(
+            engine,
+            settled_candidate.payment_id,
+            expected_status="SETTLED",
+            status="DELIVERING",
+            delivery_attempts=int(settled_candidate.delivery_attempts) + 1,
+            next_check_at=None,
+        )
     if settled is not None:
         # Mark before external publication. An interrupted/ambiguous publish is
         # deliberately not retried automatically because that could duplicate
         # the recipient payment.
-        delivery_attempt = int(settled.delivery_attempts) + 1
-        update_provider_payment(
-            engine,
-            settled.payment_id,
-            status="DELIVERING",
-            delivery_attempts=delivery_attempt,
-            next_check_at=None,
-        )
+        delivery_attempt = int(settled.delivery_attempts)
         try:
             expiration = (
                 int(time()) + gift_wrap_retention_seconds
@@ -562,9 +687,10 @@ async def process_provider_payments_once(
                 ),
                 expiration=expiration,
             )
-            update_provider_payment(
+            transition_provider_payment(
                 engine,
                 settled.payment_id,
+                expected_status="DELIVERING",
                 status=(
                     "RECEIPT_PENDING"
                     if get_provider_zap(engine, settled.payment_id) is not None
@@ -592,9 +718,10 @@ async def process_provider_payments_once(
                     float(delivery_retry_base_seconds)
                     * (2 ** max(0, delivery_attempt - 1)),
                 )
-                update_provider_payment(
+                transition_provider_payment(
                     engine,
                     settled.payment_id,
+                    expected_status="DELIVERING",
                     status="SETTLED",
                     error=(
                         f"Retryable pre-swap delivery failure: {type(exc).__name__}: "
@@ -614,9 +741,10 @@ async def process_provider_payments_once(
                     exc,
                 )
             else:
-                update_provider_payment(
+                transition_provider_payment(
                     engine,
                     settled.payment_id,
+                    expected_status="DELIVERING",
                     status="DELIVERY_FAILED",
                     error=(
                         "Safe delivery retries exhausted: "
@@ -640,9 +768,10 @@ async def process_provider_payments_once(
                 type(exc).__name__,
                 exc,
             )
-            update_provider_payment(
+            transition_provider_payment(
                 engine,
                 settled.payment_id,
+                expected_status="DELIVERING",
                 status="DELIVERY_FAILED",
                 error=(
                     f"Delivery outcome requires review: {type(exc).__name__}: "
@@ -652,13 +781,18 @@ async def process_provider_payments_once(
             )
         changed = True
 
-    receipt_pending = next_provider_payment(engine, "RECEIPT_PENDING")
+    receipt_pending = claim_next_provider_payment(
+        engine,
+        "RECEIPT_PENDING",
+        claimed_status="RECEIPT_PUBLISHING",
+    )
     if receipt_pending is not None:
         zap = get_provider_zap(engine, receipt_pending.payment_id)
         if zap is None:
-            update_provider_payment(
+            transition_provider_payment(
                 engine,
                 receipt_pending.payment_id,
+                expected_status="RECEIPT_PUBLISHING",
                 status="DELIVERED",
             )
         else:
@@ -677,9 +811,10 @@ async def process_provider_payments_once(
                     ),
                     receipt_error=None,
                 )
-                update_provider_payment(
+                transition_provider_payment(
                     engine,
                     receipt_pending.payment_id,
+                    expected_status="RECEIPT_PUBLISHING",
                     status="DELIVERED",
                     error=None,
                 )
@@ -698,9 +833,10 @@ async def process_provider_payments_once(
                     receipt_pending.payment_id,
                     receipt_error=f"Receipt publication failed: {type(exc).__name__}",
                 )
-                update_provider_payment(
+                transition_provider_payment(
                     engine,
                     receipt_pending.payment_id,
+                    expected_status="RECEIPT_PUBLISHING",
                     status="RECEIPT_FAILED",
                     error="Ecash delivered; NIP-57 receipt publication requires review",
                 )

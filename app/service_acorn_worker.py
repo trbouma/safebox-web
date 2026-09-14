@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from contextlib import contextmanager
+from datetime import timedelta
+import fcntl
 import json
 import logging
+import os
+from pathlib import Path
 import signal
+from time import time
 from typing import Sequence
 
 from acorn import Acorn
@@ -16,6 +22,7 @@ from app.config import ServiceAcornSettings
 from app.currency_rates import refresh_currency_rates
 from app.database import create_database_engine, run_migrations
 from app.provider_payments import (
+    quarantine_abandoned_provider_claims,
     process_provider_payments_once,
     reconcile_legacy_settlement_timeouts,
     set_provider_identity,
@@ -34,6 +41,82 @@ logger = logging.getLogger("safebox_web.service_acorn_worker")
 # own the provider wallet.
 service_acorn_runtime: ServiceAcornRuntime | None = None
 service_acorn: Acorn | None = None
+SERVICE_WORKER_HEARTBEAT_SECONDS = 10.0
+SERVICE_WORKER_STALE_SECONDS = 45.0
+
+
+class ServiceAcornWorkerAlreadyRunning(RuntimeError):
+    """Raised when another process owns the persisted service Acorn."""
+
+
+def _worker_operational_path(settings: ServiceAcornSettings, suffix: str) -> Path:
+    state_path = service_acorn_state_path(settings)
+    # Queue ownership is global to the shared data volume, not to one recovery
+    # filename. Two differently configured state files must not create two
+    # independent owners of the same provider-payment queue.
+    return state_path.parent / f".service-acorn-{suffix}"
+
+
+@contextmanager
+def service_acorn_worker_lock(settings: ServiceAcornSettings):
+    """Hold an exclusive process lock beside the service-Acorn state file."""
+
+    lock_path = _worker_operational_path(settings, "worker.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_file = lock_path.open("a+", encoding="utf-8")
+    os.chmod(lock_path, 0o600)
+    try:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise ServiceAcornWorkerAlreadyRunning(
+                f"Another service Acorn worker owns {lock_path}"
+            ) from exc
+        lock_file.seek(0)
+        lock_file.truncate()
+        lock_file.write(f"{os.getpid()}\n")
+        lock_file.flush()
+        yield lock_path
+    finally:
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        finally:
+            lock_file.close()
+
+
+async def run_service_worker_heartbeat(
+    settings: ServiceAcornSettings,
+    stop_event: asyncio.Event,
+) -> None:
+    """Prove that the worker event loop remains able to make progress."""
+
+    heartbeat_path = _worker_operational_path(settings, "worker.heartbeat")
+    heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        while not stop_event.is_set():
+            heartbeat_path.touch(mode=0o600)
+            try:
+                await asyncio.wait_for(
+                    stop_event.wait(), timeout=SERVICE_WORKER_HEARTBEAT_SECONDS
+                )
+            except TimeoutError:
+                pass
+    finally:
+        heartbeat_path.unlink(missing_ok=True)
+
+
+def service_worker_health(settings: ServiceAcornSettings) -> dict:
+    """Return health only while the singleton worker loop is responsive."""
+
+    heartbeat_path = _worker_operational_path(settings, "worker.heartbeat")
+    if not heartbeat_path.is_file():
+        raise RuntimeError("Service Acorn worker heartbeat is missing")
+    age_seconds = max(0.0, time() - heartbeat_path.stat().st_mtime)
+    if age_seconds > SERVICE_WORKER_STALE_SECONDS:
+        raise RuntimeError(
+            f"Service Acorn worker heartbeat is stale ({age_seconds:.1f}s)"
+        )
+    return {"status": "OK", "heartbeat_age_seconds": round(age_seconds, 3)}
 
 
 def _configure_operational_logging() -> None:
@@ -103,7 +186,7 @@ async def run_currency_rate_refresh_loop(
             delay_seconds = min(60.0, settings.currency_rate_interval_seconds)
 
 
-async def run_worker(
+async def _run_worker_locked(
     settings: ServiceAcornSettings,
     *,
     stop_event: asyncio.Event | None = None,
@@ -133,6 +216,17 @@ async def run_worker(
                 "provider payments count=%s",
                 recovered_timeouts,
             )
+        # The process lock proves that no prior worker can still own these
+        # claims. Any in-progress state found at startup is therefore abandoned,
+        # regardless of its age.
+        abandoned = quarantine_abandoned_provider_claims(
+            engine, stale_after=timedelta(0)
+        )
+        if any(abandoned.values()):
+            logger.warning(
+                "quarantined interrupted provider-payment operations counts=%s",
+                abandoned,
+            )
         service_acorn_runtime = runtime
         service_acorn = runtime.acorn
         logger.info(
@@ -146,6 +240,9 @@ async def run_worker(
             )
             if settings.currency_rates_enabled
             else None
+        )
+        heartbeat_task = asyncio.create_task(
+            run_service_worker_heartbeat(settings, worker_stop)
         )
         try:
             while not worker_stop.is_set():
@@ -183,6 +280,7 @@ async def run_worker(
                     pass
         finally:
             worker_stop.set()
+            await heartbeat_task
             if currency_rate_task is not None:
                 await currency_rate_task
             # A routine deploy or restart must not destroy an operational wallet.
@@ -197,6 +295,18 @@ async def run_worker(
         engine.dispose()
 
 
+async def run_worker(
+    settings: ServiceAcornSettings,
+    *,
+    stop_event: asyncio.Event | None = None,
+) -> None:
+    """Run exactly one process against a persisted service Acorn."""
+
+    with service_acorn_worker_lock(settings) as lock_path:
+        logger.info("service Acorn singleton lock acquired path=%s", lock_path)
+        await _run_worker_locked(settings, stop_event=stop_event)
+
+
 async def retire_worker(settings: ServiceAcornSettings) -> dict:
     """Explicitly sweep, burn, and remove an existing service Acorn."""
 
@@ -204,8 +314,9 @@ async def retire_worker(settings: ServiceAcornSettings) -> dict:
     state_path = service_acorn_state_path(settings)
     if not state_path.is_file():
         raise RuntimeError(f"No service Acorn recovery state exists at {state_path}")
-    runtime = await start_service_acorn(settings)
-    return await stop_service_acorn(runtime, settings)
+    with service_acorn_worker_lock(settings):
+        runtime = await start_service_acorn(settings)
+        return await stop_service_acorn(runtime, settings)
 
 
 async def balance_worker(settings: ServiceAcornSettings) -> dict:
@@ -218,14 +329,15 @@ async def balance_worker(settings: ServiceAcornSettings) -> dict:
             "No service Acorn recovery state exists. Start the worker once "
             "before checking its balance."
         )
-    runtime = await start_service_acorn(settings)
-    return {
-        "status": "OK",
-        "balance": int(runtime.acorn.get_balance()),
-        "unit": "sat",
-        "mint": runtime.acorn.home_mint,
-        "npub": runtime.acorn.pubkey_bech32,
-    }
+    with service_acorn_worker_lock(settings):
+        runtime = await start_service_acorn(settings)
+        return {
+            "status": "OK",
+            "balance": int(runtime.acorn.get_balance()),
+            "unit": "sat",
+            "mint": runtime.acorn.home_mint,
+            "npub": runtime.acorn.pubkey_bech32,
+        }
 
 
 async def fund_worker(
@@ -246,62 +358,62 @@ async def fund_worker(
             "before funding it."
         )
 
-    runtime = await start_service_acorn(settings)
-    effective_mint = mint or runtime.acorn.home_mint
-    quote = await asyncio.to_thread(
-        runtime.acorn.deposit,
-        amount,
-        effective_mint,
-    )
-
-    print(f"Service Acorn funding amount: ₿{amount}", flush=True)
-    print(f"Mint: {effective_mint}", flush=True)
-    print(f"Quote: {quote.quote}", flush=True)
-    print(f"Invoice:\n{quote.invoice}\n", flush=True)
-    qr = qrcode.QRCode()
-    qr.add_data(quote.invoice)
-    qr.make(fit=True)
-    qr.print_ascii()
-    print(
-        "Waiting for payment confirmation. Keep this command running...",
-        flush=True,
-    )
-
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + settings.payment_timeout_seconds
-    while True:
-        paid, _ = await runtime.acorn.check_quote(
-            quote=quote.quote,
-            amount=amount,
-            mint=effective_mint,
+    with service_acorn_worker_lock(settings):
+        runtime = await start_service_acorn(settings)
+        effective_mint = mint or runtime.acorn.home_mint
+        quote = await asyncio.to_thread(
+            runtime.acorn.deposit,
+            amount,
+            effective_mint,
         )
-        if paid:
-            await runtime.acorn.add_tx_history(
-                tx_type="C",
+
+        print(f"Service Acorn funding amount: ₿{amount}", flush=True)
+        print(f"Mint: {effective_mint}", flush=True)
+        print(f"Quote: {quote.quote}", flush=True)
+        print(f"Invoice:\n{quote.invoice}\n", flush=True)
+        qr = qrcode.QRCode()
+        qr.add_data(quote.invoice)
+        qr.make(fit=True)
+        qr.print_ascii()
+        print(
+            "Waiting for payment confirmation. Keep this command running...",
+            flush=True,
+        )
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + settings.payment_timeout_seconds
+        while True:
+            paid, _ = await runtime.acorn.check_quote(
+                quote=quote.quote,
                 amount=amount,
-                comment="service Acorn operating reserve deposit",
+                mint=effective_mint,
             )
-            balance = int(runtime.acorn.get_balance())
-            logger.info(
-                "service Acorn funding confirmed amount=%s balance=%s mint=%s",
-                amount,
-                balance,
-                effective_mint,
-            )
-            return {
-                "status": "CONFIRMED",
-                "amount": amount,
-                "balance": balance,
-                "mint": effective_mint,
-            }
-        remaining = deadline - loop.time()
-        if remaining <= 0:
-            raise RuntimeError(
-                "Service Acorn funding was not confirmed before timeout. "
-                f"Preserve quote {quote.quote} and inspect the wallet before "
-                "requesting another invoice."
-            )
-        await asyncio.sleep(min(poll_interval_seconds, remaining))
+            if paid:
+                await runtime.acorn.add_tx_history(
+                    tx_type="C",
+                    amount=amount,
+                    comment="service Acorn operating reserve deposit",
+                )
+                balance = int(runtime.acorn.get_balance())
+                logger.info(
+                    "service Acorn funding confirmed amount=%s balance=%s mint=%s",
+                    amount,
+                    balance,
+                    effective_mint,
+                )
+                return {
+                    "status": "CONFIRMED",
+                    "amount": amount,
+                    "balance": balance,
+                    "mint": effective_mint,
+                }
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                raise RuntimeError(
+                    "Service Acorn funding was not confirmed before timeout. "
+                    f"Preserve quote {quote.quote} and inspect the wallet before "
+                    "requesting another invoice."
+                )
+            await asyncio.sleep(min(poll_interval_seconds, remaining))
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -313,6 +425,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("run", help="run the singleton provider worker")
+    commands.add_parser("health", help="check singleton worker event-loop health")
     commands.add_parser("retire", help="sweep and burn the service Acorn")
     balance_parser = commands.add_parser(
         "balance",
@@ -342,7 +455,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     _configure_operational_logging()
     settings = ServiceAcornSettings.from_env()
     try:
-        if args.command == "retire":
+        if args.command == "health":
+            print(json.dumps(service_worker_health(settings)), flush=True)
+        elif args.command == "retire":
             asyncio.run(retire_worker(settings))
         elif args.command == "balance":
             result = asyncio.run(balance_worker(settings))

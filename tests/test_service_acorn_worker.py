@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -216,6 +217,51 @@ def test_worker_parser_accepts_machine_readable_balance_command() -> None:
 
     assert args.command == "balance"
     assert args.json is True
+
+
+def test_service_worker_lock_rejects_second_owner_and_releases(tmp_path) -> None:
+    settings = worker_settings(tmp_path)
+
+    with worker_module.service_acorn_worker_lock(settings):
+        with pytest.raises(
+            worker_module.ServiceAcornWorkerAlreadyRunning,
+            match="Another service Acorn worker",
+        ):
+            with worker_module.service_acorn_worker_lock(settings):
+                pass
+
+    with worker_module.service_acorn_worker_lock(settings) as lock_path:
+        assert lock_path.read_text(encoding="utf-8").strip() == str(os.getpid())
+
+
+def test_service_worker_lock_is_global_across_state_filenames(tmp_path) -> None:
+    first = worker_settings(tmp_path)
+    second = worker_settings(
+        tmp_path,
+        service_acorn_state_file=str(tmp_path / "replacement-acorn.json"),
+    )
+
+    with worker_module.service_acorn_worker_lock(first):
+        with pytest.raises(worker_module.ServiceAcornWorkerAlreadyRunning):
+            with worker_module.service_acorn_worker_lock(second):
+                pass
+
+
+def test_service_worker_health_requires_fresh_event_loop_heartbeat(tmp_path) -> None:
+    settings = worker_settings(tmp_path)
+    heartbeat = worker_module._worker_operational_path(
+        settings, "worker.heartbeat"
+    )
+
+    with pytest.raises(RuntimeError, match="heartbeat is missing"):
+        worker_module.service_worker_health(settings)
+
+    heartbeat.touch()
+    assert worker_module.service_worker_health(settings)["status"] == "OK"
+    stale = worker_module.time() - worker_module.SERVICE_WORKER_STALE_SECONDS - 1
+    os.utime(heartbeat, (stale, stale))
+    with pytest.raises(RuntimeError, match="heartbeat is stale"):
+        worker_module.service_worker_health(settings)
 
 
 def test_worker_requires_explicit_enablement(tmp_path) -> None:

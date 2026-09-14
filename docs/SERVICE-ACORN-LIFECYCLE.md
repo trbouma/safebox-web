@@ -23,6 +23,12 @@ as `service_acorn_runtime`. Those objects are global only inside the singleton
 worker process; web workers cannot access them directly. The LNURL routes submit
 durable `provider_payment` jobs rather than importing the worker's globals.
 
+Single ownership is enforced, not merely assumed. The worker holds an exclusive
+file lock in the shared data volume for its entire lifetime. Its name is
+independent of the recovery filename, so mismatched state-file settings cannot
+create two queue owners. Maintenance commands use that lock too, so the normal
+worker must be stopped before `fund`, `balance`, or `retire` is run.
+
 ## Starting the worker
 
 Set the service variables in `.env`, including:
@@ -55,6 +61,19 @@ Or start the normal two-service Compose deployment:
 docker compose up -d
 docker compose logs -f service-acorn-worker
 ```
+
+Compose checks an event-loop heartbeat written to the shared data volume.
+`docker compose ps` should report the worker as healthy after startup. A missing
+or older-than-45-second heartbeat makes it unhealthy:
+
+```sh
+docker compose exec service-acorn-worker \
+  python -m app.service_acorn_worker health
+```
+
+This detects a stalled startup or event loop; it does not prove that the mint
+or relay is healthy. Docker reports health but does not automatically restart a
+process merely because its container becomes unhealthy.
 
 Both Compose services use the same image with different commands. See the
 [Deployment Runbook](DEPLOYMENT.md) for the complete build, startup, logging,
@@ -113,6 +132,14 @@ network delay is not abandoned. On startup, the worker also migrates older
 recoverable state. A definite mint response such as quote-not-found remains
 terminal. Ambiguous ecash publication remains a separate manual-review state
 and is never retried automatically because doing so could duplicate delivery.
+
+Each mutation phase is claimed with a conditional database transition before
+its external work begins. Results are committed only while the row remains in
+the expected state, preventing stale work from overwriting a newer decision.
+After a crash, the next singleton worker quarantines abandoned
+`WORKER_QUOTE_CREATING`, `DELIVERING`, and `RECEIPT_PUBLISHING` rows for explicit
+review. It does not guess that invoice creation, token issuance, or relay
+publication failed.
 
 On its first start the worker:
 
@@ -316,3 +343,6 @@ development.
 
 See [Lightning Payments to Acorn Handles](LIGHTNING-HANDLE-PAYMENTS.md) for the
 implemented routes, durable states, testing flow, and release gates.
+The ownership, crash-recovery, and liveness changes prompted by field testing
+are recorded in the
+[Service Acorn Worker Hardening Milestone](SERVICE-ACORN-WORKER-HARDENING-MILESTONE-2026-09-14.md).

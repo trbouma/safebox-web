@@ -229,13 +229,18 @@ worker an `INVOICE_PENDING` row. The worker advances the remaining states:
 
 ```text
 QUOTE_PENDING
+    -> WORKER_QUOTE_CREATING
     -> INVOICE_PENDING
     -> SETTLED
     -> DELIVERING
-    -> DELIVERED                         ordinary payment
-    -> RECEIPT_PENDING -> DELIVERED      zap
-                       -> RECEIPT_FAILED zap funds delivered; receipt needs review
+        |-> DELIVERED                         ordinary payment
+        `-> RECEIPT_PENDING -> RECEIPT_PUBLISHING
+                           -> DELIVERED      zap
+                           -> RECEIPT_FAILED zap funds delivered; receipt needs review
 ```
+
+Zap callback requests enter `QUOTE_CREATING` in the web process and join this
+worker flow at `INVOICE_PENDING` once their invoice is durably stored.
 
 The zap-specific decision and production experience are recorded in the
 [NIP-57 Zap Callback Design Note](NIP57-ZAP-CALLBACK-DESIGN-NOTE.md) and

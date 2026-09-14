@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+from datetime import timedelta
 import hashlib
 import json
 from time import time
@@ -21,12 +22,15 @@ from app.main import create_app
 from app.models import ClaimedHandle, ProviderPayment, ProviderZap, utc_now
 from app.nip57 import build_zap_receipt, validate_zap_request
 from app.provider_payments import (
+    claim_next_provider_payment,
     enqueue_provider_payment,
     get_provider_payment,
     get_provider_zap,
     process_provider_payments_once,
+    quarantine_abandoned_provider_claims,
     reconcile_legacy_settlement_timeouts,
     set_provider_identity,
+    transition_provider_payment,
     update_provider_payment,
 )
 import app.provider_payments as provider_module
@@ -423,6 +427,104 @@ def test_worker_creates_invoice_settles_and_delivers_ecash(tmp_path) -> None:
     assert acorn.delivery_calls[0]["recipient"] == "npub1alice"
     assert acorn.delivery_calls[0]["relay"] == "wss://relay.example.com"
     assert before + 3600 <= acorn.delivery_calls[0]["expiration"] <= int(time()) + 3600
+    engine.dispose()
+
+
+def test_provider_payment_claim_is_atomic_and_stale_transition_is_rejected(
+    tmp_path,
+) -> None:
+    engine, payment_id = queued_payment(tmp_path)
+
+    claimed = claim_next_provider_payment(
+        engine,
+        "QUOTE_PENDING",
+        claimed_status="WORKER_QUOTE_CREATING",
+    )
+    assert claimed is not None
+    assert claimed.payment_id == payment_id
+    assert claimed.status == "WORKER_QUOTE_CREATING"
+    assert (
+        claim_next_provider_payment(
+            engine,
+            "QUOTE_PENDING",
+            claimed_status="WORKER_QUOTE_CREATING",
+        )
+        is None
+    )
+    assert (
+        transition_provider_payment(
+            engine,
+            payment_id,
+            expected_status="QUOTE_PENDING",
+            status="FAILED",
+        )
+        is None
+    )
+    assert get_provider_payment(engine, payment_id).status == "WORKER_QUOTE_CREATING"
+    engine.dispose()
+
+
+def test_startup_quarantines_abandoned_financial_claims(tmp_path) -> None:
+    engine, payment_id = queued_payment(tmp_path)
+    update_provider_payment(engine, payment_id, status="DELIVERING")
+    with Session(engine) as session:
+        payment = session.exec(
+            select(ProviderPayment).where(
+                ProviderPayment.payment_id == payment_id
+            )
+        ).one()
+        payment.updated_at = utc_now() - timedelta(hours=1)
+        session.add(payment)
+        session.commit()
+
+    result = quarantine_abandoned_provider_claims(
+        engine, stale_after=timedelta(minutes=15)
+    )
+
+    payment = get_provider_payment(engine, payment_id)
+    assert result["DELIVERING"] == 1
+    assert payment.status == "DELIVERY_FAILED"
+    assert "interrupted" in payment.error
+    assert payment.next_check_at is None
+    engine.dispose()
+
+
+def test_worker_recovery_does_not_quarantine_web_owned_zap_quote(tmp_path) -> None:
+    engine, payment_id = queued_payment(tmp_path, zap=True)
+    update_provider_payment(engine, payment_id, status="QUOTE_CREATING")
+    with Session(engine) as session:
+        payment = session.exec(
+            select(ProviderPayment).where(
+                ProviderPayment.payment_id == payment_id
+            )
+        ).one()
+        payment.updated_at = utc_now() - timedelta(hours=1)
+        session.add(payment)
+        session.commit()
+
+    result = quarantine_abandoned_provider_claims(
+        engine, stale_after=timedelta(0)
+    )
+
+    assert result["WORKER_QUOTE_CREATING"] == 0
+    assert get_provider_payment(engine, payment_id).status == "QUOTE_CREATING"
+    engine.dispose()
+
+
+def test_quote_is_claimed_before_external_mint_call(tmp_path) -> None:
+    engine, payment_id = queued_payment(tmp_path)
+
+    class InspectingAcorn(FakeProviderAcorn):
+        def deposit(self, *, amount, mint):
+            assert (
+                get_provider_payment(engine, payment_id).status
+                == "WORKER_QUOTE_CREATING"
+            )
+            return super().deposit(amount=amount, mint=mint)
+
+    asyncio.run(process_provider_payments_once(engine, InspectingAcorn()))
+
+    assert get_provider_payment(engine, payment_id).status == "DELIVERED"
     engine.dispose()
 
 

@@ -26,6 +26,13 @@ The web tier may scale independently because it does not load or mutate the
 provider wallet. The service Acorn process remains a singleton because Cashu
 proof state must not have competing process owners.
 
+The singleton is enforced with one non-blocking operating-system file lock in
+the shared service data volume. The lock is deliberately independent of the
+configured recovery filename, so two differently configured workers cannot own
+the same provider queue. A second worker or maintenance command fails closed
+while that lock is held. This protects one host; a future multi-host deployment
+needs distributed fencing because `flock` does not cross machines.
+
 ## Current concurrency model
 
 The Docker deployment runs one image with two roles:
@@ -46,12 +53,17 @@ the same database and advances payments through:
 
 ```text
 QUOTE_PENDING
+    -> WORKER_QUOTE_CREATING
     -> INVOICE_PENDING
     -> SETTLED
     -> DELIVERING
-    -> DELIVERED
-    -> RECEIPT_PENDING -> DELIVERED | RECEIPT_FAILED
+        |-> DELIVERED
+        `-> RECEIPT_PENDING -> RECEIPT_PUBLISHING
+                           -> DELIVERED | RECEIPT_FAILED
 ```
+
+Zap callbacks instead enter `QUOTE_CREATING` in the web process and join the
+worker flow at `INVOICE_PENDING` after the invoice is durably stored.
 
 SQLite uses WAL mode, a 30-second busy timeout, and short database sessions.
 This permits concurrent reads and makes serialized writes practical for local
@@ -64,6 +76,10 @@ development and light pilot traffic.
 - Database uniqueness constraints arbitrate concurrent handle claims.
 - Provider wallet mutations remain serialized because only one worker owns the
   service Acorn.
+- Mutation phases are claimed with conditional status updates. Only the actor
+  that still owns the expected state may commit an external call's result.
+- Restart recovery quarantines abandoned worker claims instead of replaying an
+  operation whose financial outcome may be unknown.
 - A failure proven to occur before mint swap submission is retried by the
   singleton worker with durable, bounded backoff. An ambiguous ecash swap or
   publication stops at `DELIVERY_FAILED`; it is not blindly retried and
@@ -338,15 +354,13 @@ independently upgrade it.
 
 ### Atomic job claiming
 
-The current queue assumes exactly one provider worker and therefore selects the
-next eligible row without a cross-process claim lease. Accidentally starting a
-second worker could let both observe the same job.
-
-The production queue should atomically claim work with a worker identifier,
-lease expiry, attempt number, and compare-and-set state transition. PostgreSQL
-can use `SELECT ... FOR UPDATE SKIP LOCKED`. The singleton rule should remain
-even after claims are added because job coordination alone does not make proof
-ownership multi-writer safe.
+The current queue claims mutation phases with a compare-and-set status
+transition. SQLite candidate selection is not itself locked, but the
+conditional update is the serialization point: only one actor can claim the
+expected state. The process lock remains necessary because queue coordination
+alone does not make Cashu proof ownership multi-writer safe. A later PostgreSQL
+deployment may use `SELECT ... FOR UPDATE SKIP LOCKED` for higher-throughput
+non-wallet jobs without weakening the singleton wallet boundary.
 
 ### Other attached-Acorn mutations
 
@@ -366,8 +380,9 @@ should eventually cover every attached-Acorn mutation.
 ### Ambiguous delivery outcomes
 
 A crash after ecash issuance or relay publication but before the database
-commit creates an ambiguous state. Automatically repeating the entire delivery
-could issue a second transfer. Leaving it permanently stopped can strand a
+commit creates an ambiguous state. On restart, `DELIVERING` becomes
+`DELIVERY_FAILED`; it is never replayed automatically. Repeating the entire
+delivery could issue a second transfer, while leaving it stopped can strand a
 legitimate payment.
 
 The delivery protocol needs an idempotency identifier, recipient
@@ -409,7 +424,8 @@ protects wallet state. Neither substitutes for the other.
 4. Replace callback polling with database notification or a bounded internal
    wait mechanism.
 5. Move production state from SQLite to PostgreSQL.
-6. Add atomic job claims, leases, and stale-claim recovery.
+6. Replace the current single-host process lock with distributed fencing before
+   allowing automatic service-Acorn movement between hosts.
 7. Extend the existing incoming-funds lease into wallet-scoped serialization
    for every attached-Acorn mutation.
 8. Add delivery acknowledgement, reconciliation, and operator review tooling.
@@ -417,7 +433,9 @@ protects wallet state. Neither substitutes for the other.
 
 ## Operating constraints until hardened
 
-- Run exactly one `service-acorn-worker` container.
+- Mount the same persistent state volume and run exactly one
+  `service-acorn-worker` container. Treat a singleton-lock failure as a
+  deployment error.
 - Use small payment amounts and bounded pilot traffic.
 - Treat increasing `SAFEBOX_WEB_WORKERS` as request capacity, not database or
   provider-wallet capacity.
@@ -428,3 +446,6 @@ protects wallet state. Neither substitutes for the other.
   Clear acceptance, or an outgoing Lightning payment is running.
 - Stop accepting new provider payments before maintenance that may interrupt
   settlement or delivery.
+- Alert on an unhealthy worker and restart it deliberately after inspecting any
+  quarantined `FAILED`, `DELIVERY_FAILED`, or `RECEIPT_FAILED` rows. Docker marks
+  the container unhealthy but does not itself restart an unhealthy process.

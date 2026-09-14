@@ -82,7 +82,11 @@ services:
       safebox-web:
         condition: service_healthy
     healthcheck:
-      disable: true
+      test: ["CMD", "python", "-m", "app.service_acorn_worker", "health"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 45s
     environment:
       SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS: "${SAFEBOX_WALLET_LOAD_TIMEOUT_SECONDS:-20}"
       SAFEBOX_PAYMENT_TIMEOUT_SECONDS: "${SAFEBOX_PAYMENT_TIMEOUT_SECONDS:-90}"
