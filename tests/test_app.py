@@ -3804,6 +3804,44 @@ def test_wallet_marks_clear_balance_available_within_named_instance(tmp_path) ->
     assert "http://clear:3339" not in clear_balance
 
 
+def test_clear_page_marks_balance_available_within_named_instance(tmp_path) -> None:
+    settings = replace(
+        database_settings(tmp_path),
+        clear_mints=("http://clear:3339",),
+        mainstay_instance_name="Cedar Resort",
+    )
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn()
+    acorn.clear_balances = [{
+        "mint": "http://clear:3339",
+        "unit": "cmu-local",
+        "amount": 75,
+        "proof_count": 2,
+    }]
+    app.state.clear_mint_metadata_cache[(
+        "http://clear:3339",
+        "cmu-local",
+        "",
+    )] = (
+        time.monotonic(),
+        {
+            "display_name": "Local Service Credits",
+            "display_unit": "credits",
+            "metadata_resolved": True,
+        },
+    )
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/clear")
+
+    assert response.status_code == 200
+    assert "Local Service Credits" in response.text
+    assert "<strong>Availability:</strong> Within this instance (Cedar Resort)" in (
+        response.text
+    )
+
+
 @pytest.mark.parametrize(
     ("mint", "expected_availability"),
     (

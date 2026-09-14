@@ -7463,6 +7463,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 acceptance_job=acceptance_job,
                 csrf_token=CsrfProtector(settings).issue(),
                 notice=_clear_page_notice(request.query_params),
+                mainstay_instance_name=settings.mainstay_instance_name,
             )
         )
 
