@@ -209,11 +209,13 @@ def test_process_reserve_funding_request_confirms_deposit(
         "created_at": 123456,
     }
     worker_module.write_service_acorn_reserve_funding(settings, request)
-    monkeypatch.setattr(worker_module, "time", lambda: 123457)
+    now = 123457
+    monkeypatch.setattr(worker_module, "time", lambda: now)
 
     pending = asyncio.run(
         worker_module.process_reserve_funding_once(settings, FundingAcorn())
     )
+    now = pending["next_check_at"]
     confirmed = asyncio.run(
         worker_module.process_reserve_funding_once(settings, FundingAcorn())
     )
@@ -232,6 +234,84 @@ def test_process_reserve_funding_request_confirms_deposit(
             "comment": "service Acorn operating reserve deposit",
         },
     ) in calls
+
+
+def test_process_reserve_funding_throttles_pending_quote_checks(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    calls: list[tuple] = []
+
+    class FundingAcorn:
+        home_mint = "https://mint.example.com"
+        pubkey_bech32 = "npub1service"
+
+        async def check_quote(self, *, quote, amount, mint):
+            calls.append(("check", quote, amount, mint))
+            return False, "lnbc123"
+
+    settings = worker_settings(tmp_path, payment_timeout_seconds=90)
+    request = {
+        "id": "funding-1",
+        "status": "PENDING",
+        "amount": 21,
+        "mint": "https://mint.example.com",
+        "quote": "quote-123",
+        "invoice": "lnbc123",
+        "created_at": 123456,
+        "next_check_at": 123466,
+    }
+    worker_module.write_service_acorn_reserve_funding(settings, request)
+    monkeypatch.setattr(worker_module, "time", lambda: 123460)
+
+    result = asyncio.run(
+        worker_module.process_reserve_funding_once(settings, FundingAcorn())
+    )
+
+    assert result["status"] == "PENDING"
+    assert calls == []
+
+
+def test_process_reserve_funding_checks_pending_quote_before_expiring(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    calls: list[tuple] = []
+
+    class FundingAcorn:
+        home_mint = "https://mint.example.com"
+        pubkey_bech32 = "npub1service"
+
+        async def check_quote(self, *, quote, amount, mint):
+            calls.append(("check", quote, amount, mint))
+            return True, "lnbc123"
+
+        async def add_tx_history(self, **kwargs):
+            calls.append(("history", kwargs))
+
+        def get_balance(self):
+            return 121
+
+    settings = worker_settings(tmp_path, payment_timeout_seconds=90)
+    request = {
+        "id": "funding-1",
+        "status": "PENDING",
+        "amount": 21,
+        "mint": "https://mint.example.com",
+        "quote": "quote-123",
+        "invoice": "lnbc123",
+        "created_at": 123456,
+    }
+    worker_module.write_service_acorn_reserve_funding(settings, request)
+    monkeypatch.setattr(worker_module, "time", lambda: 123600)
+
+    result = asyncio.run(
+        worker_module.process_reserve_funding_once(settings, FundingAcorn())
+    )
+
+    assert result["status"] == "CONFIRMED"
+    assert result["balance"] == 121
+    assert ("check", "quote-123", 21, "https://mint.example.com") in calls
 
 
 def test_balance_worker_reports_persisted_operating_reserve(

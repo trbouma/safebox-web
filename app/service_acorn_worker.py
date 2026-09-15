@@ -43,6 +43,7 @@ service_acorn_runtime: ServiceAcornRuntime | None = None
 service_acorn: Acorn | None = None
 SERVICE_WORKER_HEARTBEAT_SECONDS = 10.0
 SERVICE_WORKER_STALE_SECONDS = 45.0
+RESERVE_FUNDING_CHECK_SECONDS = 10
 
 
 class ServiceAcornWorkerAlreadyRunning(RuntimeError):
@@ -407,16 +408,16 @@ async def process_reserve_funding_once(
             }
         )
         return write_service_acorn_reserve_funding(settings, request)
-    if now - created_at > settings.payment_timeout_seconds:
-        request.update(
-            {
-                "status": "EXPIRED",
-                "detail": "Service Acorn funding was not confirmed before timeout",
-            }
-        )
-        return write_service_acorn_reserve_funding(settings, request)
 
     if status == "REQUESTED":
+        if now - created_at > settings.payment_timeout_seconds:
+            request.update(
+                {
+                    "status": "EXPIRED",
+                    "detail": "Service Acorn funding was not confirmed before timeout",
+                }
+            )
+            return write_service_acorn_reserve_funding(settings, request)
         quote = await asyncio.to_thread(acorn.deposit, amount, mint)
         request.update(
             {
@@ -425,6 +426,7 @@ async def process_reserve_funding_once(
                 "mint": mint,
                 "quote": quote.quote,
                 "invoice": quote.invoice,
+                "next_check_at": now + RESERVE_FUNDING_CHECK_SECONDS,
             }
         )
         logger.info("service Acorn reserve funding invoice created amount=%s", amount)
@@ -439,8 +441,30 @@ async def process_reserve_funding_once(
             }
         )
         return write_service_acorn_reserve_funding(settings, request)
-    paid, _ = await acorn.check_quote(quote=quote_id, amount=amount, mint=mint)
+    try:
+        next_check_at = int(request.get("next_check_at") or 0)
+    except (TypeError, ValueError):
+        next_check_at = 0
+    timed_out = now - created_at > settings.payment_timeout_seconds
+    if next_check_at > now and not timed_out:
+        return request
+    try:
+        paid, _ = await acorn.check_quote(quote=quote_id, amount=amount, mint=mint)
+    except Exception:
+        request["next_check_at"] = now + RESERVE_FUNDING_CHECK_SECONDS
+        write_service_acorn_reserve_funding(settings, request)
+        raise
     if not paid:
+        if timed_out:
+            request.update(
+                {
+                    "status": "EXPIRED",
+                    "detail": "Service Acorn funding was not confirmed before timeout",
+                }
+            )
+            return write_service_acorn_reserve_funding(settings, request)
+        request["next_check_at"] = now + RESERVE_FUNDING_CHECK_SECONDS
+        write_service_acorn_reserve_funding(settings, request)
         return request
 
     await acorn.add_tx_history(
@@ -455,6 +479,7 @@ async def process_reserve_funding_once(
             "amount": amount,
             "balance": balance,
             "mint": mint,
+            "next_check_at": now,
         }
     )
     write_service_acorn_reserve_snapshot(settings, acorn)
