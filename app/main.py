@@ -18,7 +18,8 @@ import logging
 import mimetypes
 from pathlib import Path
 import re
-from time import monotonic
+import secrets
+from time import monotonic, time
 from urllib.parse import quote, urlencode, urlsplit
 import zipfile
 
@@ -149,6 +150,10 @@ from app.security import (
     normalize_home_mint,
     set_session_cookie,
 )
+from app.service_acorn_worker import (
+    read_service_acorn_reserve_funding,
+    write_service_acorn_reserve_funding,
+)
 
 
 from app.templating import render_template
@@ -162,6 +167,21 @@ from app.localization import (
 logger = logging.getLogger("safebox_web.security")
 APP_VERSION = "0.1.0"
 BITCOIN_TXID_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
+
+
+def _reserve_funding_view(payload: dict) -> dict[str, object]:
+    view: dict[str, object] = {
+        "id": str(payload.get("id") or ""),
+        "status": str(payload.get("status") or ""),
+        "amount": int(payload.get("amount") or 0),
+        "mint": str(payload.get("mint") or ""),
+        "created_at": int(payload.get("created_at") or 0),
+        "updated_at": int(payload.get("updated_at") or 0),
+    }
+    for key in ("invoice", "quote", "balance", "detail"):
+        if key in payload:
+            view[key] = payload[key]
+    return view
 
 
 def _payment_fee_breakdown(fees: object) -> dict[str, int | None]:
@@ -3806,8 +3826,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "version": APP_VERSION,
         }
 
-    @app.get("/internal/service-acorn/reserve", response_class=JSONResponse)
-    async def internal_service_acorn_reserve(request: Request) -> JSONResponse:
+    def _require_management_token(request: Request) -> None | JSONResponse:
         token = runtime_settings.management_token
         if not token:
             raise HTTPException(status_code=404, detail="Not found")
@@ -3819,6 +3838,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 content={"detail": "Unauthorized"},
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        return None
+
+    @app.get("/internal/service-acorn/reserve", response_class=JSONResponse)
+    async def internal_service_acorn_reserve(request: Request) -> JSONResponse:
+        unauthorized = _require_management_token(request)
+        if unauthorized is not None:
+            return unauthorized
 
         snapshot_path = Path(
             runtime_settings.service_acorn_reserve_snapshot_file
@@ -3855,6 +3881,69 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "updated_at": int(payload.get("updated_at") or 0),
             }
         )
+
+    @app.post("/internal/service-acorn/reserve/funding", response_class=JSONResponse)
+    async def internal_service_acorn_reserve_funding(
+        request: Request,
+    ) -> JSONResponse:
+        unauthorized = _require_management_token(request)
+        if unauthorized is not None:
+            return unauthorized
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "Request body must be JSON"},
+            )
+        if not isinstance(payload, dict):
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "Request body must be an object"},
+            )
+        try:
+            amount = int(payload.get("amount") or 0)
+        except (TypeError, ValueError):
+            amount = 0
+        if amount <= 0:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": "amount must be greater than zero"},
+            )
+        current = read_service_acorn_reserve_funding(runtime_settings)
+        if current and str(current.get("status") or "").upper() in {
+            "REQUESTED",
+            "PENDING",
+        }:
+            return JSONResponse(status_code=202, content=_reserve_funding_view(current))
+        now = int(time())
+        funding = write_service_acorn_reserve_funding(
+            runtime_settings,
+            {
+                "id": secrets.token_urlsafe(18),
+                "status": "REQUESTED",
+                "amount": amount,
+                "mint": str(payload.get("mint") or "").strip(),
+                "created_at": now,
+            },
+        )
+        return JSONResponse(_reserve_funding_view(funding), status_code=202)
+
+    @app.get(
+        "/internal/service-acorn/reserve/funding/{funding_id}",
+        response_class=JSONResponse,
+    )
+    async def internal_service_acorn_reserve_funding_status(
+        funding_id: str,
+        request: Request,
+    ) -> JSONResponse:
+        unauthorized = _require_management_token(request)
+        if unauthorized is not None:
+            return unauthorized
+        funding = read_service_acorn_reserve_funding(runtime_settings)
+        if not funding or funding.get("id") != funding_id:
+            raise HTTPException(status_code=404, detail="Not found")
+        return JSONResponse(_reserve_funding_view(funding))
 
     @app.get("/info", response_class=JSONResponse)
     async def information() -> dict[str, object]:

@@ -61,6 +61,19 @@ def service_acorn_reserve_snapshot_path(settings: ServiceAcornSettings) -> Path:
     return Path(settings.service_acorn_reserve_snapshot_file).expanduser().resolve()
 
 
+def service_acorn_reserve_funding_path(settings: ServiceAcornSettings) -> Path:
+    return Path(settings.service_acorn_reserve_funding_file).expanduser().resolve()
+
+
+def _write_json_private(path: Path, payload: dict) -> None:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    temporary_path = path.with_name(f".{path.name}.tmp")
+    temporary_path.write_text(json.dumps(payload, sort_keys=True) + "\n")
+    os.chmod(temporary_path, 0o600)
+    os.replace(temporary_path, path)
+    os.chmod(path, 0o600)
+
+
 def write_service_acorn_reserve_snapshot(
     settings: ServiceAcornSettings,
     acorn: Acorn,
@@ -76,13 +89,35 @@ def write_service_acorn_reserve_snapshot(
         "updated_at": int(time()),
     }
     snapshot_path = service_acorn_reserve_snapshot_path(settings)
-    snapshot_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    temporary_path = snapshot_path.with_name(f".{snapshot_path.name}.tmp")
-    temporary_path.write_text(json.dumps(snapshot, sort_keys=True) + "\n")
-    os.chmod(temporary_path, 0o600)
-    os.replace(temporary_path, snapshot_path)
-    os.chmod(snapshot_path, 0o600)
+    _write_json_private(snapshot_path, snapshot)
     return snapshot
+
+
+def read_service_acorn_reserve_funding(
+    settings: ServiceAcornSettings,
+) -> dict | None:
+    path = service_acorn_reserve_funding_path(settings)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError):
+        logger.exception("service Acorn reserve funding request is unreadable")
+        return {
+            "status": "FAILED",
+            "detail": "Service Acorn reserve funding request is unreadable",
+            "updated_at": int(time()),
+        }
+    return payload if isinstance(payload, dict) else None
+
+
+def write_service_acorn_reserve_funding(
+    settings: ServiceAcornSettings,
+    payload: dict,
+) -> dict:
+    payload["updated_at"] = int(time())
+    _write_json_private(service_acorn_reserve_funding_path(settings), payload)
+    return payload
 
 
 @contextmanager
@@ -302,6 +337,10 @@ async def _run_worker_locked(
                     write_service_acorn_reserve_snapshot(settings, runtime.acorn)
                 except Exception:
                     logger.exception("service Acorn reserve snapshot update failed")
+                try:
+                    await process_reserve_funding_once(settings, runtime.acorn)
+                except Exception:
+                    logger.exception("service Acorn reserve funding cycle failed")
                 if changed:
                     continue
                 try:
@@ -338,6 +377,94 @@ async def run_worker(
     with service_acorn_worker_lock(settings) as lock_path:
         logger.info("service Acorn singleton lock acquired path=%s", lock_path)
         await _run_worker_locked(settings, stop_event=stop_event)
+
+
+async def process_reserve_funding_once(
+    settings: ServiceAcornSettings,
+    acorn: Acorn,
+) -> dict | None:
+    """Advance one pending reserve funding request owned by the worker."""
+
+    request = read_service_acorn_reserve_funding(settings)
+    if not request:
+        return None
+    status = str(request.get("status") or "").upper()
+    if status not in {"REQUESTED", "PENDING"}:
+        return request
+
+    now = int(time())
+    created_at = int(request.get("created_at") or now)
+    try:
+        amount = int(request.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0
+    mint = str(request.get("mint") or acorn.home_mint)
+    if amount <= 0:
+        request.update(
+            {
+                "status": "FAILED",
+                "detail": "Service Acorn funding amount must be greater than zero",
+            }
+        )
+        return write_service_acorn_reserve_funding(settings, request)
+    if now - created_at > settings.payment_timeout_seconds:
+        request.update(
+            {
+                "status": "EXPIRED",
+                "detail": "Service Acorn funding was not confirmed before timeout",
+            }
+        )
+        return write_service_acorn_reserve_funding(settings, request)
+
+    if status == "REQUESTED":
+        quote = await asyncio.to_thread(acorn.deposit, amount, mint)
+        request.update(
+            {
+                "status": "PENDING",
+                "amount": amount,
+                "mint": mint,
+                "quote": quote.quote,
+                "invoice": quote.invoice,
+            }
+        )
+        logger.info("service Acorn reserve funding invoice created amount=%s", amount)
+        return write_service_acorn_reserve_funding(settings, request)
+
+    quote_id = str(request.get("quote") or "")
+    if not quote_id:
+        request.update(
+            {
+                "status": "FAILED",
+                "detail": "Service Acorn funding quote is missing",
+            }
+        )
+        return write_service_acorn_reserve_funding(settings, request)
+    paid, _ = await acorn.check_quote(quote=quote_id, amount=amount, mint=mint)
+    if not paid:
+        return request
+
+    await acorn.add_tx_history(
+        tx_type="C",
+        amount=amount,
+        comment="service Acorn operating reserve deposit",
+    )
+    balance = int(acorn.get_balance())
+    request.update(
+        {
+            "status": "CONFIRMED",
+            "amount": amount,
+            "balance": balance,
+            "mint": mint,
+        }
+    )
+    write_service_acorn_reserve_snapshot(settings, acorn)
+    logger.info(
+        "service Acorn reserve funding confirmed amount=%s balance=%s mint=%s",
+        amount,
+        balance,
+        mint,
+    )
+    return write_service_acorn_reserve_funding(settings, request)
 
 
 async def retire_worker(settings: ServiceAcornSettings) -> dict:

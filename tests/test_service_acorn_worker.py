@@ -19,6 +19,9 @@ def worker_settings(tmp_path, **changes) -> ServiceAcornSettings:
         service_acorn_reserve_snapshot_file=str(
             tmp_path / "service-acorn-reserve.json"
         ),
+        service_acorn_reserve_funding_file=str(
+            tmp_path / "service-acorn-reserve-funding.json"
+        ),
         database_url=f"sqlite:///{tmp_path / 'worker.db'}",
     )
     return replace(settings, **changes)
@@ -171,6 +174,64 @@ def test_fund_worker_rejects_non_positive_amount(tmp_path) -> None:
 def test_fund_worker_requires_existing_recovery_state(tmp_path) -> None:
     with pytest.raises(RuntimeError, match="Start the worker once"):
         asyncio.run(worker_module.fund_worker(worker_settings(tmp_path), 21))
+
+
+def test_process_reserve_funding_request_confirms_deposit(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    calls: list[tuple] = []
+
+    class FundingAcorn:
+        home_mint = "https://mint.example.com"
+        pubkey_bech32 = "npub1service"
+
+        def deposit(self, amount, mint):
+            calls.append(("deposit", amount, mint))
+            return SimpleNamespace(quote="quote-123", invoice="lnbc123")
+
+        async def check_quote(self, *, quote, amount, mint):
+            calls.append(("check", quote, amount, mint))
+            return True, "lnbc123"
+
+        async def add_tx_history(self, **kwargs):
+            calls.append(("history", kwargs))
+
+        def get_balance(self):
+            return 121
+
+    settings = worker_settings(tmp_path)
+    request = {
+        "id": "funding-1",
+        "status": "REQUESTED",
+        "amount": 21,
+        "mint": "https://mint.example.com",
+        "created_at": 123456,
+    }
+    worker_module.write_service_acorn_reserve_funding(settings, request)
+    monkeypatch.setattr(worker_module, "time", lambda: 123457)
+
+    pending = asyncio.run(
+        worker_module.process_reserve_funding_once(settings, FundingAcorn())
+    )
+    confirmed = asyncio.run(
+        worker_module.process_reserve_funding_once(settings, FundingAcorn())
+    )
+
+    assert pending["status"] == "PENDING"
+    assert pending["invoice"] == "lnbc123"
+    assert confirmed["status"] == "CONFIRMED"
+    assert confirmed["balance"] == 121
+    assert ("deposit", 21, "https://mint.example.com") in calls
+    assert ("check", "quote-123", 21, "https://mint.example.com") in calls
+    assert (
+        "history",
+        {
+            "tx_type": "C",
+            "amount": 21,
+            "comment": "service Acorn operating reserve deposit",
+        },
+    ) in calls
 
 
 def test_balance_worker_reports_persisted_operating_reserve(

@@ -1265,6 +1265,34 @@ def test_service_acorn_reserve_endpoint_returns_safe_snapshot(tmp_path) -> None:
     }
 
 
+def test_service_acorn_reserve_funding_endpoint_creates_request(tmp_path) -> None:
+    funding_path = tmp_path / "funding.json"
+    settings = replace(
+        TEST_SETTINGS,
+        allow_insecure_http=True,
+        service_acorn_enabled=True,
+        service_acorn_reserve_snapshot_file=str(tmp_path / "reserve.json"),
+        service_acorn_reserve_funding_file=str(funding_path),
+        management_token="secret-token",
+    )
+    client = TestClient(create_app(settings), base_url="http://safebox.test")
+
+    response = client.post(
+        "/internal/service-acorn/reserve/funding",
+        json={"amount": 21, "mint": "https://mint.example.com"},
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    assert response.status_code == 202
+    payload = response.json()
+    assert payload["status"] == "REQUESTED"
+    assert payload["amount"] == 21
+    assert payload["mint"] == "https://mint.example.com"
+    saved = json.loads(funding_path.read_text(encoding="utf-8"))
+    assert saved["id"] == payload["id"]
+    assert saved["status"] == "REQUESTED"
+
+
 def test_onboard_page_displays_acorn_safebox_relationship_visual() -> None:
     response = make_https_client().get("/onboard/INVITEME")
 
