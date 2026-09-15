@@ -5380,6 +5380,59 @@ def test_user_can_check_then_accept_relay_clear_transfer(tmp_path) -> None:
     assert "Accept Clear Transfer" not in result.text
 
 
+def test_user_can_accept_clear_transfer_by_event_id_without_pending_card(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    event_id = "5d6572db7ed35261b7d86686d2bb64888ca5b0c994f66aa39c647d5a1ce01e03"
+    acorn.clear_sweep_receipts = [{
+        "event_id": event_id,
+        "sender_pubkey": "sender-pubkey",
+        "amount": 100,
+        "unit": "cmu-00edb0f368474cc2",
+        "mint": "https://clear.safebox.dev",
+        "comment": "isolated event acceptance",
+        "timestamp": 1_789_500_000,
+    }]
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_background_acorn_factory] = lambda: lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.get("/clear")
+        token_match = re.search(
+            r'name="csrf_token" value="([^"]+)"',
+            page.text,
+        )
+        assert token_match is not None
+        assert "Recover Transfer by Event ID" in page.text
+        response = client.post(
+            "/clear/receipts/accept",
+            data={"csrf_token": token_match.group(1), "event_id": event_id},
+            follow_redirects=False,
+        )
+        deadline = time.monotonic() + 2
+        job = None
+        while time.monotonic() < deadline:
+            job = get_clear_acceptance_job(
+                app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+            if job and job["status"] == "COMPLETE":
+                break
+            time.sleep(0.01)
+        result = client.get("/clear")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/clear/acceptance-status"
+    assert job is not None
+    assert job["status"] == "COMPLETE"
+    assert job["amount"] == 100
+    assert acorn.clear_sweep_calls == 1
+    assert acorn.accepted_clear_receipts == [event_id]
+    assert "Clear transfer acceptance completed." in result.text
+    assert "Confirmed 100 cmu-00edb0f368474cc2." in result.text
+
+
 def test_stored_clear_receipt_survives_history_lookup_failure(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
