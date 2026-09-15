@@ -4930,6 +4930,7 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert '<h1 class="transaction-headline">Clear Transactions</h1>' in response.text
     assert 'action="/clear/receive"' in response.text
     assert "Check for Clear Transfers" in response.text
+    assert '<h2 id="clear-receive-heading">Incoming Clear Transfers</h2>' in response.text
     assert '<h2 id="clear-balances-heading">Clear Balances</h2>' in response.text
     assert '<h2 id="clear-pending-heading">Pending Clear Transfers</h2>' in response.text
     assert "1 pending transfer across 1 Clear balance." in response.text
@@ -4947,9 +4948,11 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert "Accept Clear Transfer" in response.text
     assert 'action="/clear/receipts/accept"' in response.text
     assert 'action="/clear/receipts/delete"' in response.text
-    assert response.text.index("Clear Balances") < response.text.index(
-        "Pending Clear Transfers"
-    ) < response.text.index("Clear Transaction History")
+    assert response.text.index("Incoming Clear Transfers") < response.text.index(
+        "Clear Balances"
+    ) < response.text.index("Pending Clear Transfers") < response.text.index(
+        "Clear Transaction History"
+    )
     history_section = response.text.split("Clear Transaction History", 1)[1]
     assert "Pending Clear Transfer" not in history_section
     assert "No completed Clear transactions found." in history_section
@@ -5404,7 +5407,8 @@ def test_user_can_accept_clear_transfer_by_event_id_without_pending_card(tmp_pat
             page.text,
         )
         assert token_match is not None
-        assert "Recover Transfer by Event ID" in page.text
+        assert "Incoming Clear Transfers" in page.text
+        assert "Recover by event ID" in page.text
         response = client.post(
             "/clear/receipts/accept",
             data={"csrf_token": token_match.group(1), "event_id": event_id},
@@ -5634,6 +5638,80 @@ def test_clear_page_resolves_aliases_without_summing_distinct_balances(
     assert "cmu-new" in response.text
     assert "cmu-old" in response.text
     assert sorted(requested_urls) == sorted(metadata)
+
+
+def test_clear_history_uses_friendly_alias_when_history_lacks_keyset_id(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    metadata = {
+        "https://clear.safebox.dev/v1/keysets": {
+            "keysets": [{
+                "id": "keyset-new",
+                "unit": "cmu-new",
+                "friendly_alias": "Clear Lab Credits",
+                "friendly_unit_alias": "credits",
+            }],
+        },
+    }
+
+    class FakeResponse:
+        def __init__(self, payload: dict) -> None:
+            self.payload = payload
+            self.content = json.dumps(payload).encode()
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return self.payload
+
+    class FakeClient:
+        def __init__(self, **kwargs) -> None:
+            self.kwargs = kwargs
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        async def get(self, url):
+            return FakeResponse(metadata[url])
+
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    acorn.clear_balances = [{
+        "mint": "https://clear.safebox.dev",
+        "unit": "cmu-new",
+        "amount": 25,
+        "proof_count": 1,
+        "keysets": [{
+            "keyset": "keyset-new",
+            "amount": 25,
+            "proof_count": 1,
+        }],
+    }]
+    acorn.clear_transaction_history = [{
+        "event_id": "history-clear-new",
+        "direction": "in",
+        "operation": "accept",
+        "amount": 25,
+        "mint": "https://clear.safebox.dev",
+        "unit": "cmu-new",
+        "timestamp": 1_786_430_400,
+        "memo": "history without keyset",
+    }]
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/clear")
+
+    assert response.status_code == 200
+    assert "+25 Clear Lab Credits" in response.text
+    assert "<dt>Unit label</dt><dd>credits</dd>" in response.text
+    assert "history without keyset" in response.text
 
 
 def test_clear_display_falls_back_to_canonical_unit_without_friendly_metadata(

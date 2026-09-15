@@ -1480,6 +1480,13 @@ def _clear_transaction_view(
         and balance.get("mint") is not None
         and balance.get("unit") is not None
     }
+    metadata_by_unit = {
+        (str(balance["mint"]), str(balance["unit"])): balance
+        for balance in summary.get("balances", [])
+        if isinstance(balance, dict)
+        and balance.get("mint") is not None
+        and balance.get("unit") is not None
+    }
     cards: list[dict] = []
     for receipt in receipts:
         if not isinstance(receipt, dict):
@@ -1494,6 +1501,8 @@ def _clear_transaction_view(
         display = metadata.get((mint, unit, keyset_id), {})
         if not display:
             display = metadata.get((mint, unit, ""), {})
+        if not display:
+            display = metadata_by_unit.get((mint, unit), {})
         try:
             amount = int(receipt.get("amount") or 0)
         except (TypeError, ValueError):
@@ -1544,6 +1553,8 @@ def _clear_transaction_view(
         display = metadata.get((mint, unit, entry_keyset_id), {})
         if not display:
             display = metadata.get((mint, unit, ""), {})
+        if not display:
+            display = metadata_by_unit.get((mint, unit), {})
         timestamp = max(0, int(entry.get("timestamp") or 0))
         direction = str(entry.get("direction") or "in")
         operation = str(entry.get("operation") or "transfer")
