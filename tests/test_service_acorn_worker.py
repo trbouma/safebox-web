@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+import json
 import os
 from types import SimpleNamespace
 
@@ -15,6 +16,9 @@ def worker_settings(tmp_path, **changes) -> ServiceAcornSettings:
     settings = ServiceAcornSettings(
         service_acorn_enabled=True,
         service_acorn_state_file=str(tmp_path / "service-acorn.json"),
+        service_acorn_reserve_snapshot_file=str(
+            tmp_path / "service-acorn-reserve.json"
+        ),
         database_url=f"sqlite:///{tmp_path / 'worker.db'}",
     )
     return replace(settings, **changes)
@@ -185,6 +189,7 @@ def test_balance_worker_reports_persisted_operating_reserve(
         return SimpleNamespace(acorn=acorn, state_path=state_path)
 
     monkeypatch.setattr(worker_module, "start_service_acorn", fake_start)
+    monkeypatch.setattr(worker_module, "time", lambda: 123456)
 
     result = asyncio.run(worker_module.balance_worker(worker_settings(tmp_path)))
 
@@ -194,7 +199,12 @@ def test_balance_worker_reports_persisted_operating_reserve(
         "unit": "sat",
         "mint": "https://mint.example.com",
         "npub": "npub1service",
+        "updated_at": 123456,
     }
+    snapshot = json.loads(
+        (tmp_path / "service-acorn-reserve.json").read_text(encoding="utf-8")
+    )
+    assert snapshot == result
 
 
 def test_balance_worker_requires_existing_recovery_state(tmp_path) -> None:

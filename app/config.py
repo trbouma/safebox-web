@@ -175,6 +175,7 @@ class ServiceAcornSettings:
     service_acorn_home_relay: str = "wss://relay.getsafebox.app"
     service_acorn_home_mint: str = "https://mint.getsafebox.app"
     service_acorn_state_file: str = "data/service-acorn.json"
+    service_acorn_reserve_snapshot_file: str = "data/service-acorn-reserve.json"
     service_acorn_gift_wrap_retention_seconds: int | None = (
         DEFAULT_GIFT_WRAP_RETENTION_SECONDS
     )
@@ -223,6 +224,10 @@ class ServiceAcornSettings:
                 raise ValueError("SAFEBOX_SERVICE_ACORN_HOME_MINT is required")
             if not self.service_acorn_state_file.strip():
                 raise ValueError("SAFEBOX_SERVICE_ACORN_STATE_FILE is required")
+            if not self.service_acorn_reserve_snapshot_file.strip():
+                raise ValueError(
+                    "SAFEBOX_SERVICE_ACORN_RESERVE_SNAPSHOT_FILE is required"
+                )
 
     @classmethod
     def from_env(cls) -> "ServiceAcornSettings":
@@ -287,6 +292,10 @@ class ServiceAcornSettings:
                 "SAFEBOX_SERVICE_ACORN_STATE_FILE",
                 "data/service-acorn.json",
             ).strip(),
+            service_acorn_reserve_snapshot_file=os.getenv(
+                "SAFEBOX_SERVICE_ACORN_RESERVE_SNAPSHOT_FILE",
+                "data/service-acorn-reserve.json",
+            ).strip(),
             service_acorn_gift_wrap_retention_seconds=retention_seconds,
             nip57_require_description_hash=_env_bool(
                 "SAFEBOX_NIP57_REQUIRE_DESCRIPTION_HASH",
@@ -344,6 +353,7 @@ class Settings:
     service_acorn_home_relay: str = "wss://relay.getsafebox.app"
     service_acorn_home_mint: str = "https://mint.getsafebox.app"
     service_acorn_state_file: str = "data/service-acorn.json"
+    service_acorn_reserve_snapshot_file: str = "data/service-acorn-reserve.json"
     service_acorn_gift_wrap_retention_seconds: int | None = (
         DEFAULT_GIFT_WRAP_RETENTION_SECONDS
     )
@@ -362,6 +372,7 @@ class Settings:
     service_nsec: str | None = None
     service_management: str = "independent"
     service_identity_file: Path = Path("data/safebox-web-service-identity.json")
+    management_token: str | None = None
 
     @property
     def onboard_invite_code(self) -> str:
@@ -536,6 +547,10 @@ class Settings:
                 raise ValueError("SAFEBOX_SERVICE_ACORN_HOME_MINT is required")
             if not self.service_acorn_state_file.strip():
                 raise ValueError("SAFEBOX_SERVICE_ACORN_STATE_FILE is required")
+            if not self.service_acorn_reserve_snapshot_file.strip():
+                raise ValueError(
+                    "SAFEBOX_SERVICE_ACORN_RESERVE_SNAPSHOT_FILE is required"
+                )
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -711,6 +726,10 @@ class Settings:
                 "SAFEBOX_SERVICE_ACORN_STATE_FILE",
                 "data/service-acorn.json",
             ).strip(),
+            service_acorn_reserve_snapshot_file=os.getenv(
+                "SAFEBOX_SERVICE_ACORN_RESERVE_SNAPSHOT_FILE",
+                "data/service-acorn-reserve.json",
+            ).strip(),
             service_acorn_gift_wrap_retention_seconds=(
                 _gift_wrap_retention_from_env()
             ),
@@ -745,4 +764,5 @@ class Settings:
                     "data/safebox-web-service-identity.json",
                 )
             ).expanduser(),
+            management_token=os.getenv("SAFEBOX_MANAGEMENT_TOKEN") or None,
         )

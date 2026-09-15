@@ -9,6 +9,7 @@ import io
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
+import hmac
 from html import escape
 import inspect
 from ipaddress import ip_address
@@ -3804,6 +3805,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "service": "safebox-web",
             "version": APP_VERSION,
         }
+
+    @app.get("/internal/service-acorn/reserve", response_class=JSONResponse)
+    async def internal_service_acorn_reserve(request: Request) -> JSONResponse:
+        token = runtime_settings.management_token
+        if not token:
+            raise HTTPException(status_code=404, detail="Not found")
+        expected = f"Bearer {token}"
+        supplied = request.headers.get("Authorization", "")
+        if not hmac.compare_digest(supplied, expected):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Unauthorized"},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        snapshot_path = Path(
+            runtime_settings.service_acorn_reserve_snapshot_file
+        ).expanduser()
+        if not snapshot_path.is_absolute():
+            snapshot_path = Path.cwd() / snapshot_path
+        try:
+            payload = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Service Acorn reserve snapshot is unavailable"},
+            )
+        except (OSError, json.JSONDecodeError):
+            logger.exception("service Acorn reserve snapshot could not be read")
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Service Acorn reserve snapshot is unreadable"},
+            )
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("balance"), int
+        ):
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Service Acorn reserve snapshot is incomplete"},
+            )
+        return JSONResponse(
+            {
+                "status": str(payload.get("status") or "OK"),
+                "balance": int(payload["balance"]),
+                "unit": str(payload.get("unit") or "sat"),
+                "mint": str(payload.get("mint") or ""),
+                "npub": str(payload.get("npub") or ""),
+                "updated_at": int(payload.get("updated_at") or 0),
+            }
+        )
 
     @app.get("/info", response_class=JSONResponse)
     async def information() -> dict[str, object]:

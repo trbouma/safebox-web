@@ -1192,6 +1192,79 @@ def test_direct_127001_http_is_allowed() -> None:
     }
 
 
+def test_service_acorn_reserve_endpoint_requires_management_token(tmp_path) -> None:
+    settings = replace(
+        TEST_SETTINGS,
+        allow_insecure_http=True,
+        service_acorn_enabled=True,
+        service_acorn_reserve_snapshot_file=str(tmp_path / "reserve.json"),
+    )
+    client = TestClient(create_app(settings), base_url="http://safebox.test")
+
+    response = client.get("/internal/service-acorn/reserve")
+
+    assert response.status_code == 404
+
+
+def test_service_acorn_reserve_endpoint_rejects_bad_token(tmp_path) -> None:
+    settings = replace(
+        TEST_SETTINGS,
+        allow_insecure_http=True,
+        service_acorn_enabled=True,
+        service_acorn_reserve_snapshot_file=str(tmp_path / "reserve.json"),
+        management_token="secret-token",
+    )
+    client = TestClient(create_app(settings), base_url="http://safebox.test")
+
+    response = client.get(
+        "/internal/service-acorn/reserve",
+        headers={"Authorization": "Bearer wrong-token"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_service_acorn_reserve_endpoint_returns_safe_snapshot(tmp_path) -> None:
+    snapshot_path = tmp_path / "reserve.json"
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "status": "OK",
+                "balance": 457,
+                "unit": "sat",
+                "mint": "https://mint.example.com",
+                "npub": "npub1service",
+                "updated_at": 123456,
+                "nsec": "must-not-leak",
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = replace(
+        TEST_SETTINGS,
+        allow_insecure_http=True,
+        service_acorn_enabled=True,
+        service_acorn_reserve_snapshot_file=str(snapshot_path),
+        management_token="secret-token",
+    )
+    client = TestClient(create_app(settings), base_url="http://safebox.test")
+
+    response = client.get(
+        "/internal/service-acorn/reserve",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "OK",
+        "balance": 457,
+        "unit": "sat",
+        "mint": "https://mint.example.com",
+        "npub": "npub1service",
+        "updated_at": 123456,
+    }
+
+
 def test_onboard_page_displays_acorn_safebox_relationship_visual() -> None:
     response = make_https_client().get("/onboard/INVITEME")
 

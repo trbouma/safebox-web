@@ -57,6 +57,34 @@ def _worker_operational_path(settings: ServiceAcornSettings, suffix: str) -> Pat
     return state_path.parent / f".service-acorn-{suffix}"
 
 
+def service_acorn_reserve_snapshot_path(settings: ServiceAcornSettings) -> Path:
+    return Path(settings.service_acorn_reserve_snapshot_file).expanduser().resolve()
+
+
+def write_service_acorn_reserve_snapshot(
+    settings: ServiceAcornSettings,
+    acorn: Acorn,
+) -> dict:
+    """Persist a read-only operating-reserve snapshot for management surfaces."""
+
+    snapshot = {
+        "status": "OK",
+        "balance": int(acorn.get_balance()),
+        "unit": "sat",
+        "mint": acorn.home_mint,
+        "npub": acorn.pubkey_bech32,
+        "updated_at": int(time()),
+    }
+    snapshot_path = service_acorn_reserve_snapshot_path(settings)
+    snapshot_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    temporary_path = snapshot_path.with_name(f".{snapshot_path.name}.tmp")
+    temporary_path.write_text(json.dumps(snapshot, sort_keys=True) + "\n")
+    os.chmod(temporary_path, 0o600)
+    os.replace(temporary_path, snapshot_path)
+    os.chmod(snapshot_path, 0o600)
+    return snapshot
+
+
 @contextmanager
 def service_acorn_worker_lock(settings: ServiceAcornSettings):
     """Hold an exclusive process lock beside the service-Acorn state file."""
@@ -229,6 +257,7 @@ async def _run_worker_locked(
             )
         service_acorn_runtime = runtime
         service_acorn = runtime.acorn
+        write_service_acorn_reserve_snapshot(settings, runtime.acorn)
         logger.info(
             "standalone service Acorn worker ready npub=%s recovered=%s",
             runtime.acorn.pubkey_bech32,
@@ -269,6 +298,10 @@ async def _run_worker_locked(
                 except Exception:
                     logger.exception("service Acorn provider-payment cycle failed")
                     changed = False
+                try:
+                    write_service_acorn_reserve_snapshot(settings, runtime.acorn)
+                except Exception:
+                    logger.exception("service Acorn reserve snapshot update failed")
                 if changed:
                     continue
                 try:
@@ -331,13 +364,7 @@ async def balance_worker(settings: ServiceAcornSettings) -> dict:
         )
     with service_acorn_worker_lock(settings):
         runtime = await start_service_acorn(settings)
-        return {
-            "status": "OK",
-            "balance": int(runtime.acorn.get_balance()),
-            "unit": "sat",
-            "mint": runtime.acorn.home_mint,
-            "npub": runtime.acorn.pubkey_bech32,
-        }
+        return write_service_acorn_reserve_snapshot(settings, runtime.acorn)
 
 
 async def fund_worker(
