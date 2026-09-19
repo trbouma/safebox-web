@@ -295,6 +295,54 @@ The behavior of concurrent callbacks, multiple web workers, SQLite, and the
 singleton provider wallet is documented in
 [Concurrency and Provider-Job Coordination](CONCURRENCY-AND-JOB-COORDINATION.md).
 
+## Read-only payment diagnostics
+
+Operators can inspect one local handle across registration, worker health,
+durable application state, recipient routing, and live mint-quote state without
+loading either the user Acorn or service Acorn:
+
+```sh
+docker compose exec safebox-web \
+  python -m app.payment_diagnostics trbouma
+```
+
+Useful options are:
+
+```sh
+# Machine-readable, redacted output
+docker compose exec safebox-web \
+  python -m app.payment_diagnostics trbouma --json
+
+# Examine more rows but show only detected problems
+docker compose exec safebox-web \
+  python -m app.payment_diagnostics trbouma \
+    --limit 50 --problems-only
+```
+
+The utility is read-only. It does not load wallet keys, mint or accept proofs,
+advance cursors, requeue jobs, or alter database rows. It never includes the
+mint's Bolt11 invoice in its report. It reports payment and quote identifiers,
+public recipient routing, state counters, delivery event ids, and redacted mint
+settlement fields.
+
+Important findings include:
+
+- `PAID_NOT_POLLED`: the mint reports a paid, unissued quote while Safebox has
+  recorded no settlement check;
+- `PAID_NOT_RECONCILED`: the quote is paid but remains pending after one or more
+  checks;
+- `ISSUED_BUT_APPLICATION_PENDING`: the mint issued value but application state
+  did not advance;
+- recipient npub or relay mismatch against the current handle registration;
+- a stale worker-owned in-progress state;
+- a delivered row without its delivery event id; and
+- an unhealthy service worker or unreachable mint quote.
+
+An ordinary unpaid invoice is not classified as a problem. Diagnosis and repair
+remain separate operations so running this command is always safe. In
+particular, do not blindly replay `DELIVERY_FAILED`: value may already have been
+issued or published.
+
 Resolve a registered development handle:
 
 ```sh

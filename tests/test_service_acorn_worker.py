@@ -33,7 +33,12 @@ def test_worker_owns_runtime_and_retains_recovery_on_routine_stop(
 ) -> None:
     state_path = tmp_path / "service-acorn.json"
     state_path.write_text("recovery", encoding="utf-8")
-    acorn = SimpleNamespace(pubkey_bech32="npub1service", pubkey_hex="11" * 32)
+    acorn = SimpleNamespace(
+        pubkey_bech32="npub1service",
+        pubkey_hex="11" * 32,
+        home_mint="https://mint.example.com",
+        get_balance=lambda: 0,
+    )
     runtime = SimpleNamespace(acorn=acorn, recovered=False, state_path=state_path)
     observed: list[tuple[object, object]] = []
 
@@ -460,7 +465,12 @@ def test_worker_refreshes_rates_without_passing_the_service_acorn(
 ) -> None:
     state_path = tmp_path / "service-acorn.json"
     state_path.write_text("recovery", encoding="utf-8")
-    acorn = SimpleNamespace(pubkey_bech32="npub1service", pubkey_hex="11" * 32)
+    acorn = SimpleNamespace(
+        pubkey_bech32="npub1service",
+        pubkey_hex="11" * 32,
+        home_mint="https://mint.example.com",
+        get_balance=lambda: 0,
+    )
     runtime = SimpleNamespace(acorn=acorn, recovered=True, state_path=state_path)
     stop_event = asyncio.Event()
     refresh_calls: list[dict] = []
