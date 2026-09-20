@@ -4715,11 +4715,13 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
             },
         ]
     )
+    acorn.publish_balance_snapshot = AsyncMock(return_value={"status": "OK"})
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.get("/transactions")
 
     assert response.status_code == 200
+    acorn.publish_balance_snapshot.assert_awaited_once_with(verify=False)
     assert '<h1 class="transaction-headline">Cash Transactions</h1>' in response.text
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
     assert "Mint verification and incoming-transfer discovery run only when requested" in response.text

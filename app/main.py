@@ -1152,17 +1152,24 @@ async def _read_balance_snapshot(acorn, timeout: float) -> dict | None:
 
 async def _publish_balance_snapshot(
     acorn,
-    clear_balances: list[dict],
+    clear_balances: list[dict] | None,
     timeout: float,
 ) -> None:
-    """Best-effort snapshot bootstrap after an authoritative fallback load."""
+    """Best-effort snapshot refresh after an authoritative proof-state load.
+
+    When ``clear_balances`` is omitted, Acorn preserves the Clear portion of
+    the existing snapshot while rebuilding its Cash values from loaded proofs.
+    """
 
     publisher = getattr(acorn, "publish_balance_snapshot", None)
     if publisher is None:
         return
+    publish_kwargs: dict[str, object] = {"verify": False}
+    if clear_balances is not None:
+        publish_kwargs["clear_balances"] = clear_balances
     try:
         await asyncio.wait_for(
-            publisher(clear_balances=clear_balances, verify=False),
+            publisher(**publish_kwargs),
             timeout=timeout,
         )
     except Exception as exc:
@@ -7196,6 +7203,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
 
         entries = history if isinstance(history, list) else []
+        # This page has loaded the authoritative relay-backed proof state. Use
+        # it to repair the lightweight home-page display cache even when no new
+        # transaction-history entry was written during the current request.
+        # Snapshot publication remains best-effort and must not make the
+        # dynamic balance page depend on an additional relay write.
+        await _publish_balance_snapshot(
+            acorn,
+            None,
+            min(settings.wallet_load_timeout_seconds, 5.0),
+        )
         entries = sorted(
             entries,
             key=lambda entry: (
