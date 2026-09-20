@@ -356,12 +356,22 @@ class FakeProviderAcorn:
         self.quote_paid = quote_paid
         self.quote_error = quote_error
         self.deposit_calls: list[dict] = []
+        self.probe_calls: list[dict] = []
         self.check_calls: list[dict] = []
         self.delivery_calls: list[dict] = []
 
     def deposit(self, **kwargs):
         self.deposit_calls.append(kwargs)
         return SimpleNamespace(quote="quote-1", invoice="lnbc21-test")
+
+    async def get_quote_state(self, **kwargs):
+        self.probe_calls.append(kwargs)
+        if self.quote_error is not None:
+            raise self.quote_error
+        return SimpleNamespace(
+            paid=self.quote_paid,
+            state="PAID" if self.quote_paid else "UNPAID",
+        )
 
     async def check_quote(self, **kwargs):
         self.check_calls.append(kwargs)
@@ -719,7 +729,8 @@ def test_worker_fails_provider_invoice_when_mint_quote_is_missing(tmp_path) -> N
     assert payment.status == "FAILED"
     assert payment.error == "Mint quote not found"
     assert payment.next_check_at is None
-    assert len(acorn.check_calls) == 1
+    assert len(acorn.probe_calls) == 1
+    assert len(acorn.check_calls) == 0
     engine.dispose()
 
 
@@ -749,7 +760,6 @@ def test_worker_keeps_checking_provider_invoice_after_initial_poll_window(
 
     update_provider_payment(engine, payment_id, next_check_at=utc_now())
     acorn.quote_paid = True
-    acorn._provider_last_settlement_check = 0
     assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
     payment = get_provider_payment(engine, payment_id)
     assert payment.status == "DELIVERED"
@@ -783,30 +793,25 @@ def test_worker_recovers_legacy_timed_out_provider_invoice(tmp_path) -> None:
     engine.dispose()
 
 
-def test_worker_throttles_settlement_checks_across_queued_cycles(
-    tmp_path, monkeypatch
-) -> None:
+def test_worker_schedules_unpaid_quote_before_polling_it_again(tmp_path) -> None:
     engine, payment_id = queued_payment(tmp_path)
     acorn = FakeProviderAcorn(quote_paid=False)
-    clock = iter((100.0, 101.0, 105.0))
-    monkeypatch.setattr(provider_module, "monotonic", lambda: next(clock))
 
     assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
-    assert len(acorn.check_calls) == 1
+    assert len(acorn.probe_calls) == 1
+    assert len(acorn.check_calls) == 0
 
-    update_provider_payment(engine, payment_id, next_check_at=utc_now())
     assert asyncio.run(process_provider_payments_once(engine, acorn)) is False
-    assert len(acorn.check_calls) == 1
+    assert len(acorn.probe_calls) == 1
 
     update_provider_payment(engine, payment_id, next_check_at=utc_now())
     assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
-    assert len(acorn.check_calls) == 2
+    assert len(acorn.probe_calls) == 2
+    assert len(acorn.check_calls) == 0
     engine.dispose()
 
 
-def test_worker_uses_shorter_throttle_for_first_settlement_check(
-    tmp_path, monkeypatch
-) -> None:
+def test_worker_discovers_due_settlements_in_one_bounded_batch(tmp_path) -> None:
     engine, first_payment_id = queued_payment(tmp_path)
     with Session(engine) as session:
         registration = session.exec(select(ClaimedHandle)).one()
@@ -835,18 +840,60 @@ def test_worker_uses_shorter_throttle_for_first_settlement_check(
         next_check_at=utc_now(),
     )
     acorn = FakeProviderAcorn(quote_paid=False)
-    clock = iter((100.0, 100.4, 100.5))
-    monkeypatch.setattr(provider_module, "monotonic", lambda: next(clock))
 
     assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
-    assert len(acorn.check_calls) == 1
+    assert len(acorn.probe_calls) == 2
+    assert len(acorn.check_calls) == 0
+    assert {call["quote"] for call in acorn.probe_calls} == {"quote-1", "quote-2"}
+    engine.dispose()
 
-    assert asyncio.run(process_provider_payments_once(engine, acorn)) is False
-    assert len(acorn.check_calls) == 1
+
+def test_worker_reconciles_paid_quote_without_waiting_behind_unpaid_backlog(
+    tmp_path,
+) -> None:
+    engine, first_payment_id = queued_payment(tmp_path)
+    with Session(engine) as session:
+        registration = session.exec(select(ClaimedHandle)).one()
+    payment_ids = [first_payment_id]
+    for amount in (22_000, 23_000, 24_000):
+        payment_ids.append(
+            enqueue_provider_payment(
+                engine,
+                registration=registration,
+                amount_msat=amount,
+                comment="provider backlog test",
+                metadata='[["text/plain","test"]]',
+                mint="https://mint.example.com",
+            )
+        )
+    for index, payment_id in enumerate(payment_ids, start=1):
+        update_provider_payment(
+            engine,
+            payment_id,
+            status="INVOICE_PENDING",
+            mint_quote=f"quote-{index}",
+            invoice=f"lnbc{index}-test",
+            next_check_at=utc_now(),
+        )
+
+    class SelectiveProviderAcorn(FakeProviderAcorn):
+        async def get_quote_state(self, **kwargs):
+            self.probe_calls.append(kwargs)
+            paid = kwargs["quote"] == "quote-4"
+            return SimpleNamespace(
+                paid=paid,
+                state="PAID" if paid else "UNPAID",
+            )
+
+    acorn = SelectiveProviderAcorn(quote_paid=True)
 
     assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
-    assert len(acorn.check_calls) == 2
-    assert [call["quote"] for call in acorn.check_calls] == ["quote-1", "quote-2"]
+
+    assert len(acorn.probe_calls) == 4
+    assert [call["quote"] for call in acorn.check_calls] == ["quote-4"]
+    paid_payment = get_provider_payment(engine, payment_ids[-1])
+    assert paid_payment.status == "DELIVERED"
+    assert paid_payment.delivery_event_id == "event-1"
     engine.dispose()
 
 

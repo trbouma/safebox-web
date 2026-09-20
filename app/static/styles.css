@@ -321,11 +321,25 @@ figure.blob-preview { padding: .75rem; }
 .pending-transaction-list { display: grid; gap: .75rem; margin: 0 0 1.25rem; }
 .pending-transaction-list h2 { margin: 0; font-size: 1.15rem; }
 .pending-transaction-intro { margin: -.25rem 0 .15rem; color: var(--muted); }
+.pending-transactions-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); }
+.pending-transactions-table { width: 100%; border-collapse: collapse; min-width: 40rem; }
+.pending-transactions-table th, .pending-transactions-table td { padding: .75rem .8rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.pending-transactions-table tr:last-child td { border-bottom: 0; }
+.pending-transactions-table thead th { color: var(--muted); font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; }
+.pending-transfer-amount { color: var(--advisory); font-weight: 700; white-space: nowrap; }
 .transaction-card.pending { border-left-color: var(--advisory); background: var(--surface-soft); }
 .transaction-card.pending .transaction-amount { color: var(--advisory); }
 .pending-transaction-stage { margin: 0; }
-.pending-transaction-reference { margin: .65rem 0 0; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+.pending-transaction-reference { display: block; margin: .35rem 0 0; color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
 .incoming-funds { margin: 0 0 1.25rem; }
+.incoming-funds-disclosure { border: 1px solid var(--border); border-radius: .9rem; background: var(--surface); overflow: hidden; }
+.incoming-funds-disclosure > summary { cursor: pointer; padding: 1rem; font-weight: 700; }
+.incoming-funds-disclosure[open] > summary { border-bottom: 1px solid var(--border); }
+.incoming-funds-content { display: grid; gap: 1rem; padding: 1rem; }
+.incoming-funds-content > p { margin: 0; }
+.incoming-funds-content .nav-button { margin: 0; }
+.incoming-funds-finalization { display: grid; gap: .75rem; }
+.incoming-funds-finalization p, .incoming-funds-finalization form { margin: 0; }
 .transaction-list { display: grid; gap: 1rem; margin: 1.5rem 0; }
 .clear-balance-list { display: grid; gap: .75rem; margin: 0 0 1.5rem; }
 .clear-balance-list > h2, .clear-transaction-list > h2, .clear-section-heading h2 { margin: 0; font-size: 1.15rem; }

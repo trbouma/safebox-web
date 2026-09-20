@@ -4724,8 +4724,9 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     acorn.publish_balance_snapshot.assert_awaited_once_with(verify=False)
     assert '<h1 class="transaction-headline">Cash Transactions</h1>' in response.text
     assert '<a class="wallet-balance transaction-balance" href="/wallet"' in response.text
-    assert "Mint verification and incoming-transfer discovery run only when requested" in response.text
+    assert "Check for funds that have arrived but are not yet part of the confirmed balance" in response.text
     assert "Check Balance and Incoming Transfers" in response.text
+    assert '<details class="incoming-funds incoming-funds-disclosure">' in response.text
     assert acorn.proof_check_calls == 0
     assert acorn.preview_calls == 0
     assert "Incoming ecash" not in response.text
@@ -4738,7 +4739,10 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert response.text.index(">Back to Balances</a>") < response.text.index(
         'class="wallet-balance transaction-balance"'
     )
-    assert response.text.index('class="wallet-balance transaction-balance"') < response.text.index(
+    assert response.text.index('aria-label="Cash transaction finalization"') < response.text.index(
+        'class="wallet-balance transaction-balance"'
+    )
+    assert response.text.index('class="wallet-balance transaction-balance"') > response.text.index(
         'aria-label="Cash transaction finalization"'
     )
     assert response.text.index('aria-label="Cash transaction finalization"') < response.text.index(
@@ -4760,7 +4764,7 @@ def test_transaction_history_renders_mobile_friendly_journal_cards(tmp_path) -> 
     assert 'href="/static/styles.css"' in response.text
     assert 'action="/transactions/receive"' in response.text
     assert 'name="csrf_token"' in response.text
-    assert "Finalize Cash Transactions" in response.text
+    assert "Finalize Incoming Transfers" in response.text
     assert "Check and receive ecash" not in response.text
     assert "Finalizing…" in response.text
     assert '<details class="transaction-advisories">' in response.text
@@ -6024,8 +6028,13 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
     assert response.status_code == 200
     assert "Pending Cash transfers: ₿12 in 3 transfers." in response.text
     assert "<span>₿</span>100" in response.text
-    assert "Pending Cash Transfers" in response.text
-    assert "These Cash transfers have arrived for this Acorn" in response.text
+    assert "Incoming Transfers" in response.text
+    assert "These transfers have arrived for this Acorn" in response.text
+    assert '<table class="pending-transactions-table">' in response.text
+    assert '<th scope="col">Received</th>' in response.text
+    assert '<th scope="col">Amount</th>' in response.text
+    assert '<th scope="col">Status</th>' in response.text
+    assert '<th scope="col">Detail</th>' in response.text
     assert "Awaiting mint confirmation" in response.text
     assert "Received on relay; finalization pending" in response.text
     assert "+₿5" in response.text
@@ -6033,7 +6042,6 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
     assert "+₿3" in response.text
     assert "local market" in response.text
     assert "Community supplies" in response.text
-    assert "<strong>Detail:</strong>" in response.text
     assert "sender-two-p" in response.text
     assert response.text.index("+₿4") < response.text.index("+₿3")
     assert response.text.index("+₿3") < response.text.index("+₿5")
@@ -6137,7 +6145,7 @@ def test_transaction_finalization_runs_in_background(tmp_path) -> None:
     assert acorn.receive_finalize_values == [False]
     assert background_thread_names
     assert background_thread_names[0].startswith("safebox-wallet-job")
-    assert "Cash transaction finalization completed." in page.text
+    assert "Incoming-transfer finalization completed." in page.text
     assert "Finalized ₿50 from 3 transfers." in page.text
 
 

@@ -1,10 +1,76 @@
 {% extends "base.html" %}
 {% block content %}
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
-<section class="incoming-funds" aria-label="Cash status checks">
-  <p>{% if checks_performed %}Balance and incoming-transfer checks completed for this page load.{% else %}Mint verification and incoming-transfer discovery run only when requested.{% endif %}</p>
-  <a class="nav-button" href="/transactions?check=1">{% if checks_performed %}Check Balance and Incoming Transfers Again{% else %}Check Balance and Incoming Transfers{% endif %}</a>
-</section>
+<details class="incoming-funds incoming-funds-disclosure"{% if checks_performed or finalization_job %} open{% endif %}>
+  <summary>Check Balance and Incoming Transfers</summary>
+  <div class="incoming-funds-content">
+    <p>{% if checks_performed %}Balance and incoming-transfer checks completed for this page load.{% else %}Check for funds that have arrived but are not yet part of the confirmed balance.{% endif %}</p>
+    <a class="nav-button" href="/transactions?check=1">{% if checks_performed %}Refresh Balance and Incoming Transfers{% else %}Check Now{% endif %}</a>
+
+    {% if pending_transactions %}
+    <section class="pending-transaction-list" aria-label="Pending cash transaction arrivals">
+      <h2>Incoming Transfers</h2>
+      <p class="pending-transaction-intro">These transfers have arrived for this Acorn and are queued for mint confirmation.</p>
+      <div class="pending-transactions-table-wrap">
+        <table class="pending-transactions-table">
+          <thead>
+            <tr>
+              <th scope="col">Received</th>
+              <th scope="col">Amount</th>
+              <th scope="col">Status</th>
+              <th scope="col">Detail</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for pending in pending_transactions %}
+            <tr>
+              <td><time>{{ pending.created }}</time></td>
+              <td class="pending-transfer-amount">+₿{{ "{:,}".format(pending.amount) }}</td>
+              <td>
+                <strong>{{ pending.stage }}</strong>
+                {% if pending.sender_short or pending.event_short %}
+                <span class="pending-transaction-reference">
+                  {% if pending.sender_short %}From {{ pending.sender_short }}{% endif %}
+                  {% if pending.sender_short and pending.event_short %} · {% endif %}
+                  {% if pending.event_short %}Event {{ pending.event_short }}{% endif %}
+                </span>
+                {% endif %}
+              </td>
+              <td>{% if pending.comment %}{{ pending.comment }}{% else %}<span class="muted">—</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% elif checks_performed %}
+    <p role="status"><strong>No incoming transfers are currently waiting for finalization.</strong></p>
+    {% endif %}
+
+    <section class="incoming-funds-finalization" aria-label="Cash transaction finalization">
+      {% if finalization_job and finalization_job.status == "RUNNING" %}
+      <p role="status"><strong>Finalizing incoming transfers in the background.</strong></p>
+      <p>You can leave this page and return later. Current phase: {{ finalization_job.phase | lower }}.</p>
+      {% elif finalization_job and finalization_job.status == "COMPLETE" %}
+      <p role="status"><strong>Incoming-transfer finalization completed.</strong>
+        {% if finalization_job.confirmed_count %}Finalized ₿{{ "{:,}".format(finalization_job.confirmed_amount) }} from {{ "{:,}".format(finalization_job.confirmed_count) }} transfer{% if finalization_job.confirmed_count != 1 %}s{% endif %}.{% endif %}
+      </p>
+      {% elif finalization_job and finalization_job.status in ("PARTIAL", "FAILED", "INTERRUPTED") %}
+      <p role="status"><strong>Incoming-transfer finalization requires another check.</strong>
+        {% if finalization_job.error %}{{ finalization_job.error }}{% endif %}
+      </p>
+      {% endif %}
+      {% if not finalization_job or finalization_job.status != "RUNNING" %}
+      <form method="post" action="/transactions/finalize-background"
+            data-progress-message="Starting incoming-transfer finalization. Please wait."
+            data-progress-button="Finalizing…">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit">Finalize Incoming Transfers</button>
+      </form>
+      {% endif %}
+    </section>
+  </div>
+</details>
 {% if wallet_balance is not none %}
 <a class="wallet-balance transaction-balance" href="/wallet" aria-labelledby="transaction-balance-heading">
   <h2 id="transaction-balance-heading">Cash Balance</h2>
@@ -19,52 +85,6 @@
   {% if pending_amount %}<p class="wallet-balance-state">Pending Cash transfers: ₿{{ "{:,}".format(pending_amount) }} in {{ "{:,}".format(pending_count) }} transfer{% if pending_count != 1 %}s{% endif %}.</p>{% endif %}
 </a>
 {% endif %}
-{% if pending_transactions %}
-<section class="pending-transaction-list" aria-label="Pending cash transaction arrivals">
-  <h2>Pending Cash Transfers</h2>
-  <p class="pending-transaction-intro">These Cash transfers have arrived for this Acorn but remain pending until mint confirmation completes.</p>
-  {% for pending in pending_transactions %}
-  <article class="transaction-card pending">
-    <header class="transaction-header">
-      <span class="transaction-kind">{{ _("Pending Credit") }}</span>
-      <time class="transaction-date">{{ pending.created }}</time>
-    </header>
-    <div class="transaction-amount">+₿{{ "{:,}".format(pending.amount) }}</div>
-    <p class="pending-transaction-stage"><strong>{{ pending.stage }}</strong></p>
-    {% if pending.comment %}<p class="transaction-note"><strong>Detail:</strong> {{ pending.comment }}</p>{% endif %}
-    {% if pending.sender_short or pending.event_short %}
-    <p class="pending-transaction-reference">
-      {% if pending.sender_short %}From {{ pending.sender_short }}{% endif %}
-      {% if pending.sender_short and pending.event_short %} · {% endif %}
-      {% if pending.event_short %}Event {{ pending.event_short }}{% endif %}
-    </p>
-    {% endif %}
-  </article>
-  {% endfor %}
-</section>
-{% endif %}
-<section class="incoming-funds" aria-label="Cash transaction finalization">
-  {% if finalization_job and finalization_job.status == "RUNNING" %}
-  <p role="status"><strong>Finalizing cash transactions in the background.</strong></p>
-  <p>You can leave this page and return later. Current phase: {{ finalization_job.phase | lower }}.</p>
-  {% elif finalization_job and finalization_job.status == "COMPLETE" %}
-  <p role="status"><strong>Cash transaction finalization completed.</strong>
-    {% if finalization_job.confirmed_count %}Finalized ₿{{ "{:,}".format(finalization_job.confirmed_amount) }} from {{ "{:,}".format(finalization_job.confirmed_count) }} transfer{% if finalization_job.confirmed_count != 1 %}s{% endif %}.{% endif %}
-  </p>
-  {% elif finalization_job and finalization_job.status in ("PARTIAL", "FAILED", "INTERRUPTED") %}
-  <p role="status"><strong>Cash transaction finalization requires another check.</strong>
-    {% if finalization_job.error %}{{ finalization_job.error }}{% endif %}
-  </p>
-  {% endif %}
-  {% if not finalization_job or finalization_job.status != "RUNNING" %}
-  <form method="post" action="/transactions/finalize-background"
-        data-progress-message="Starting cash transaction finalization. Please wait."
-        data-progress-button="Finalizing…">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit">Finalize Cash Transactions</button>
-  </form>
-  {% endif %}
-</section>
 {% if entries %}
 <section class="transaction-list" aria-label="Cash transaction history">
   {% for entry in entries %}

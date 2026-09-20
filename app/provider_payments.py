@@ -8,7 +8,7 @@ import hashlib
 import hmac
 import json
 import logging
-from time import monotonic, time
+from time import time
 from types import SimpleNamespace
 import uuid
 
@@ -33,8 +33,8 @@ from app.security import normalize_home_mint
 
 logger = logging.getLogger("safebox_web.provider_payments")
 MAX_PROVIDER_SETTLEMENT_ATTEMPTS = 60
-INITIAL_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS = 0.5
-MIN_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS = 4.0
+PROVIDER_SETTLEMENT_DISCOVERY_BATCH_SIZE = 64
+PROVIDER_SETTLEMENT_DISCOVERY_CONCURRENCY = 8
 PROVIDER_SETTLEMENT_RECHECK_SECONDS = 5.0
 PROVIDER_STALE_SETTLEMENT_RECHECK_SECONDS = 60.0
 LEGACY_SETTLEMENT_TIMEOUT_ERROR = "Invoice settlement timed out"
@@ -195,8 +195,12 @@ def next_provider_payment(engine: Engine, status: str) -> ProviderPayment | None
         return session.exec(statement).first()
 
 
-def next_provider_settlement(engine: Engine) -> ProviderPayment | None:
-    """Return the highest-priority due invoice that may still settle.
+def due_provider_settlements(
+    engine: Engine,
+    *,
+    limit: int = PROVIDER_SETTLEMENT_DISCOVERY_BATCH_SIZE,
+) -> list[ProviderPayment]:
+    """Return a bounded priority batch of invoices due for mint discovery.
 
     A newly created invoice must receive its first mint check before older
     unpaid quotes consume another retry.  After every due invoice has been
@@ -232,9 +236,16 @@ def next_provider_settlement(engine: Engine) -> ProviderPayment | None:
                 ProviderPayment.next_check_at,
                 ProviderPayment.id,
             )
-            .limit(1)
+            .limit(max(1, int(limit)))
         )
-        return session.exec(statement).first()
+        return list(session.exec(statement).all())
+
+
+def next_provider_settlement(engine: Engine) -> ProviderPayment | None:
+    """Return the first invoice in the current settlement-discovery batch."""
+
+    due = due_provider_settlements(engine, limit=1)
+    return due[0] if due else None
 
 
 def reconcile_legacy_settlement_timeouts(engine: Engine) -> int:
@@ -513,6 +524,27 @@ async def _publish_provider_zap_receipt(acorn, payment: ProviderPayment, zap: Pr
     return receipt
 
 
+async def _discover_provider_settlements(acorn, invoices):
+    """Read mint quote states concurrently without mutating wallet proofs."""
+
+    semaphore = asyncio.Semaphore(PROVIDER_SETTLEMENT_DISCOVERY_CONCURRENCY)
+
+    async def discover(invoice):
+        if not invoice.mint_quote:
+            return invoice, RuntimeError("Mint quote is missing")
+        try:
+            async with semaphore:
+                quote = await acorn.get_quote_state(
+                    quote=invoice.mint_quote,
+                    mint=invoice.mint,
+                )
+            return invoice, quote
+        except Exception as exc:
+            return invoice, exc
+
+    return await asyncio.gather(*(discover(invoice) for invoice in invoices))
+
+
 async def process_provider_payments_once(
     engine: Engine,
     acorn,
@@ -522,12 +554,6 @@ async def process_provider_payments_once(
     delivery_retry_attempts: int = 4,
     delivery_retry_base_seconds: float = 2.0,
     delivery_retry_max_seconds: float = 60.0,
-    initial_settlement_check_interval_seconds: float = (
-        INITIAL_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS
-    ),
-    settlement_check_interval_seconds: float = (
-        MIN_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS
-    ),
 ) -> bool:
     """Process at most one item from each safe payment transition."""
 
@@ -585,27 +611,94 @@ async def process_provider_payments_once(
             )
         changed = True
 
-    invoice = next_provider_settlement(engine)
-    if invoice is not None:
-        check_interval_seconds = (
-            initial_settlement_check_interval_seconds
-            if int(invoice.attempts or 0) == 0
-            else settlement_check_interval_seconds
-        )
-        last_check = float(
-            getattr(acorn, "_provider_last_settlement_check", 0.0) or 0.0
-        )
-        now_monotonic = monotonic()
-        if now_monotonic - last_check < max(
-            0.1,
-            float(check_interval_seconds),
-        ):
-            invoice = None
-        else:
-            # Settlement polling is operational scheduling state, not wallet
-            # state. Keep it in the singleton worker process so several queued
-            # invoices cannot collectively hammer the mint's quote endpoint.
-            acorn._provider_last_settlement_check = now_monotonic
+    due_invoices = due_provider_settlements(engine)
+    paid_invoices: list[ProviderPayment] = []
+    if due_invoices:
+        discoveries = await _discover_provider_settlements(acorn, due_invoices)
+        for discovered_invoice, result in discoveries:
+            if isinstance(result, Exception):
+                terminal_error = (
+                    "Mint quote not found"
+                    if _is_quote_not_found_error(result)
+                    else None
+                )
+                logger.warning(
+                    "provider settlement discovery failed payment_id=%s error=%s",
+                    discovered_invoice.payment_id,
+                    type(result).__name__,
+                )
+                paid = False
+            else:
+                terminal_error = None
+                paid = bool(getattr(result, "paid", False)) or str(
+                    getattr(result, "state", "")
+                ).upper() == "PAID"
+            if paid:
+                paid_invoices.append(discovered_invoice)
+                continue
+
+            attempts = discovered_invoice.attempts + 1
+            settlement_stale = (
+                terminal_error is None
+                and (
+                    discovered_invoice.status == "SETTLEMENT_UNCONFIRMED"
+                    or attempts >= MAX_PROVIDER_SETTLEMENT_ATTEMPTS
+                )
+            )
+            transition_provider_payment(
+                engine,
+                discovered_invoice.payment_id,
+                expected_status=discovered_invoice.status,
+                status=(
+                    "FAILED"
+                    if terminal_error
+                    else "SETTLEMENT_UNCONFIRMED"
+                    if settlement_stale
+                    else "INVOICE_PENDING"
+                ),
+                attempts=attempts,
+                error=(
+                    terminal_error
+                    or (
+                        "Settlement remains unconfirmed; continuing periodic mint checks"
+                        if settlement_stale
+                        else None
+                    )
+                ),
+                next_check_at=(
+                    None
+                    if terminal_error
+                    else utc_now()
+                    + timedelta(
+                        seconds=(
+                            PROVIDER_STALE_SETTLEMENT_RECHECK_SECONDS
+                            if settlement_stale
+                            else PROVIDER_SETTLEMENT_RECHECK_SECONDS
+                        )
+                    )
+                ),
+            )
+            if terminal_error:
+                logger.warning(
+                    "provider invoice failed payment_id=%s reason=%s",
+                    discovered_invoice.payment_id,
+                    terminal_error,
+                )
+            elif (
+                settlement_stale
+                and discovered_invoice.status != "SETTLEMENT_UNCONFIRMED"
+            ):
+                logger.warning(
+                    "provider invoice settlement remains unconfirmed; continuing "
+                    "periodic checks payment_id=%s attempts=%s",
+                    discovered_invoice.payment_id,
+                    attempts,
+                )
+        changed = True
+
+    # Quote discovery above is read-only and safely concurrent. Proof minting
+    # remains serialized through the single service Acorn owner.
+    invoice = paid_invoices[0] if paid_invoices else None
     if invoice is not None and invoice.mint_quote:
         terminal_error: str | None = None
         try:
