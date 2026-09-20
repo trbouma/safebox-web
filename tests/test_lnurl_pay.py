@@ -26,6 +26,8 @@ from app.provider_payments import (
     enqueue_provider_payment,
     get_provider_payment,
     get_provider_zap,
+    next_provider_payment,
+    next_provider_settlement,
     process_provider_payments_once,
     quarantine_abandoned_provider_claims,
     reconcile_legacy_settlement_timeouts,
@@ -461,6 +463,74 @@ def test_provider_payment_claim_is_atomic_and_stale_transition_is_rejected(
         is None
     )
     assert get_provider_payment(engine, payment_id).status == "WORKER_QUOTE_CREATING"
+    engine.dispose()
+
+
+def test_settlement_queue_selects_earliest_due_time_before_oldest_id(
+    tmp_path,
+) -> None:
+    engine, older_payment_id = queued_payment(tmp_path)
+    with Session(engine) as session:
+        registration = session.exec(select(ClaimedHandle)).one()
+    newer_payment_id = enqueue_provider_payment(
+        engine,
+        registration=registration,
+        amount_msat=22_000,
+        comment="newer provider test",
+        metadata='[["text/plain","test"]]',
+        mint="https://mint.example.com",
+    )
+    now = utc_now()
+    update_provider_payment(
+        engine,
+        older_payment_id,
+        status="INVOICE_PENDING",
+        next_check_at=now - timedelta(seconds=5),
+    )
+    update_provider_payment(
+        engine,
+        newer_payment_id,
+        status="SETTLEMENT_UNCONFIRMED",
+        next_check_at=now - timedelta(minutes=1),
+    )
+
+    selected = next_provider_settlement(engine)
+
+    assert selected is not None
+    assert selected.payment_id == newer_payment_id
+    engine.dispose()
+
+
+def test_status_queue_selects_earliest_due_time_before_oldest_id(tmp_path) -> None:
+    engine, older_payment_id = queued_payment(tmp_path)
+    with Session(engine) as session:
+        registration = session.exec(select(ClaimedHandle)).one()
+    newer_payment_id = enqueue_provider_payment(
+        engine,
+        registration=registration,
+        amount_msat=22_000,
+        comment="newer provider test",
+        metadata='[["text/plain","test"]]',
+        mint="https://mint.example.com",
+    )
+    now = utc_now()
+    update_provider_payment(
+        engine,
+        older_payment_id,
+        status="SETTLED",
+        next_check_at=now - timedelta(seconds=5),
+    )
+    update_provider_payment(
+        engine,
+        newer_payment_id,
+        status="SETTLED",
+        next_check_at=now - timedelta(minutes=1),
+    )
+
+    selected = next_provider_payment(engine, "SETTLED")
+
+    assert selected is not None
+    assert selected.payment_id == newer_payment_id
     engine.dispose()
 
 

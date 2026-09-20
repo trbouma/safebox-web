@@ -15,7 +15,7 @@ import uuid
 import bolt11
 import httpx
 from acorn import RetryablePreSwapError
-from sqlalchemy import update
+from sqlalchemy import case, or_, update
 from stroma import ClientPool
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
@@ -175,12 +175,23 @@ def next_provider_payment(engine: Engine, status: str) -> ProviderPayment | None
         statement = (
             select(ProviderPayment)
             .where(ProviderPayment.status == status)
-            .order_by(ProviderPayment.id)
+            .where(
+                or_(
+                    ProviderPayment.next_check_at.is_(None),
+                    ProviderPayment.next_check_at <= now,
+                )
+            )
+            .order_by(
+                case(
+                    (ProviderPayment.next_check_at.is_(None), 0),
+                    else_=1,
+                ),
+                ProviderPayment.next_check_at,
+                ProviderPayment.id,
+            )
+            .limit(1)
         )
-        for payment in session.exec(statement):
-            if payment.next_check_at is None or payment.next_check_at <= now:
-                return payment
-    return None
+        return session.exec(statement).first()
 
 
 def next_provider_settlement(engine: Engine) -> ProviderPayment | None:
@@ -195,12 +206,23 @@ def next_provider_settlement(engine: Engine) -> ProviderPayment | None:
                     ("INVOICE_PENDING", "SETTLEMENT_UNCONFIRMED")
                 )
             )
-            .order_by(ProviderPayment.id)
+            .where(
+                or_(
+                    ProviderPayment.next_check_at.is_(None),
+                    ProviderPayment.next_check_at <= now,
+                )
+            )
+            .order_by(
+                case(
+                    (ProviderPayment.next_check_at.is_(None), 0),
+                    else_=1,
+                ),
+                ProviderPayment.next_check_at,
+                ProviderPayment.id,
+            )
+            .limit(1)
         )
-        for payment in session.exec(statement):
-            if payment.next_check_at is None or payment.next_check_at <= now:
-                return payment
-    return None
+        return session.exec(statement).first()
 
 
 def reconcile_legacy_settlement_timeouts(engine: Engine) -> int:
