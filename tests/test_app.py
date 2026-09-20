@@ -73,7 +73,7 @@ from app.dependencies import (
     get_session_credentials,
 )
 from app.main import create_app
-from app.models import ClaimedHandle
+from app.models import ClaimedHandle, ProviderPayment
 from app.funds_finalization import claim_finalization_job, get_finalization_job
 from app.clear_acceptance import get_clear_acceptance_job
 from app.outgoing_payment import get_outgoing_payment_job
@@ -6046,6 +6046,60 @@ def test_transaction_history_sums_all_pending_payments(tmp_path) -> None:
     assert response.text.index("+₿4") < response.text.index("+₿3")
     assert response.text.index("+₿3") < response.text.index("+₿5")
     assert "No transaction history was found" in response.text
+
+
+def test_transaction_pane_shows_paid_provider_queue_before_relay_delivery(
+    tmp_path,
+) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        with Session(app.state.database_engine) as session:
+            session.add(
+                ProviderPayment(
+                    payment_id="paid-provider-payment",
+                    claimed_handle="alice",
+                    recipient_npub=acorn.pubkey_bech32,
+                    recipient_relay=acorn.home_relay,
+                    amount_msat=47_000,
+                    amount_sat=47,
+                    comment="Lightning payment to alice",
+                    lnurl_metadata='[["text/plain","test"]]',
+                    status="PAID_RECONCILIATION_PENDING",
+                    mint="https://mint.example.com",
+                    mint_quote="paid-quote",
+                    invoice="lnbc47-test",
+                )
+            )
+            session.add(
+                ProviderPayment(
+                    payment_id="different-recipient-payment",
+                    claimed_handle="bob",
+                    recipient_npub="npub1different",
+                    recipient_relay=acorn.home_relay,
+                    amount_msat=99_000,
+                    amount_sat=99,
+                    comment="must not be shown",
+                    lnurl_metadata='[["text/plain","test"]]',
+                    status="PAID_RECONCILIATION_PENDING",
+                    mint="https://mint.example.com",
+                    mint_quote="other-quote",
+                    invoice="lnbc99-test",
+                )
+            )
+            session.commit()
+
+        response = client.get("/transactions")
+
+    assert response.status_code == 200
+    assert '<details class="incoming-funds incoming-funds-disclosure" open>' in response.text
+    assert "Pending Cash transfers: ₿47 in 1 transfer." in response.text
+    assert "+₿47" in response.text
+    assert "Lightning received; ecash issuance pending" in response.text
+    assert "Lightning payment to alice" in response.text
+    assert "must not be shown" not in response.text
 
 
 def test_pending_transaction_list_deduplicates_staged_event(tmp_path) -> None:

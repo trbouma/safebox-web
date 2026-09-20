@@ -124,6 +124,7 @@ from app.worker_liveness import (
 )
 from app.handles import default_handle_from_pubkey
 from app.openetr import query_openetr_history
+from app.provider_payments import provider_recipient_queue
 from app.lnurl_pay import (
     encode_lnurl,
     lightning_address_from_lnurl,
@@ -1092,6 +1093,44 @@ def _pending_transaction_view(
         key=lambda card: (card["timestamp"], card["event_id"]),
         reverse=True,
     )
+
+
+def _provider_queue_transaction_view(payments) -> list[dict]:
+    """Present paid provider invoices before relay delivery completes."""
+
+    stages = {
+        "PAID_RECONCILIATION_PENDING": (
+            "Lightning received; ecash issuance pending"
+        ),
+        "SETTLED": "Ecash issued; relay delivery queued",
+        "DELIVERING": "Delivering ecash to this Acorn",
+        "DELIVERY_FAILED": "Ecash delivery requires operator review",
+    }
+    cards: list[dict] = []
+    for payment in payments:
+        created_at = payment.created_at
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        timestamp = int(created_at.timestamp())
+        cards.append(
+            {
+                "event_id": "",
+                "event_short": "",
+                "amount": int(payment.amount_sat),
+                "created": created_at.astimezone(timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M UTC"
+                ),
+                "timestamp": timestamp,
+                "sender_short": "",
+                "provider_reference": f"Payment {payment.id}",
+                "comment": str(payment.comment or "").strip(),
+                "stage": stages.get(
+                    payment.status,
+                    "Lightning payment processing",
+                ),
+            }
+        )
+    return cards
 
 
 def _pending_transaction_totals(
@@ -7253,6 +7292,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             continuity_receipts,
             incoming_preview,
         )
+        provider_transactions = _provider_queue_transaction_view(
+            provider_recipient_queue(
+                request.app.state.database_engine,
+                acorn.pubkey_bech32,
+            )
+        )
+        pending_transactions = sorted(
+            provider_transactions + pending_transactions,
+            key=lambda card: (card["timestamp"], card["event_id"]),
+            reverse=True,
+        )
+        pending_amount += sum(
+            int(card["amount"]) for card in provider_transactions
+        )
+        pending_count += len(provider_transactions)
         finalization_job = get_finalization_job(
             request.app.state.database_engine,
             acorn.pubkey_bech32,

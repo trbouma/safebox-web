@@ -35,6 +35,12 @@ logger = logging.getLogger("safebox_web.provider_payments")
 MAX_PROVIDER_SETTLEMENT_ATTEMPTS = 60
 PROVIDER_SETTLEMENT_DISCOVERY_BATCH_SIZE = 64
 PROVIDER_SETTLEMENT_DISCOVERY_CONCURRENCY = 8
+PROVIDER_RECIPIENT_QUEUE_STATUSES = (
+    "PAID_RECONCILIATION_PENDING",
+    "SETTLED",
+    "DELIVERING",
+    "DELIVERY_FAILED",
+)
 PROVIDER_SETTLEMENT_RECHECK_SECONDS = 5.0
 PROVIDER_STALE_SETTLEMENT_RECHECK_SECONDS = 60.0
 LEGACY_SETTLEMENT_TIMEOUT_ERROR = "Invoice settlement timed out"
@@ -246,6 +252,25 @@ def next_provider_settlement(engine: Engine) -> ProviderPayment | None:
 
     due = due_provider_settlements(engine, limit=1)
     return due[0] if due else None
+
+
+def provider_recipient_queue(
+    engine: Engine,
+    recipient_npub: str,
+    *,
+    limit: int = 50,
+) -> list[ProviderPayment]:
+    """Return provider payments awaiting recipient-visible completion."""
+
+    with Session(engine) as session:
+        statement = (
+            select(ProviderPayment)
+            .where(ProviderPayment.recipient_npub == recipient_npub)
+            .where(ProviderPayment.status.in_(PROVIDER_RECIPIENT_QUEUE_STATUSES))
+            .order_by(ProviderPayment.id.desc())
+            .limit(max(1, int(limit)))
+        )
+        return list(session.exec(statement).all())
 
 
 def reconcile_legacy_settlement_timeouts(engine: Engine) -> int:
@@ -612,7 +637,6 @@ async def process_provider_payments_once(
         changed = True
 
     due_invoices = due_provider_settlements(engine)
-    paid_invoices: list[ProviderPayment] = []
     if due_invoices:
         discoveries = await _discover_provider_settlements(acorn, due_invoices)
         for discovered_invoice, result in discoveries:
@@ -634,7 +658,15 @@ async def process_provider_payments_once(
                     getattr(result, "state", "")
                 ).upper() == "PAID"
             if paid:
-                paid_invoices.append(discovered_invoice)
+                transition_provider_payment(
+                    engine,
+                    discovered_invoice.payment_id,
+                    expected_status=discovered_invoice.status,
+                    status="PAID_RECONCILIATION_PENDING",
+                    attempts=discovered_invoice.attempts + 1,
+                    error=None,
+                    next_check_at=None,
+                )
                 continue
 
             attempts = discovered_invoice.attempts + 1
@@ -698,7 +730,7 @@ async def process_provider_payments_once(
 
     # Quote discovery above is read-only and safely concurrent. Proof minting
     # remains serialized through the single service Acorn owner.
-    invoice = paid_invoices[0] if paid_invoices else None
+    invoice = next_provider_payment(engine, "PAID_RECONCILIATION_PENDING")
     if invoice is not None and invoice.mint_quote:
         terminal_error: str | None = None
         try:
@@ -719,14 +751,6 @@ async def process_provider_payments_once(
             )
             paid = False
         attempts = invoice.attempts + 1
-        settlement_stale = (
-            not paid
-            and terminal_error is None
-            and (
-                invoice.status == "SETTLEMENT_UNCONFIRMED"
-                or attempts >= MAX_PROVIDER_SETTLEMENT_ATTEMPTS
-            )
-        )
         transitioned = transition_provider_payment(
             engine,
             invoice.payment_id,
@@ -736,16 +760,14 @@ async def process_provider_payments_once(
                 if paid
                 else "FAILED"
                 if terminal_error
-                else "SETTLEMENT_UNCONFIRMED"
-                if settlement_stale
-                else "INVOICE_PENDING"
+                else "PAID_RECONCILIATION_PENDING"
             ),
             attempts=attempts,
             error=(
                 terminal_error
                 or (
-                    "Settlement remains unconfirmed; continuing periodic mint checks"
-                    if settlement_stale
+                    "Lightning payment confirmed; ecash issuance remains pending"
+                    if not paid
                     else None
                 )
             ),
@@ -755,9 +777,7 @@ async def process_provider_payments_once(
                 else utc_now()
                 + timedelta(
                     seconds=(
-                        PROVIDER_STALE_SETTLEMENT_RECHECK_SECONDS
-                        if settlement_stale
-                        else PROVIDER_SETTLEMENT_RECHECK_SECONDS
+                        PROVIDER_SETTLEMENT_RECHECK_SECONDS
                     )
                 )
             ),
@@ -781,10 +801,10 @@ async def process_provider_payments_once(
                 invoice.payment_id,
                 terminal_error,
             )
-        elif settlement_stale and invoice.status != "SETTLEMENT_UNCONFIRMED":
+        elif not paid:
             logger.warning(
-                "provider invoice settlement remains unconfirmed; continuing "
-                "periodic checks payment_id=%s attempts=%s",
+                "provider paid invoice reconciliation remains pending "
+                "payment_id=%s attempts=%s",
                 invoice.payment_id,
                 attempts,
             )

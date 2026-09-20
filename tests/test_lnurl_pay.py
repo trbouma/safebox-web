@@ -897,6 +897,45 @@ def test_worker_reconciles_paid_quote_without_waiting_behind_unpaid_backlog(
     engine.dispose()
 
 
+def test_worker_persists_additional_paid_quotes_for_recipient_visibility(
+    tmp_path,
+) -> None:
+    engine, first_payment_id = queued_payment(tmp_path)
+    with Session(engine) as session:
+        registration = session.exec(select(ClaimedHandle)).one()
+    second_payment_id = enqueue_provider_payment(
+        engine,
+        registration=registration,
+        amount_msat=47_000,
+        comment="second paid invoice",
+        metadata='[["text/plain","test"]]',
+        mint="https://mint.example.com",
+    )
+    for quote, payment_id in (
+        ("quote-1", first_payment_id),
+        ("quote-2", second_payment_id),
+    ):
+        update_provider_payment(
+            engine,
+            payment_id,
+            status="INVOICE_PENDING",
+            mint_quote=quote,
+            invoice=f"lnbc-{quote}",
+            next_check_at=utc_now(),
+        )
+
+    acorn = FakeProviderAcorn(quote_paid=True)
+
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
+
+    first = get_provider_payment(engine, first_payment_id)
+    second = get_provider_payment(engine, second_payment_id)
+    assert first.status == "DELIVERED"
+    assert second.status == "PAID_RECONCILIATION_PENDING"
+    assert second.attempts == 1
+    engine.dispose()
+
+
 def test_zap_worker_delivers_ecash_then_publishes_receipt(
     tmp_path, monkeypatch
 ) -> None:

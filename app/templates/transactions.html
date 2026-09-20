@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
-<details class="incoming-funds incoming-funds-disclosure"{% if checks_performed or finalization_job %} open{% endif %}>
+<details class="incoming-funds incoming-funds-disclosure"{% if checks_performed or finalization_job or pending_transactions %} open{% endif %}>
   <summary>Check Balance and Incoming Transfers</summary>
   <div class="incoming-funds-content">
     <p>{% if checks_performed %}Balance and incoming-transfer checks completed for this page load.{% else %}Check for funds that have arrived but are not yet part of the confirmed balance.{% endif %}</p>
@@ -34,6 +34,8 @@
                   {% if pending.sender_short and pending.event_short %} · {% endif %}
                   {% if pending.event_short %}Event {{ pending.event_short }}{% endif %}
                 </span>
+                {% elif pending.provider_reference %}
+                <span class="pending-transaction-reference">{{ pending.provider_reference }}</span>
                 {% endif %}
               </td>
               <td>{% if pending.comment %}{{ pending.comment }}{% else %}<span class="muted">—</span>{% endif %}</td>

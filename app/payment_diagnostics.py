@@ -21,6 +21,7 @@ from app.service_acorn_worker import service_worker_health
 STALE_IN_PROGRESS_SECONDS = 15 * 60
 IN_PROGRESS_STATES = {
     "WORKER_QUOTE_CREATING",
+    "PAID_RECONCILIATION_PENDING",
     "DELIVERING",
     "RECEIPT_PUBLISHING",
 }
