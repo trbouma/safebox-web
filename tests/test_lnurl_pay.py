@@ -466,7 +466,7 @@ def test_provider_payment_claim_is_atomic_and_stale_transition_is_rejected(
     engine.dispose()
 
 
-def test_settlement_queue_selects_earliest_due_time_before_oldest_id(
+def test_settlement_queue_prioritizes_never_checked_invoice_before_stale_retry(
     tmp_path,
 ) -> None:
     engine, older_payment_id = queued_payment(tmp_path)
@@ -486,12 +486,51 @@ def test_settlement_queue_selects_earliest_due_time_before_oldest_id(
         older_payment_id,
         status="INVOICE_PENDING",
         next_check_at=now - timedelta(seconds=5),
+        attempts=0,
     )
     update_provider_payment(
         engine,
         newer_payment_id,
         status="SETTLEMENT_UNCONFIRMED",
         next_check_at=now - timedelta(minutes=1),
+        attempts=4,
+    )
+
+    selected = next_provider_settlement(engine)
+
+    assert selected is not None
+    assert selected.payment_id == older_payment_id
+    engine.dispose()
+
+
+def test_settlement_queue_uses_earliest_due_time_within_same_priority(
+    tmp_path,
+) -> None:
+    engine, older_payment_id = queued_payment(tmp_path)
+    with Session(engine) as session:
+        registration = session.exec(select(ClaimedHandle)).one()
+    newer_payment_id = enqueue_provider_payment(
+        engine,
+        registration=registration,
+        amount_msat=22_000,
+        comment="newer provider test",
+        metadata='[["text/plain","test"]]',
+        mint="https://mint.example.com",
+    )
+    now = utc_now()
+    update_provider_payment(
+        engine,
+        older_payment_id,
+        status="SETTLEMENT_UNCONFIRMED",
+        next_check_at=now - timedelta(seconds=5),
+        attempts=3,
+    )
+    update_provider_payment(
+        engine,
+        newer_payment_id,
+        status="SETTLEMENT_UNCONFIRMED",
+        next_check_at=now - timedelta(minutes=1),
+        attempts=2,
     )
 
     selected = next_provider_settlement(engine)
@@ -762,6 +801,52 @@ def test_worker_throttles_settlement_checks_across_queued_cycles(
     update_provider_payment(engine, payment_id, next_check_at=utc_now())
     assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
     assert len(acorn.check_calls) == 2
+    engine.dispose()
+
+
+def test_worker_uses_shorter_throttle_for_first_settlement_check(
+    tmp_path, monkeypatch
+) -> None:
+    engine, first_payment_id = queued_payment(tmp_path)
+    with Session(engine) as session:
+        registration = session.exec(select(ClaimedHandle)).one()
+    second_payment_id = enqueue_provider_payment(
+        engine,
+        registration=registration,
+        amount_msat=22_000,
+        comment="second provider test",
+        metadata='[["text/plain","test"]]',
+        mint="https://mint.example.com",
+    )
+    update_provider_payment(
+        engine,
+        first_payment_id,
+        status="INVOICE_PENDING",
+        mint_quote="quote-1",
+        invoice="lnbc21-test",
+        next_check_at=utc_now(),
+    )
+    update_provider_payment(
+        engine,
+        second_payment_id,
+        status="INVOICE_PENDING",
+        mint_quote="quote-2",
+        invoice="lnbc22-test",
+        next_check_at=utc_now(),
+    )
+    acorn = FakeProviderAcorn(quote_paid=False)
+    clock = iter((100.0, 100.4, 100.5))
+    monkeypatch.setattr(provider_module, "monotonic", lambda: next(clock))
+
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
+    assert len(acorn.check_calls) == 1
+
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is False
+    assert len(acorn.check_calls) == 1
+
+    assert asyncio.run(process_provider_payments_once(engine, acorn)) is True
+    assert len(acorn.check_calls) == 2
+    assert [call["quote"] for call in acorn.check_calls] == ["quote-1", "quote-2"]
     engine.dispose()
 
 

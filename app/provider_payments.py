@@ -33,6 +33,7 @@ from app.security import normalize_home_mint
 
 logger = logging.getLogger("safebox_web.provider_payments")
 MAX_PROVIDER_SETTLEMENT_ATTEMPTS = 60
+INITIAL_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS = 0.5
 MIN_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS = 4.0
 PROVIDER_SETTLEMENT_RECHECK_SECONDS = 5.0
 PROVIDER_STALE_SETTLEMENT_RECHECK_SECONDS = 60.0
@@ -195,7 +196,14 @@ def next_provider_payment(engine: Engine, status: str) -> ProviderPayment | None
 
 
 def next_provider_settlement(engine: Engine) -> ProviderPayment | None:
-    """Return the oldest due invoice that may still settle at its mint."""
+    """Return the highest-priority due invoice that may still settle.
+
+    A newly created invoice must receive its first mint check before older
+    unpaid quotes consume another retry.  After every due invoice has been
+    checked at least once, the queue falls back to its chronological retry
+    order.  This keeps fresh payments responsive without abandoning durable
+    polling of older quotes.
+    """
 
     now = utc_now()
     with Session(engine) as session:
@@ -213,6 +221,10 @@ def next_provider_settlement(engine: Engine) -> ProviderPayment | None:
                 )
             )
             .order_by(
+                case(
+                    (ProviderPayment.attempts == 0, 0),
+                    else_=1,
+                ),
                 case(
                     (ProviderPayment.next_check_at.is_(None), 0),
                     else_=1,
@@ -510,6 +522,9 @@ async def process_provider_payments_once(
     delivery_retry_attempts: int = 4,
     delivery_retry_base_seconds: float = 2.0,
     delivery_retry_max_seconds: float = 60.0,
+    initial_settlement_check_interval_seconds: float = (
+        INITIAL_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS
+    ),
     settlement_check_interval_seconds: float = (
         MIN_PROVIDER_SETTLEMENT_CHECK_INTERVAL_SECONDS
     ),
@@ -572,13 +587,18 @@ async def process_provider_payments_once(
 
     invoice = next_provider_settlement(engine)
     if invoice is not None:
+        check_interval_seconds = (
+            initial_settlement_check_interval_seconds
+            if int(invoice.attempts or 0) == 0
+            else settlement_check_interval_seconds
+        )
         last_check = float(
             getattr(acorn, "_provider_last_settlement_check", 0.0) or 0.0
         )
         now_monotonic = monotonic()
         if now_monotonic - last_check < max(
             0.1,
-            float(settlement_check_interval_seconds),
+            float(check_interval_seconds),
         ):
             invoice = None
         else:
