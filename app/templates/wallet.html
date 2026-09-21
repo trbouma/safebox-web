@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/cmu_link.html" import cmu_link, cmu_warning with context %}
 {% block content %}
 <p class="continuity-mode">{{ _("Connected Mode") }}</p>
 {% if preferences_updated %}<p role="status"><strong>{{ _("Display preferences updated.") }}</strong></p>{% endif %}
@@ -70,7 +71,8 @@
   {% endif %}
 </a>
 <section class="wallet-balance clear-balance" aria-labelledby="clear-balance-heading">
-  <h2 id="clear-balance-heading"><a href="/clear">{{ _("Clear Balances") }}</a></h2>
+  <h2 id="clear-balance-heading">{{ _("Clear Balances") }}</h2>
+  <a class="clear-balance-pane-link" href="/clear" aria-labelledby="clear-balance-heading"></a>
   {% if clear_summary.balance_count %}
   {% for balance in clear_summary.balances %}
   {% set balance_name = balance.display_name if balance.display_name != balance.unit else _("Clear balance") %}
@@ -82,7 +84,7 @@
   {% else %}
     {% set availability = _("Within this instance") %}
   {% endif %}
-  <p class="wallet-clear-balance"><strong>{% if balance.cmu_home_url %}<a href="{{ balance.cmu_home_url }}">{{ balance_name }}</a>{% else %}{{ balance_name }}{% endif %}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance_unit }}. <span><b>{{ _("Availability") }}:</b> {{ availability }}{% if balance.availability == "instance" and mainstay_instance_name %} ({{ mainstay_instance_name }}){% endif %}</span>{% if balance.cmu_home_url and balance.availability != "across-networks" %}<span>{{ _("Internal mint — this link may not be reachable from your browser.") }}</span>{% endif %}</p>
+  <p class="wallet-clear-balance"><strong>{{ cmu_link(balance, balance_name, "wallet-mint-warning-" ~ loop.index) }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance_unit }}. {{ cmu_warning(balance, "wallet-mint-warning-" ~ loop.index) }}<span><b>{{ _("Availability") }}:</b> {{ availability }}{% if balance.availability == "instance" and mainstay_instance_name %} ({{ mainstay_instance_name }}){% endif %}</span></p>
   {% endfor %}
   {% else %}
   <p class="wallet-balance-state">{{ _("No Clear balances yet.") }}</p>

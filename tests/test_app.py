@@ -3892,10 +3892,17 @@ def test_clear_balance_cmu_links_label_internal_mints(tmp_path, path, mint, inte
     with TestClient(app, base_url="https://safebox.example") as client:
         response = client.get(path)
     assert response.status_code == 200
-    assert f'<a href="{mint}/cmus/keyset-test">Community Credits</a>' in response.text
-    assert ("Internal mint — this link may not be reachable from your browser." in response.text) == internal
+    if internal:
+        assert f'href="{mint}/cmus/keyset-test"' not in response.text
+        warning_id = ("wallet" if path == "/wallet" else "clear") + "-mint-warning-1"
+        assert f'aria-expanded="false" aria-controls="{warning_id}">Community Credits</button>' in response.text
+        assert f'id="{warning_id}" class="internal-mint-warning" hidden' in response.text
+    else:
+        assert f'<a href="{mint}/cmus/keyset-test">Community Credits</a>' in response.text
+    assert ("This is an internal mint. Its status page may not be accessible from your browser." in response.text) == internal
     if path == "/wallet":
-        assert '<a href="/clear">Clear Balances</a>' in response.text
+        assert '<h2 id="clear-balance-heading">Clear Balances</h2>' in response.text
+        assert '<a class="clear-balance-pane-link" href="/clear" aria-labelledby="clear-balance-heading"></a>' in response.text
 
 
 def test_wallet_marks_clear_balance_available_within_named_instance(tmp_path) -> None:
