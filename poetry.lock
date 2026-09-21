@@ -341,16 +341,16 @@ files = [
 [package.dependencies]
 cbor2 = {version = ">=5.5.0,<7.0.0", markers = "python_version >= \"3.9\""}
 coincurve = [
-    {version = ">=18.0.0", markers = "python_version == \"3.11\""},
     {version = ">=21.0.0", markers = "python_version >= \"3.13\""},
+    {version = ">=18.0.0", markers = "python_version == \"3.11\""},
     {version = ">=19.0.1", markers = "python_version >= \"3.12\" and python_version < \"3.13\""},
 ]
 crcmod = ">=1.7,<2.0"
 ecdsa = ">=0.17,<1.0"
 ed25519-blake2b-fork = ">=1.4.2,<2.0.0"
 py-sr25519-bindings = [
-    {version = ">=0.2.0,<1.0.0", markers = "python_version >= \"3.11\" and python_version < \"3.13\""},
     {version = ">=0.2.2,<1.0.0", markers = "python_version >= \"3.13\""},
+    {version = ">=0.2.0,<1.0.0", markers = "python_version >= \"3.11\" and python_version < \"3.13\""},
 ]
 pycryptodome = ">=3.15,<4.0"
 pynacl = ">=1.5,<2.0"
@@ -604,8 +604,8 @@ files = [
 
 [package.dependencies]
 cffi = [
-    {version = ">=1.6", markers = "python_version < \"3.13\""},
     {version = ">=1.17", markers = "python_version == \"3.13\""},
+    {version = ">=1.6", markers = "python_version < \"3.13\""},
 ]
 
 [[package]]
@@ -3077,7 +3077,7 @@ post-quantum = ["liboqs-python (>=0.14.1,<0.17.0)"]
 type = "git"
 url = "https://github.com/trbouma/safebox-acorn.git"
 reference = "main"
-resolved_reference = "d2a278c2a8b3110356f3ff8750328c48442c5759"
+resolved_reference = "846b80a292da0ef452deedff43dacb232ca6c1ea"
 
 [[package]]
 name = "secp256k1"
