@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
+<script src="/static/deposit-status.js" defer></script>
+<section data-deposit-panel data-status-url="{{ status_url }}" aria-live="polite">
 <p>Receive <strong>{{ amount }} {{ display_name }}</strong> from the accepted
 Clear mint.</p>
 <dl class="invoice-review">
@@ -15,7 +17,15 @@ Clear mint.</p>
 <p>This single-use NUT-18 request asks the sender to deliver enough proofs to
 cover the requested amount after mint input fees. Compatible wallets can scan
 the QR code and send the Clear balance through the listed NIP-17 transport.</p>
-<p>After the transfer arrives, open Clear Balances and receive the pending
-transfer. It becomes confirmed only after the issuing mint accepts its proofs.</p>
+<p>Safebox monitors this request for two minutes and automatically accepts a matching
+transfer. A checkmark appears only after mint acceptance and relay-backed confirmation.
+You may leave this page while monitoring continues.</p>
+<div data-deposit-status></div>
+<form method="post" action="/receive-funds/clear-check">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="request_token" value="{{ request_token }}">
+  <button type="submit">Refresh Transfer Status</button>
+</form>
 <p><a class="nav-button" href="/clear">Open Clear Balances</a></p>
+</section>
 {% endblock %}

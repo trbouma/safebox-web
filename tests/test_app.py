@@ -677,7 +677,12 @@ class FakeLoadedAcorn:
 
     def create_payment_request(self, amount: int, **kwargs) -> str:
         self.payment_request_calls.append({"amount": amount, **kwargs})
-        return "creqApytest-clear-payment-request"
+        return encode_payment_request(PaymentRequest(
+            payment_id="pytest-clear-request", amount=amount, unit=kwargs["unit"],
+            single_use=True, mints=(kwargs["mint"],),
+            description=kwargs["description"],
+            transports=main_module.decode_payment_request(TEST_NUT18_REQUEST).transports,
+        ))
 
     async def inspect_payment_request(self, encoded_request: str) -> dict:
         self.payment_request_inspections.append(encoded_request)
@@ -7673,8 +7678,11 @@ def test_receive_funds_rejects_unavailable_payment_method() -> None:
     assert acorn.deposit_calls == []
 
 
-def test_receive_funds_creates_nut18_clear_request() -> None:
-    app = create_app(TEST_SETTINGS)
+def test_receive_funds_creates_nut18_clear_request(tmp_path, monkeypatch) -> None:
+    settings = database_settings(tmp_path)
+    calls = []
+    monkeypatch.setattr(main_module, "run_clear_request_monitor", lambda **kwargs: calls.append(kwargs))
+    app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=500)
     acorn.clear_balances = [
         {
@@ -7685,25 +7693,28 @@ def test_receive_funds_creates_nut18_clear_request() -> None:
         }
     ]
     app.dependency_overrides[get_deposit_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
     asset_id = main_module._encode_clear_payment_asset(
         "https://clear.example",
         "cmu-community",
     )
 
-    response = client.post(
-        "/receive-funds",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "amount": "25",
-            "payment_method": asset_id,
-            "description": "Room booking credit",
-        },
-    )
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/receive-funds",
+            data={
+                "csrf_token": CsrfProtector(settings).issue(),
+                "amount": "25",
+                "payment_method": asset_id,
+                "description": "Room booking credit",
+            },
+        )
 
     assert response.status_code == 200
     assert "Clear Payment Request" in response.text
-    assert "creqApytest-clear-payment-request" in response.text
+    assert "creqA" in response.text
+    assert calls[0]["state"].request_id == "pytest-clear-request"
+    assert 'data-status-url="/receive-funds/clear-status?' in response.text
+    assert 'action="/receive-funds/clear-check"' in response.text
     assert "25 cmu-community" in response.text
     assert "https://clear.example" in response.text
     assert "Room booking credit" in response.text
@@ -7741,6 +7752,54 @@ def test_legacy_deposit_routes_redirect_to_receive_funds(
 
     assert response.status_code == status_code
     assert response.headers["location"] == canonical_path
+
+
+def test_clear_request_automatically_accepts_and_confirms_exact_receipt(tmp_path) -> None:
+    settings = database_settings(tmp_path)
+    app = create_app(settings)
+    acorn = FakeLoadedAcorn()
+    mint, unit = "https://clear.example", "cmu-test"
+    acorn.clear_balances = [{"mint": mint, "unit": unit, "amount": 50, "proof_count": 1}]
+    acorn.clear_receipts = [
+        {"event_id": "a" * 64, "payment_request_id": "pytest-clear-request",
+         "mint": mint, "unit": unit, "amount": 25, "status": "pending"},
+        {"event_id": "b" * 64, "payment_request_id": "unrelated",
+         "mint": mint, "unit": unit, "amount": 25, "status": "pending"},
+    ]
+    app.dependency_overrides[get_deposit_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        page = client.post("/receive-funds", data={
+            "csrf_token": CsrfProtector(settings).issue(), "amount": "25",
+            "payment_method": main_module._encode_clear_payment_asset(mint, unit),
+            "description": "Test automatic acceptance",
+        })
+        assert page.status_code == 200
+        token = unescape(re.search(r'name="request_token" value="([^"]+)"', page.text).group(1))
+        deadline = time.monotonic() + 3
+        while True:
+            status = client.get("/receive-funds/clear-status", params={"request_token": token})
+            if "data-deposit-complete" in status.text or time.monotonic() >= deadline:
+                break
+            time.sleep(0.01)
+        assert status.status_code == 200
+        assert "data-deposit-complete" in status.text
+        assert "25 cmu-test confirmed" in status.text
+        assert status.headers["cache-control"] == "no-store"
+        resumed = client.post("/receive-funds/clear-check", data={
+            "csrf_token": CsrfProtector(settings).issue(), "request_token": token,
+        })
+        assert "data-deposit-complete" in resumed.text
+        assert client.post("/receive-funds/clear-check", data={
+            "csrf_token": "invalid", "request_token": token,
+        }).status_code == 403
+        forged = main_module.ClearRequestCipher(settings).encode(replace(
+            main_module.ClearRequestCipher(settings).decode(token, acorn.pubkey_bech32),
+            npub="another-wallet",
+        ))
+        assert client.get("/receive-funds/clear-status", params={"request_token": forged}).status_code == 400
+    assert acorn.accepted_clear_receipts == ["a" * 64]
+    assert acorn.clear_receipts[1]["status"] == "pending"
 
 
 def test_receive_funds_persists_and_monitors_lightning_request(tmp_path, monkeypatch) -> None:

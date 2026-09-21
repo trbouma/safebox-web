@@ -1,0 +1,14 @@
+{% if status.status == "COMPLETE" %}
+<section data-deposit-complete role="status" aria-label="Clear payment completed">
+  <p class="deposit-complete-mark" aria-hidden="true">✓</p>
+  <h2>Clear payment received</h2>
+  <p>{{ "{:,}".format(status.amount) }} {{ state.display_name }} confirmed in your Clear Balance.</p>
+  <p><a class="nav-button" href="/clear">View Clear Balances</a></p>
+</section>
+{% elif status.status == "RUNNING" %}
+<p data-deposit-poll role="status">Waiting for the matching Clear transfer and mint confirmation…</p>
+{% elif status.status == "REVIEW" %}
+<p role="status">A matching transfer was accepted, but the full requested amount could not be confirmed. <a href="/clear">Review Clear Transactions</a>.</p>
+{% else %}
+<p role="status">Clear payment has not been confirmed yet. Use Refresh Transfer Status to resume monitoring, or <a href="/clear">review Clear Transactions</a>.</p>
+{% endif %}

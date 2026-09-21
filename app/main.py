@@ -70,6 +70,10 @@ from acorn.func_utils import (
 )
 
 from app.config import Settings
+from app.clear_request_monitor import (
+    ClearRequestCipher, ClearRequestState, request_status as clear_request_status,
+    run_monitor as run_clear_request_monitor,
+)
 from acorn import (
     BitcoinCapabilityError,
     broadcast_silent_payment_sweep,
@@ -3603,6 +3607,8 @@ def _clear_payment_request_page(
     unit: str,
     display_name: str,
     description: str,
+    request_token: str,
+    csrf_token: str,
 ) -> str:
     return render_template(
         "receive_clear_request.html",
@@ -3613,6 +3619,9 @@ def _clear_payment_request_page(
         unit=unit,
         display_name=display_name,
         description=description,
+        request_token=request_token,
+        csrf_token=csrf_token,
+        status_url="/receive-funds/clear-status?" + urlencode({"request_token": request_token}),
         request_svg=_qr_svg(payment_request, include_acorn=True),
     )
 
@@ -3643,6 +3652,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.clear_acceptance_tasks = {}
         app.state.outgoing_payment_tasks = {}
         app.state.deposit_finalization_tasks = {}
+        app.state.clear_request_tasks = {}
         app.state.background_job_executor = ThreadPoolExecutor(
             max_workers=runtime_settings.background_job_threads,
             thread_name_prefix="safebox-wallet-job",
@@ -3655,6 +3665,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 *app.state.clear_acceptance_tasks.values(),
                 *app.state.outgoing_payment_tasks.values(),
                 *app.state.deposit_finalization_tasks.values(),
+                *app.state.clear_request_tasks.values(),
             ]
             await asyncio.to_thread(
                 app.state.background_job_executor.shutdown,
@@ -3789,6 +3800,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
             task.add_done_callback(remove_completed_task)
         return job
+
+    def start_clear_request_monitor(request, acorn_factory, state):
+        key = (state.npub, state.request_id)
+        tasks = request.app.state.clear_request_tasks
+        if key in tasks and not tasks[key].done():
+            return
+        task = asyncio.wrap_future(request.app.state.background_job_executor.submit(
+            run_clear_request_monitor,
+            engine=request.app.state.database_engine,
+            acorn_factory=acorn_factory,
+            state=state,
+            worker_id=request.app.state.worker_id,
+            timeout=request.app.state.settings.wallet_load_timeout_seconds,
+        ))
+        tasks[key] = task
+        def finished(done):
+            if tasks.get(key) is done:
+                tasks.pop(key, None)
+        task.add_done_callback(finished)
 
     @app.exception_handler(HTTPException)
     async def browser_session_error(request: Request, exc: HTTPException):
@@ -5862,12 +5892,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     description=request_description,
                     mint=selected_asset[0],
                 )
+                decoded = decode_payment_request(payment_request)
+                if not decoded.payment_id:
+                    raise ValueError("Clear request needs a request ID for confirmation")
             except Exception as exc:
                 logger.warning(
                     "NUT-18 Clear request creation failed error_type=%s",
                     type(exc).__name__,
                 )
                 return receive_error("Safebox could not create the Clear payment request.", 502)
+            monitor_state = ClearRequestState(
+                npub=acorn.pubkey_bech32, request_id=decoded.payment_id,
+                mint=selected_asset[0], unit=selected_asset[1], amount=amount_sats,
+                display_name=str(selected.get("display_name") or selected_asset[1]),
+                payment_request=payment_request, description=request_description,
+                started_at=time(),
+            )
+            request_token = ClearRequestCipher(settings).encode(monitor_state)
+            start_clear_request_monitor(request, acorn_factory, monitor_state)
             return HTMLResponse(
                 _clear_payment_request_page(
                     payment_request=payment_request,
@@ -5876,6 +5918,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     unit=selected_asset[1],
                     display_name=str(selected.get("display_name") or selected_asset[1]),
                     description=request_description,
+                    request_token=request_token,
+                    csrf_token=form_token.issue(),
                 ),
                 headers={"Cache-Control": "no-store"},
             )
@@ -5959,6 +6003,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             state_token,
             form_token.issue(),
         )
+
+    @app.get("/receive-funds/clear-status", response_class=HTMLResponse)
+    async def clear_request_status_fragment(
+        request: Request, request_token: str, acorn: AcornDependency,
+    ):
+        try:
+            state = ClearRequestCipher(request.app.state.settings).decode(request_token, acorn.pubkey_bech32)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            status = await clear_request_status(acorn, state, request.app.state.settings.wallet_load_timeout_seconds,
+                                                engine=request.app.state.database_engine)
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Clear confirmation is temporarily unavailable") from exc
+        return HTMLResponse(render_template("partials/clear_request_status.html", status=status, state=state),
+                            headers={"Cache-Control": "no-store"})
+
+    @app.post("/receive-funds/clear-check", response_class=HTMLResponse)
+    async def resume_clear_request(
+        request: Request, acorn: DepositAcornDependency,
+        acorn_factory: DepositAcornFactoryDependency,
+        request_token: str = Form(...), csrf_token: str = Form(...),
+    ):
+        settings = request.app.state.settings
+        if not CsrfProtector(settings).verify(csrf_token):
+            raise HTTPException(status_code=403, detail="Form token is invalid or expired")
+        try:
+            state = ClearRequestCipher(settings).decode(request_token, acorn.pubkey_bech32)
+            status = await clear_request_status(acorn, state, settings.wallet_load_timeout_seconds,
+                                                engine=request.app.state.database_engine)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if status["status"] in {"COMPLETE", "REVIEW"}:
+            return HTMLResponse(_page("Clear Payment Request", render_template(
+                "partials/clear_request_status.html", status=status, state=state)))
+        state = replace(state, started_at=time())
+        start_clear_request_monitor(request, acorn_factory, state)
+        return HTMLResponse(_clear_payment_request_page(
+            payment_request=state.payment_request, amount=state.amount,
+            mint=state.mint, unit=state.unit, display_name=state.display_name,
+            description=state.description, request_token=ClearRequestCipher(settings).encode(state),
+            csrf_token=CsrfProtector(settings).issue(),
+        ), headers={"Cache-Control": "no-store"})
 
     @app.get("/receive-funds/status/{quote_hash}", response_class=HTMLResponse)
     async def deposit_status_fragment(
