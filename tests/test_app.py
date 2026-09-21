@@ -4954,17 +4954,38 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert "Accept Clear Transfer" in response.text
     assert 'action="/clear/receipts/accept"' in response.text
     assert 'action="/clear/receipts/delete"' in response.text
+    assert '<details class="incoming-funds incoming-funds-disclosure" open>' in response.text
     assert response.text.index("Incoming Clear Transfers") < response.text.index(
-        "Clear Balances"
-    ) < response.text.index("Pending Clear Transfers") < response.text.index(
+        "Pending Clear Transfers"
+    ) < response.text.index("Clear Balances") < response.text.index(
         "Clear Transaction History"
     )
+    disclosure_end = response.text.index('</details>\n\n<section class="clear-balance-list"')
+    assert response.text.index('action="/clear/receipts/delete"') < disclosure_end
+    assert response.text.index("Pending Clear Transfers") < disclosure_end
     history_section = response.text.split("Clear Transaction History", 1)[1]
     assert "Pending Clear Transfer" not in history_section
     assert "No completed Clear transactions found." in history_section
     assert response.text.count('class="page-navigation') == 2
     assert "Confirmed balance" in response.text
     assert "spendable" not in response.text.lower()
+
+
+def test_clear_incoming_transfers_pane_is_collapsed_without_pending_transfers(tmp_path) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=100)
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/clear")
+
+    assert response.status_code == 200
+    assert '<details class="incoming-funds incoming-funds-disclosure">' in response.text
+    assert '<summary>Check Balance and Incoming Clear Transfers</summary>' in response.text
+    assert "No pending Clear transfers." in response.text
+    assert response.text.index("No pending Clear transfers.") < response.text.index(
+        '</details>\n\n<section class="clear-balance-list"'
+    )
 
 
 def test_user_can_paste_and_accept_a_configured_clear_token(tmp_path) -> None:

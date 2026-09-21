@@ -51,6 +51,9 @@
 {% block content %}
 <p><a class="nav-button" href="/clear/accept-token">Accept a Clear Token</a></p>
 {% if notice %}<p role="status"><strong>{{ notice }}</strong></p>{% endif %}
+<details class="incoming-funds incoming-funds-disclosure"{% if pending_entries or acceptance_job or notice %} open{% endif %}>
+  <summary>Check Balance and Incoming Clear Transfers</summary>
+  <div class="incoming-funds-content">
 <section class="incoming-funds" aria-labelledby="clear-receive-heading">
   <h2 id="clear-receive-heading">Incoming Clear Transfers</h2>
   <form method="post" action="/clear/receive"
@@ -92,6 +95,18 @@
 </section>
 {% endif %}
 
+<section class="transaction-list clear-pending-list" aria-labelledby="clear-pending-heading">
+  <h2 id="clear-pending-heading">Pending Clear Transfers</h2>
+  {% if clear_summary.pending %}<p class="clear-balance-summary">{{ "{:,}".format(clear_summary.count) }} pending transfer{% if clear_summary.count != 1 %}s{% endif %} across {{ "{:,}".format(clear_summary.pending_balance_count) }} Clear balance{% if clear_summary.pending_balance_count != 1 %}s{% endif %}.</p>{% endif %}
+  {% for entry in pending_entries %}
+  {{ clear_transaction_card(entry, csrf_token, acceptance_job, pending=true) }}
+  {% else %}
+  <p>No pending Clear transfers.</p>
+  {% endfor %}
+</section>
+  </div>
+</details>
+
 <section class="clear-balance-list" aria-labelledby="clear-balances-heading">
   <h2 id="clear-balances-heading">Clear Balances</h2>
   {% if clear_summary.balance_count %}
@@ -118,16 +133,6 @@
   {% else %}
   <p>No Clear balances yet.</p>
   {% endif %}
-</section>
-
-<section class="transaction-list clear-pending-list" aria-labelledby="clear-pending-heading">
-  <h2 id="clear-pending-heading">Pending Clear Transfers</h2>
-  {% if clear_summary.pending %}<p class="clear-balance-summary">{{ "{:,}".format(clear_summary.count) }} pending transfer{% if clear_summary.count != 1 %}s{% endif %} across {{ "{:,}".format(clear_summary.pending_balance_count) }} Clear balance{% if clear_summary.pending_balance_count != 1 %}s{% endif %}.</p>{% endif %}
-  {% for entry in pending_entries %}
-  {{ clear_transaction_card(entry, csrf_token, acceptance_job, pending=true) }}
-  {% else %}
-  <p>No pending Clear transfers.</p>
-  {% endfor %}
 </section>
 
 <section class="transaction-list clear-transaction-list" aria-labelledby="clear-history-heading">
