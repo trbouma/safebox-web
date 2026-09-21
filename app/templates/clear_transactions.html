@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/cmu_link.html" import cmu_link, cmu_warning with context %}
+{% from "partials/cmu_link.html" import cmu_link with context %}
 {% macro clear_transaction_card(entry, csrf_token, acceptance_job, pending=false) -%}
 <article class="transaction-card {% if pending %}advisory{% elif entry.direction == 'out' %}debit{% else %}credit{% endif %}">
   <header class="transaction-header">
@@ -115,8 +115,7 @@
   {% if clear_summary.balance_count %}
   {% for balance in clear_summary.balances %}
   <article class="clear-balance-item">
-    <h3>{{ cmu_link(balance, balance.display_name, "clear-mint-warning-" ~ loop.index) }}</h3>
-    {{ cmu_warning(balance, "clear-mint-warning-" ~ loop.index) }}
+    {{ cmu_link(balance, balance.display_name, heading=true) }}
     <p class="clear-balance-amount">{{ "{:,}".format(balance.amount) }} <span>{{ balance.display_unit }}</span></p>
     <p>Confirmed balance{% if balance.pending_amount %}; {{ "{:,}".format(balance.pending_amount) }} pending in {{ "{:,}".format(balance.count) }} transfer{% if balance.count != 1 %}s{% endif %}{% endif %}.</p>
     {% if balance.availability == "across-networks" %}

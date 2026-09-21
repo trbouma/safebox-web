@@ -106,11 +106,12 @@ button:disabled { cursor: wait; opacity: .65; }
 .clear-balance-pane-link { position: absolute; inset: 0; z-index: 1; border-radius: 1rem; }
 .clear-balance-pane-link:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
 .clear-balance .wallet-clear-balance a,
-.clear-balance .internal-mint-toggle,
+.clear-balance .internal-mint-disclosure,
 .clear-balance .wallet-balance-state a { position: relative; z-index: 2; }
-.internal-mint-toggle { display: inline; width: auto; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; color: var(--link); font: inherit; text-decoration: underline; }
-.internal-mint-warning { display: block; margin-top: .35rem; color: var(--muted); font-size: .85rem; }
-.internal-mint-warning[hidden] { display: none; }
+.internal-mint-disclosure { display: inline-block; vertical-align: top; max-width: 100%; }
+.internal-mint-disclosure > summary { cursor: pointer; color: var(--link); }
+.internal-mint-disclosure > summary h3 { display: inline; }
+.internal-mint-warning { margin: .35rem 0 0; color: var(--muted); font-size: .85rem; font-weight: 400; }
 .clear-balance:focus-within { border-color: var(--link); }
 .rates-table-wrap { margin: 1.25rem 0; overflow-x: auto; border: 1px solid var(--border); border-radius: .8rem; background: var(--surface); }
 .rates-table { width: 100%; border-collapse: collapse; }

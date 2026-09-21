@@ -69,15 +69,6 @@ window.addEventListener("pageshow", () => {
 });
 
 document.addEventListener("click", (event) => {
-  const toggle = event.target.closest("button.internal-mint-toggle");
-  if (!toggle) return;
-  const warning = document.getElementById(toggle.getAttribute("aria-controls"));
-  if (!warning) return;
-  warning.hidden = !warning.hidden;
-  toggle.setAttribute("aria-expanded", String(!warning.hidden));
-});
-
-document.addEventListener("click", (event) => {
   if (
     event.defaultPrevented ||
     event.button !== 0 ||

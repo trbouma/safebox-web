@@ -3894,9 +3894,11 @@ def test_clear_balance_cmu_links_label_internal_mints(tmp_path, path, mint, inte
     assert response.status_code == 200
     if internal:
         assert f'href="{mint}/cmus/keyset-test"' not in response.text
-        warning_id = ("wallet" if path == "/wallet" else "clear") + "-mint-warning-1"
-        assert f'aria-expanded="false" aria-controls="{warning_id}">Community Credits</button>' in response.text
-        assert f'id="{warning_id}" class="internal-mint-warning" hidden' in response.text
+        assert '<details class="internal-mint-disclosure">' in response.text
+        tag = "strong" if path == "/wallet" else "h3"
+        assert f'<summary><{tag}>Community Credits</{tag}></summary>' in response.text
+        assert '<p class="internal-mint-warning">' in response.text
+        assert "internal-mint-toggle" not in response.text
     else:
         assert f'<a href="{mint}/cmus/keyset-test">Community Credits</a>' in response.text
     assert ("This is an internal mint. Its status page may not be accessible from your browser." in response.text) == internal

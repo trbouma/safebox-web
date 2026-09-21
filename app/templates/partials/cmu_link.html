@@ -1,12 +1,11 @@
-{% macro cmu_link(balance, label, warning_id) -%}
-{% if balance.cmu_home_url and balance.availability != "across-networks" %}
-<button type="button" class="internal-mint-toggle" aria-expanded="false" aria-controls="{{ warning_id }}">{{ label }}</button>
-{% elif balance.cmu_home_url %}
-<a href="{{ balance.cmu_home_url }}">{{ label }}</a>
-{% else %}{{ label }}{% endif %}
-{%- endmacro %}
-{% macro cmu_warning(balance, warning_id) -%}
-{% if balance.cmu_home_url and balance.availability != "across-networks" %}
-<span id="{{ warning_id }}" class="internal-mint-warning" hidden>{{ _("This is an internal mint. Its status page may not be accessible from your browser.") }}</span>
-{% endif %}
+{% macro cmu_link(balance, label, heading=false) -%}
+{% set tag = "h3" if heading else "strong" -%}
+{% if balance.cmu_home_url and balance.availability != "across-networks" -%}
+<details class="internal-mint-disclosure">
+  <summary><{{ tag }}>{{ label }}</{{ tag }}></summary>
+  <p class="internal-mint-warning">{{ _("This is an internal mint. Its status page may not be accessible from your browser.") }}</p>
+</details>
+{%- else -%}
+<{{ tag }}>{% if balance.cmu_home_url %}<a href="{{ balance.cmu_home_url }}">{{ label }}</a>{% else %}{{ label }}{% endif %}</{{ tag }}>
+{%- endif %}
 {%- endmacro %}

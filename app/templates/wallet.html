@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/cmu_link.html" import cmu_link, cmu_warning with context %}
+{% from "partials/cmu_link.html" import cmu_link with context %}
 {% block content %}
 <p class="continuity-mode">{{ _("Connected Mode") }}</p>
 {% if preferences_updated %}<p role="status"><strong>{{ _("Display preferences updated.") }}</strong></p>{% endif %}
@@ -84,7 +84,7 @@
   {% else %}
     {% set availability = _("Within this instance") %}
   {% endif %}
-  <p class="wallet-clear-balance"><strong>{{ cmu_link(balance, balance_name, "wallet-mint-warning-" ~ loop.index) }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance_unit }}. {{ cmu_warning(balance, "wallet-mint-warning-" ~ loop.index) }}<span><b>{{ _("Availability") }}:</b> {{ availability }}{% if balance.availability == "instance" and mainstay_instance_name %} ({{ mainstay_instance_name }}){% endif %}</span></p>
+  <div class="wallet-clear-balance">{{ cmu_link(balance, balance_name) }}: {{ "{:,}".format(balance.amount) }} {{ balance_unit }}. <span><b>{{ _("Availability") }}:</b> {{ availability }}{% if balance.availability == "instance" and mainstay_instance_name %} ({{ mainstay_instance_name }}){% endif %}</span></div>
   {% endfor %}
   {% else %}
   <p class="wallet-balance-state">{{ _("No Clear balances yet.") }}</p>
