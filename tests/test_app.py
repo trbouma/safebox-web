@@ -5757,6 +5757,17 @@ def test_clear_history_uses_friendly_alias_when_history_lacks_keyset_id(
         ("https://mint.example?query=1", "abc", None),
         ("https://mint.example#fragment", "abc", None),
         ("https://[invalid", "abc", None),
+        ("http://clear:3339", "abc", None),
+        ("https://localhost:3339", "abc", None),
+        ("http://127.0.0.1:3339", "abc", None),
+        ("http://192.168.1.20:3339", "abc", None),
+        ("http://10.0.0.2:3339", "abc", None),
+        ("https://[::1]:3339", "abc", None),
+        ("https://[fd00::1]:3339", "abc", None),
+        ("https://clear.community.local", "abc", None),
+        ("https://clear.lan", "abc", None),
+        ("https://clear.internal", "abc", None),
+        ("https://clear.home.arpa", "abc", None),
     ],
 )
 def test_clear_cmu_home_url(mint, keyset_id, expected) -> None:

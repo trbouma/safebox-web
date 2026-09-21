@@ -1509,7 +1509,9 @@ def _pending_clear_summary(receipts: list[dict]) -> dict:
 
 
 def _clear_cmu_home_url(mint: str, keyset_id: str) -> str | None:
-    """Build a public CMU link only when its exact keyset is known."""
+    """Link known CMUs only on mints with an across-network route."""
+    if _clear_availability(mint) != "across-networks":
+        return None
     try:
         parsed = urlsplit(mint)
     except ValueError:
