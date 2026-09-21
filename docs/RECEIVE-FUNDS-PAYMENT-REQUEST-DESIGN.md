@@ -59,6 +59,11 @@ available for a later check.
 
 ## Clear CMU transfer method
 
+This is a direct [asynchronous receipt path](ASYNCHRONOUS-RECEIPT-ARCHITECTURE.md):
+the recipient may be offline when the sender publishes the encrypted transfer.
+See [Clear acceptance reliability](CLEAR-ACCEPTANCE-RELIABILITY.md) for error,
+interruption, and duplicate-acceptance boundaries.
+
 The page discovers confirmed Clear Mint Unit (CMU) balances held by the
 connected Acorn and offers them as eligible receive units. Selecting one creates a
 Cashu NUT-18 transfer request with:

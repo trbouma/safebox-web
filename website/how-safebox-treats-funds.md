@@ -147,6 +147,10 @@ user can reconnect and continue.
 
 ## Provider payments preserve the boundary
 
+This is an [asynchronous receipt path](asynchronous-receipt.md). The recipient
+can be offline: the npub identifies their Acorn, and the Lightning address
+provides a provider-operated path to it.
+
 A registered Safebox handle can receive an ordinary Lightning payment through
 the service Acorn operated by the provider:
 

@@ -117,6 +117,15 @@ network availability, persisted wallet identity, Lightning settlement,
 recipient obligations, and operating capital, is recorded in
 [Service Acorn Migration and Operating Reserve Lessons](SERVICE-ACORN-MIGRATION-AND-OPERATING-RESERVE-LESSONS.md).
 
+## Asynchronous receipt boundary
+
+The service worker provides an online receiving presence without opening the
+recipient wallet. It uses its own Acorn key to receive and deliver; recipient
+retrieval and finalization remain under recipient authority. Safebox Web owns
+queue scheduling and operational state, while safebox-acorn owns proof,
+encryption, persistence, and recovery operations. See the
+[asynchronous receipt architecture](ASYNCHRONOUS-RECEIPT-ARCHITECTURE.md).
+
 ## Late invoice settlement
 
 Stopping the worker does not cancel invoices it already issued. The durable

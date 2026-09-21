@@ -420,7 +420,7 @@ class FakeLoadedAcorn:
                 "mint": mint,
                 "unit": unit,
             }
-        raise ValueError("Pending Clear transfer was not found")
+        raise ValueError("Pending Clear receipt was not found")
 
     async def delete_pending_clear_receipt(self, event_id: str) -> dict:
         for index, receipt in enumerate(self.clear_receipts):

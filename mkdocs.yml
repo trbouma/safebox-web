@@ -40,6 +40,7 @@ nav:
   - Understand Safebox Web:
       - Why Safebox Web?: why-safebox-web.md
       - How Safebox Treats Balances: how-safebox-treats-funds.md
+      - Asynchronous Receipt: asynchronous-receipt.md
       - Cash and Clear: cash-and-clear.md
       - Deep Verification: deep-verification.md
       - Graduated Disclosure: graduated-disclosure.md

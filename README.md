@@ -145,9 +145,14 @@ attached-user wallet state.
 
 When explicitly enabled, a standalone worker maintains one provider-owned
 service Acorn. This operational wallet is not held in FastAPI application state
-and is not a server-side copy of an attached user's wallet. It is intended to
-become the value bridge for accepting Lightning on behalf of another Acorn and
-delivering that value as ecash.
+and is not a server-side copy of an attached user's wallet. It provides an
+asynchronous receipt path: accepting Lightning on behalf of another Acorn and
+delivering that value as encrypted ecash for later retrieval and finalization.
+The npub identifies the receiving Acorn; its Lightning address is a path to
+interact with that identity. Receiving does not require the provider worker to
+access the recipient's wallet keys. See
+[Asynchronous Receipt Architecture](docs/ASYNCHRONOUS-RECEIPT-ARCHITECTURE.md)
+for stage evidence, trust assumptions, and the Web/kernel responsibility boundary.
 
 The service Acorn receives a fresh key on its first start. Its minimum recovery
 state is stored in an owner-only file in the persistent `data/` volume before

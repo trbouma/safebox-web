@@ -3,6 +3,10 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta
 from unittest.mock import AsyncMock
+from types import SimpleNamespace
+
+import httpx
+import pytest
 
 from sqlmodel import Session
 
@@ -14,6 +18,7 @@ from app.clear_acceptance import (
 from app.database import create_database_engine, run_migrations
 from app.models import ClearAcceptanceJob, WebWorkerHeartbeat, utc_now
 from app.worker_liveness import heartbeat_worker
+import app.clear_acceptance as clear_module
 
 
 def job_engine(tmp_path):
@@ -170,6 +175,70 @@ def test_background_clear_acceptance_records_confirmed_result(tmp_path) -> None:
     assert job["status"] == "COMPLETE"
     assert job["amount"] == 150
     assert job["unit"] == "cmu-example"
+
+
+@pytest.mark.parametrize("failure", ["http", "timeout", "ambiguous", "not-found"])
+def test_clear_failure_preserves_receipt_and_never_retries_mutation(tmp_path, monkeypatch, failure):
+    engine = job_engine(tmp_path)
+    event_id = "e" * 64
+    request = httpx.Request("POST", "https://user:password@clear.example/v1/swap?secret=hidden")
+    response = httpx.Response(503, request=request,
+        json={"detail": "service unavailable token=private", "proofs": "private"})
+    http_error = httpx.HTTPStatusError("secret contents", request=request, response=response)
+    wrapped = RuntimeError("bearer token=private")
+    wrapped.__cause__ = http_error
+    errors = {"http": wrapped, "timeout": httpx.ReadTimeout("private"),
+              "ambiguous": RuntimeError("private"), "not-found": ValueError("Mint keyset not found")}
+    acorn = SimpleNamespace(load_data=AsyncMock(),
+        accept_pending_clear_receipt=AsyncMock(side_effect=errors[failure]),
+        sweep_clear_transfers=AsyncMock())
+    logs = []
+    monkeypatch.setattr(clear_module.logger, "warning", lambda fmt, *args: logs.append(fmt % args))
+    _, token, _ = claim_clear_acceptance_job(engine, "npub1wallet", event_id)
+    asyncio.run(run_clear_acceptance_job(engine=engine, acorn=acorn,
+        npub="npub1wallet", event_id=event_id, owner_token=token))
+    job = get_clear_acceptance_job(engine, "npub1wallet")
+    assert job["status"] == "FAILED" and job["phase"] == "REVIEW"
+    assert job["event_id"] == event_id and job["amount"] == 0
+    acorn.accept_pending_clear_receipt.assert_awaited_once_with(event_id)
+    acorn.sweep_clear_transfers.assert_not_awaited()
+    output = " ".join(logs) + job["error"]
+    assert "private" not in output and "password" not in output and "hidden" not in output
+    assert "phase=ACCEPTING" in output
+    if failure == "http":
+        assert "HTTP 503" in output and "host=clear.example" in output
+    engine.dispose()
+
+
+def test_cancelled_acceptance_resumes_via_kernel_and_fences_old_owner(tmp_path):
+    engine = job_engine(tmp_path)
+    event_id = "f" * 64
+    acorn = SimpleNamespace(load_data=AsyncMock(),
+        accept_pending_clear_receipt=AsyncMock(side_effect=asyncio.CancelledError()),
+        sweep_clear_transfers=AsyncMock())
+    _, old_token, _ = claim_clear_acceptance_job(engine, "npub1wallet", event_id)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(run_clear_acceptance_job(engine=engine, acorn=acorn,
+            npub="npub1wallet", event_id=event_id, owner_token=old_token))
+    assert get_clear_acceptance_job(engine, "npub1wallet")["status"] == "INTERRUPTED"
+    claimed, new_token, _ = claim_clear_acceptance_job(engine, "npub1wallet", event_id)
+    assert claimed
+    stale = SimpleNamespace(load_data=AsyncMock(), accept_pending_clear_receipt=AsyncMock())
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(run_clear_acceptance_job(engine=engine, acorn=stale,
+            npub="npub1wallet", event_id=event_id, owner_token=old_token))
+    stale.load_data.assert_not_awaited()
+    stale.accept_pending_clear_receipt.assert_not_awaited()
+    acorn.accept_pending_clear_receipt = AsyncMock(return_value={
+        "status": "OK", "already_accepted": True, "amount": 25,
+        "mint": "https://clear.example", "unit": "cmu-example"})
+    asyncio.run(run_clear_acceptance_job(engine=engine, acorn=acorn,
+        npub="npub1wallet", event_id=event_id, owner_token=new_token))
+    job = get_clear_acceptance_job(engine, "npub1wallet")
+    assert job["status"] == "COMPLETE" and job["amount"] == 25
+    acorn.accept_pending_clear_receipt.assert_awaited_once_with(event_id)
+    acorn.sweep_clear_transfers.assert_not_awaited()
+    engine.dispose()
 
 
 def test_background_clear_acceptance_discovers_previewed_receipt(tmp_path) -> None:

@@ -1,5 +1,10 @@
 # Lightning Payments to Acorn Handles
 
+The architectural model is an [asynchronous receipt path](ASYNCHRONOUS-RECEIPT-ARCHITECTURE.md):
+the npub identifies the recipient Acorn, while the Lightning address is a
+provider-operated path to it. That note explains stage evidence and the division
+between Web coordination and kernel wallet operations.
+
 Safebox Web now has an initial LNURL-pay path that lets a conventional
 Lightning wallet request an invoice for a claimed Safebox handle. The
 standalone service Acorn accepts the mint deposit and then delivers the value

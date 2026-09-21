@@ -9,6 +9,8 @@ import secrets
 from time import monotonic
 from typing import Any, Callable
 
+import httpx
+
 from sqlalchemy import and_, exists, or_, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +23,45 @@ from app.worker_liveness import WORKER_STALE_SECONDS, worker_is_live
 logger = logging.getLogger("safebox_web.clear_acceptance")
 JOB_LEASE_SECONDS = 15 * 60
 JOB_HEARTBEAT_SECONDS = 30
+
+
+def _safe_failure(exc: Exception) -> tuple[str, str]:
+    """Inspect wrapped transport errors without copying bearer material."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, httpx.HTTPStatusError):
+            response = current.response
+            detail = "redacted"
+            try:
+                payload = response.json()
+                message = str(payload.get("detail", "")).lower() if isinstance(payload, dict) else ""
+                for phrase in ("too many requests", "rate limit", "already spent", "not found", "service unavailable"):
+                    if phrase in message:
+                        detail = phrase
+                        break
+                if isinstance(payload, dict) and type(payload.get("code")) is int:
+                    detail += f"; code={payload['code']}"
+            except ValueError:
+                pass
+            # Host excludes URL credentials, path, query, and invoice identifiers.
+            host = response.request.url.host
+            diagnostic = f"HTTP {response.status_code}; host={host}; response={detail}"
+            return diagnostic, (
+                f"Clear acceptance could not be confirmed (HTTP {response.status_code}). "
+                "Keep the transfer; retry acceptance through Acorn to check recovery state."
+            )
+        if isinstance(current, (httpx.TransportError, TimeoutError)):
+            return type(current).__name__, (
+                "Clear acceptance could not be confirmed because a service was unreachable "
+                "or timed out. Keep the transfer; retry acceptance through Acorn to check recovery state."
+            )
+        current = current.__cause__ or current.__context__
+    return type(exc).__name__, (
+        "Clear acceptance could not be confirmed. Keep the transfer and review its "
+        "status before retrying through Acorn."
+    )
 
 
 def _job_values(job: ClearAcceptanceJob | None) -> dict[str, Any] | None:
@@ -205,13 +246,16 @@ async def run_clear_acceptance_job(
                 job_task.cancel()
 
     heartbeat.add_done_callback(stop_job_if_lease_fails)
+    phase = "STARTING"
+
+    def enter_phase(value: str) -> None:
+        nonlocal phase
+        if not update_clear_acceptance_job(engine, npub, owner_token, phase=value):
+            raise asyncio.CancelledError("Clear acceptance lease was lost")
+        phase = value
+
     try:
-        update_clear_acceptance_job(
-            engine,
-            npub,
-            owner_token,
-            phase="LOADING",
-        )
+        enter_phase("LOADING")
         phase_started = monotonic()
         await asyncio.wait_for(
             acorn.load_data(),
@@ -224,24 +268,14 @@ async def run_clear_acceptance_job(
             event_id,
             int((monotonic() - phase_started) * 1000),
         )
-        update_clear_acceptance_job(
-            engine,
-            npub,
-            owner_token,
-            phase="ACCEPTING",
-        )
+        enter_phase("ACCEPTING")
         phase_started = monotonic()
         try:
             result = await acorn.accept_pending_clear_receipt(event_id)
         except ValueError as exc:
-            if "not found" not in str(exc).lower():
+            if str(exc) != "Pending Clear receipt was not found":
                 raise
-            update_clear_acceptance_job(
-                engine,
-                npub,
-                owner_token,
-                phase="DISCOVERING",
-            )
+            enter_phase("DISCOVERING")
             await acorn.sweep_clear_transfers(
                 event_id=event_id,
                 advance_cursor=False,
@@ -253,12 +287,7 @@ async def run_clear_acceptance_job(
                 event_id,
                 int((monotonic() - phase_started) * 1000),
             )
-            update_clear_acceptance_job(
-                engine,
-                npub,
-                owner_token,
-                phase="ACCEPTING",
-            )
+            enter_phase("ACCEPTING")
             phase_started = monotonic()
             result = await acorn.accept_pending_clear_receipt(event_id)
 
@@ -300,10 +329,13 @@ async def run_clear_acceptance_job(
         )
         raise
     except Exception as exc:
-        logger.exception(
-            "background Clear acceptance failed npub=%s event_id=%s",
+        diagnostic, message = _safe_failure(exc)
+        logger.warning(
+            "background Clear acceptance failed npub=%s event_id=%s phase=%s error=%s",
             npub,
             event_id,
+            phase,
+            diagnostic,
         )
         update_clear_acceptance_job(
             engine,
@@ -311,7 +343,7 @@ async def run_clear_acceptance_job(
             owner_token,
             status="FAILED",
             phase="REVIEW",
-            error=f"{type(exc).__name__}: {exc}",
+            error=message,
         )
     finally:
         heartbeat.cancel()
@@ -342,10 +374,12 @@ def run_clear_acceptance_job_in_thread(
             )
         )
     except Exception as exc:
-        logger.exception(
-            "background Clear acceptance thread failed npub=%s event_id=%s",
+        diagnostic, message = _safe_failure(exc)
+        logger.warning(
+            "background Clear acceptance thread failed npub=%s event_id=%s phase=STARTING error=%s",
             npub,
             event_id,
+            diagnostic,
         )
         update_clear_acceptance_job(
             engine,
@@ -353,5 +387,5 @@ def run_clear_acceptance_job_in_thread(
             owner_token,
             status="FAILED",
             phase="REVIEW",
-            error=f"{type(exc).__name__}: {exc}",
+            error=message,
         )

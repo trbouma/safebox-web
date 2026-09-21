@@ -53,7 +53,11 @@ those operations rather than duplicating them.
 The provider's singleton service Acorn is a separate authority. It can receive
 Lightning settlement and deliver a private transfer to a registered recipient,
 but it does not receive the recipient key and cannot finalize the recipient's
-wallet. That final step belongs to the authenticated recipient session.
+wallet. That final step belongs to an authorized recipient Acorn, through a
+connected web session or another compatible client. This is an
+[asynchronous receipt capability](asynchronous-receipt.md): the npub identifies
+the Acorn and the Lightning address provides a service path to it. Gateway,
+mint, and relay trust obligations remain.
 
 ## What stays replaceable
 

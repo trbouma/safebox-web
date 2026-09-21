@@ -59,6 +59,11 @@ disbursement.
 
 ## Component roles
 
+The [asynchronous receipt path](asynchronous-receipt.md) illustrates the boundary:
+Safebox Web owns service scheduling, routing, and status presentation;
+safebox-acorn owns keys, proofs, encrypted transfers, and wallet recovery.
+The provider's service Acorn and the recipient's Acorn remain separate authorities.
+
 <div class="safebox-grid safebox-grid--two" markdown>
 
 <article class="safebox-card" markdown>
