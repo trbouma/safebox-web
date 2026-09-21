@@ -5739,6 +5739,28 @@ def test_clear_history_uses_friendly_alias_when_history_lacks_keyset_id(
     assert "+25 Clear Lab Credits" in response.text
     assert "<dt>Unit label</dt><dd>credits</dd>" in response.text
     assert "history without keyset" in response.text
+    assert '<a href="https://clear.safebox.dev/cmus/keyset-new">Clear Lab Credits</a>' in response.text
+    history_section = response.text.split('id="clear-history-heading"', 1)[1]
+    assert "<dt>CMU</dt>" not in history_section
+    assert "<dt>Mint</dt>" not in history_section
+    assert "Keyset:" not in history_section
+
+
+@pytest.mark.parametrize(
+    ("mint", "keyset_id", "expected"),
+    [
+        ("https://mint.example/", "abc", "https://mint.example/cmus/abc"),
+        ("https://mint.example/clear", "a/b", "https://mint.example/clear/cmus/a%2Fb"),
+        ("https://mint.example", "", None),
+        ("javascript:alert(1)", "abc", None),
+        ("https://user:secret@mint.example", "abc", None),
+        ("https://mint.example?query=1", "abc", None),
+        ("https://mint.example#fragment", "abc", None),
+        ("https://[invalid", "abc", None),
+    ],
+)
+def test_clear_cmu_home_url(mint, keyset_id, expected) -> None:
+    assert main_module._clear_cmu_home_url(mint, keyset_id) == expected
 
 
 def test_clear_display_falls_back_to_canonical_unit_without_friendly_metadata(

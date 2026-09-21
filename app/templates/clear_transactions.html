@@ -9,8 +9,10 @@
   <dl class="transaction-details clear-transaction-details">
     <div><dt>Status</dt><dd>{{ entry.status_label }}</dd></div>
     <div><dt>Unit label</dt><dd>{{ entry.display_unit }}</dd></div>
+    {% if pending %}
     <div><dt>CMU</dt><dd>{{ entry.unit }}</dd></div>
     <div><dt>Mint</dt><dd>{{ entry.mint }}</dd></div>
+    {% endif %}
   </dl>
   {% if entry.comment %}<p class="transaction-note"><strong>Memo:</strong> {{ entry.comment }}</p>{% endif %}
   {% if entry.sender_short or entry.event_short %}
@@ -20,7 +22,7 @@
     {% if entry.event_short %}Event {{ entry.event_short }}{% endif %}
   </p>
   {% endif %}
-  {% if entry.keyset_ids %}<p class="clear-keysets"><strong>Keyset:</strong> {{ entry.keyset_ids | join(", ") }}</p>{% endif %}
+  {% if pending and entry.keyset_ids %}<p class="clear-keysets"><strong>Keyset:</strong> {{ entry.keyset_ids | join(", ") }}</p>{% endif %}
   {% if pending and entry.event_id %}
   {% if acceptance_job and acceptance_job.status == "RUNNING" %}
   <p role="status"><strong>Clear acceptance is already in progress.</strong>
@@ -112,7 +114,7 @@
   {% if clear_summary.balance_count %}
   {% for balance in clear_summary.balances %}
   <article class="clear-balance-item">
-    <h3>{{ balance.display_name }}</h3>
+    <h3>{% if balance.cmu_home_url %}<a href="{{ balance.cmu_home_url }}">{{ balance.display_name }}</a>{% else %}{{ balance.display_name }}{% endif %}</h3>
     <p class="clear-balance-amount">{{ "{:,}".format(balance.amount) }} <span>{{ balance.display_unit }}</span></p>
     <p>Confirmed balance{% if balance.pending_amount %}; {{ "{:,}".format(balance.pending_amount) }} pending in {{ "{:,}".format(balance.count) }} transfer{% if balance.count != 1 %}s{% endif %}{% endif %}.</p>
     {% if balance.availability == "across-networks" %}

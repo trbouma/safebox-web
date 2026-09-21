@@ -1508,6 +1508,25 @@ def _pending_clear_summary(receipts: list[dict]) -> dict:
     return _clear_balance_summary(receipts)
 
 
+def _clear_cmu_home_url(mint: str, keyset_id: str) -> str | None:
+    """Build a public CMU link only when its exact keyset is known."""
+    try:
+        parsed = urlsplit(mint)
+    except ValueError:
+        return None
+    if (
+        parsed.scheme not in ("http", "https")
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or not keyset_id
+    ):
+        return None
+    return f"{mint.rstrip('/')}/cmus/{quote(keyset_id, safe='')}"
+
+
 def _clear_transaction_view(
     receipts: list[dict],
     summary: dict,
@@ -1938,6 +1957,10 @@ async def _resolve_clear_aliases(
                 "display_name": metadata["display_name"],
                 "display_unit": metadata["display_unit"],
                 "metadata_resolved": True,
+                "cmu_home_url": _clear_cmu_home_url(
+                    str(balance["mint"]),
+                    str(metadata.get("keyset_id") or balance.get("keyset_id") or ""),
+                ),
             })
     return summary
 
@@ -7656,6 +7679,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             clear_summary = _clear_balance_summary(
                 pending_receipts,
                 spendable_balances,
+            )
+
+        for balance in clear_summary.get("balances", []):
+            balance.setdefault(
+                "cmu_home_url",
+                _clear_cmu_home_url(
+                    str(balance["mint"]), str(balance.get("keyset_id") or "")
+                ),
             )
 
         entries = _clear_transaction_view(
