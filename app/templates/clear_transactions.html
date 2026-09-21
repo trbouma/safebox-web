@@ -115,6 +115,7 @@
   {% for balance in clear_summary.balances %}
   <article class="clear-balance-item">
     <h3>{% if balance.cmu_home_url %}<a href="{{ balance.cmu_home_url }}">{{ balance.display_name }}</a>{% else %}{{ balance.display_name }}{% endif %}</h3>
+    {% if balance.cmu_home_url and balance.availability != "across-networks" %}<p>Internal mint — this link may not be reachable from your browser.</p>{% endif %}
     <p class="clear-balance-amount">{{ "{:,}".format(balance.amount) }} <span>{{ balance.display_unit }}</span></p>
     <p>Confirmed balance{% if balance.pending_amount %}; {{ "{:,}".format(balance.pending_amount) }} pending in {{ "{:,}".format(balance.count) }} transfer{% if balance.count != 1 %}s{% endif %}{% endif %}.</p>
     {% if balance.availability == "across-networks" %}

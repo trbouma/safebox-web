@@ -1509,9 +1509,7 @@ def _pending_clear_summary(receipts: list[dict]) -> dict:
 
 
 def _clear_cmu_home_url(mint: str, keyset_id: str) -> str | None:
-    """Link known CMUs only on mints with an across-network route."""
-    if _clear_availability(mint) != "across-networks":
-        return None
+    """Build a safe CMU link; internal routes are labeled by the view."""
     try:
         parsed = urlsplit(mint)
     except ValueError:
@@ -1953,6 +1951,9 @@ async def _resolve_clear_aliases(
             cache[(mint, unit, "")] = (refreshed_at, selected)
 
     for balance in balances:
+        balance["cmu_home_url"] = _clear_cmu_home_url(
+            str(balance["mint"]), str(balance.get("keyset_id") or "")
+        )
         metadata = cached_metadata(balance)
         if metadata is not None:
             balance.update({

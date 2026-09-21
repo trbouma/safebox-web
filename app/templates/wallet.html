@@ -69,8 +69,8 @@
   <p class="wallet-balance-state">{{ _("Previously confirmed balance. Click to receive and accept pending transactions.") }}</p>
   {% endif %}
 </a>
-<a class="wallet-balance clear-balance" href="/clear" aria-labelledby="clear-balance-heading">
-  <h2 id="clear-balance-heading">{{ _("Clear Balances") }}</h2>
+<section class="wallet-balance clear-balance" aria-labelledby="clear-balance-heading">
+  <h2 id="clear-balance-heading"><a href="/clear">{{ _("Clear Balances") }}</a></h2>
   {% if clear_summary.balance_count %}
   {% for balance in clear_summary.balances %}
   {% set balance_name = balance.display_name if balance.display_name != balance.unit else _("Clear balance") %}
@@ -82,13 +82,13 @@
   {% else %}
     {% set availability = _("Within this instance") %}
   {% endif %}
-  <p class="wallet-clear-balance"><strong>{{ balance_name }}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance_unit }}. <span><b>{{ _("Availability") }}:</b> {{ availability }}{% if balance.availability == "instance" and mainstay_instance_name %} ({{ mainstay_instance_name }}){% endif %}</span></p>
+  <p class="wallet-clear-balance"><strong>{% if balance.cmu_home_url %}<a href="{{ balance.cmu_home_url }}">{{ balance_name }}</a>{% else %}{{ balance_name }}{% endif %}</strong>: {{ "{:,}".format(balance.amount) }} {{ balance_unit }}. <span><b>{{ _("Availability") }}:</b> {{ availability }}{% if balance.availability == "instance" and mainstay_instance_name %} ({{ mainstay_instance_name }}){% endif %}</span>{% if balance.cmu_home_url and balance.availability != "across-networks" %}<span>{{ _("Internal mint — this link may not be reachable from your browser.") }}</span>{% endif %}</p>
   {% endfor %}
   {% else %}
   <p class="wallet-balance-state">{{ _("No Clear balances yet.") }}</p>
   {% endif %}
-  <p class="wallet-balance-state">{{ _("Previously confirmed balance. Click to receive and accept pending transactions.") }}</p>
-</a>
+  <p class="wallet-balance-state"><a href="/clear">{{ _("Previously confirmed balance. Click to receive and accept pending transactions.") }}</a></p>
+</section>
 <nav class="wallet-actions" aria-label="Safebox resources">
   <a href="/balances">{{ _("Manage Balances") }}</a>
   <a href="/records">{{ _("Manage Records") }}</a>

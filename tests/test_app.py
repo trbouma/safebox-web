@@ -2356,7 +2356,7 @@ def test_wallet_navigation_links_are_presented_as_action_buttons(tmp_path) -> No
     assert 'href="/record-protection/enable"' in response.text
     assert "Protected Records" in response.text
     assert '<a class="wallet-balance" href="/transactions"' in response.text
-    assert '<a class="wallet-balance clear-balance" href="/clear"' in response.text
+    assert '<section class="wallet-balance clear-balance"' in response.text
     assert "<span>₿</span>321" in response.text
     assert "verification, transaction history, and pending transfers" in response.text
     assert "View transaction history" not in response.text
@@ -3857,10 +3857,45 @@ def test_wallet_clear_snapshot_uses_friendly_cached_mint_metadata(tmp_path) -> N
     assert "Community Credits</strong>: 150 credits." in response.text
     assert "<b>Availability:</b> Across networks" in response.text
     clear_balance = response.text.split(
-        '<a class="wallet-balance clear-balance"', 1
-    )[1].split("</a>", 1)[0]
+        '<section class="wallet-balance clear-balance"', 1
+    )[1].split("</section>", 1)[0]
     assert "cmu-friendly" not in clear_balance
     assert "https://clear.example" not in clear_balance
+
+
+@pytest.mark.parametrize("path", ["/wallet", "/clear"])
+@pytest.mark.parametrize("mint,internal", [
+    ("https://mint.example", False),
+    ("http://clear:3339", True),
+    ("http://192.168.1.20:3339", True),
+])
+def test_clear_balance_cmu_links_label_internal_mints(tmp_path, path, mint, internal) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn()
+    acorn.clear_balances = [{
+        "mint": mint,
+        "unit": "cmu-test",
+        "amount": 75,
+        "proof_count": 2,
+    }]
+    app.state.clear_mint_metadata_cache[(mint, "cmu-test", "")] = (
+        time.monotonic(),
+        {
+            "display_name": "Community Credits",
+            "display_unit": "credits",
+            "keyset_id": "keyset-test",
+            "metadata_resolved": True,
+        },
+    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get(path)
+    assert response.status_code == 200
+    assert f'<a href="{mint}/cmus/keyset-test">Community Credits</a>' in response.text
+    assert ("Internal mint — this link may not be reachable from your browser." in response.text) == internal
+    if path == "/wallet":
+        assert '<a href="/clear">Clear Balances</a>' in response.text
 
 
 def test_wallet_marks_clear_balance_available_within_named_instance(tmp_path) -> None:
@@ -3899,8 +3934,8 @@ def test_wallet_marks_clear_balance_available_within_named_instance(tmp_path) ->
     assert "Local Service Credits</strong>: 75 credits." in response.text
     assert "<b>Availability:</b> Within this instance (Cedar Resort)" in response.text
     clear_balance = response.text.split(
-        '<a class="wallet-balance clear-balance"', 1
-    )[1].split("</a>", 1)[0]
+        '<section class="wallet-balance clear-balance"', 1
+    )[1].split("</section>", 1)[0]
     assert "cmu-local" not in clear_balance
     assert "http://clear:3339" not in clear_balance
 
@@ -5757,17 +5792,8 @@ def test_clear_history_uses_friendly_alias_when_history_lacks_keyset_id(
         ("https://mint.example?query=1", "abc", None),
         ("https://mint.example#fragment", "abc", None),
         ("https://[invalid", "abc", None),
-        ("http://clear:3339", "abc", None),
-        ("https://localhost:3339", "abc", None),
-        ("http://127.0.0.1:3339", "abc", None),
-        ("http://192.168.1.20:3339", "abc", None),
-        ("http://10.0.0.2:3339", "abc", None),
-        ("https://[::1]:3339", "abc", None),
-        ("https://[fd00::1]:3339", "abc", None),
-        ("https://clear.community.local", "abc", None),
-        ("https://clear.lan", "abc", None),
-        ("https://clear.internal", "abc", None),
-        ("https://clear.home.arpa", "abc", None),
+        ("http://clear:3339", "abc", "http://clear:3339/cmus/abc"),
+        ("https://clear.internal", "abc", "https://clear.internal/cmus/abc"),
     ],
 )
 def test_clear_cmu_home_url(mint, keyset_id, expected) -> None:
