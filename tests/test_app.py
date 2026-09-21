@@ -4969,6 +4969,7 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
 
     assert response.status_code == 200
     assert '<h1 class="transaction-headline">Clear Transactions</h1>' in response.text
+    assert '<a class="nav-button" href="/clear/accept-token">Direct Cash/Clear Transfers</a>' in response.text
     assert 'action="/clear/receive"' in response.text
     assert "Check for Clear Transfers" in response.text
     assert '<h2 id="clear-receive-heading">Incoming Clear Transfers</h2>' in response.text
