@@ -85,6 +85,11 @@ def _payment_issues(
 ) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     age_seconds = _payment_age_seconds(payment)
+    if (payment.error or "").startswith("Settlement discovery deferred:"):
+        issues.append(_issue(
+            "WARNING", "SETTLEMENT_DISCOVERY_DEFERRED",
+            payment.error + ". Next check: " + str(_iso(payment.next_check_at)),
+        ))
 
     if registration is not None:
         if payment.recipient_npub != registration.npub:
@@ -330,6 +335,7 @@ def format_diagnostic_report(report: dict[str, Any]) -> str:
     lines.extend(["", "Worker"])
     worker = report["worker"]
     lines.append(f"  Status: {worker['status']}")
+    lines.append("  Heartbeat reports worker liveness; settlement progress is checked below.")
     if "heartbeat_age_seconds" in worker:
         lines.append(f"  Heartbeat age: {worker['heartbeat_age_seconds']} seconds")
     if worker.get("error"):

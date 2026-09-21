@@ -8,6 +8,9 @@ import hashlib
 import hmac
 import json
 import logging
+import math
+import random
+from email.utils import parsedate_to_datetime
 from time import time
 from types import SimpleNamespace
 import uuid
@@ -44,6 +47,60 @@ PROVIDER_RECIPIENT_QUEUE_STATUSES = (
 PROVIDER_SETTLEMENT_RECHECK_SECONDS = 5.0
 PROVIDER_STALE_SETTLEMENT_RECHECK_SECONDS = 60.0
 LEGACY_SETTLEMENT_TIMEOUT_ERROR = "Invoice settlement timed out"
+
+
+class _DiscoveryDeferred(Exception):
+    """No request was made because this mint is cooling down."""
+
+
+def _discovery_state(acorn):
+    if not hasattr(acorn, "_provider_discovery_state"):
+        acorn._provider_discovery_state = {}
+    return acorn._provider_discovery_state
+
+
+def _retry_after_seconds(response):
+    value = response.headers.get("retry-after", "")
+    try:
+        seconds = float(value)
+        return max(0.0, seconds) if math.isfinite(seconds) else 0.0
+    except ValueError:
+        try:
+            return max(0.0, parsedate_to_datetime(value).timestamp() - time())
+        except (ValueError, TypeError, OverflowError):
+            return 0.0
+
+
+def _discovery_error_summary(exc):
+    # Never log arbitrary mint text: it can echo invoices or bearer material.
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        detail = "redacted"
+        try:
+            body = response.json()
+            text = str(body.get("detail", "")).lower() if isinstance(body, dict) else ""
+            for phrase in ("rate limit", "too many requests", "quote not found", "service unavailable"):
+                if phrase in text:
+                    detail = phrase
+                    break
+            code = body.get("code") if isinstance(body, dict) else None
+            if type(code) is int:
+                detail += f"; code={code}"
+        except ValueError:
+            pass
+        return f"HTTP {response.status_code}; response={detail}"
+    return type(exc).__name__
+
+
+def _unpaid_recheck_seconds(invoice):
+    age = max(0, (utc_now() - invoice.created_at).total_seconds())
+    if age < 300:
+        return 5.0
+    if age < 3600:
+        return 30.0
+    if age < 86400:
+        return 300.0
+    return 1800.0
 
 
 def _is_quote_not_found_error(exc: Exception) -> bool:
@@ -553,19 +610,40 @@ async def _discover_provider_settlements(acorn, invoices):
     """Read mint quote states concurrently without mutating wallet proofs."""
 
     semaphore = asyncio.Semaphore(PROVIDER_SETTLEMENT_DISCOVERY_CONCURRENCY)
+    states = _discovery_state(acorn)
+    locks = {invoice.mint: asyncio.Lock() for invoice in invoices}
 
     async def discover(invoice):
         if not invoice.mint_quote:
             return invoice, RuntimeError("Mint quote is missing")
-        try:
-            async with semaphore:
-                quote = await acorn.get_quote_state(
-                    quote=invoice.mint_quote,
-                    mint=invoice.mint,
+        # Serialize reads per mint, while allowing independent mints to progress.
+        async with locks[invoice.mint]:
+            state = states.setdefault(invoice.mint, {"until": 0, "failures": 0})
+            if state["until"] > time():
+                return invoice, _DiscoveryDeferred()
+            try:
+                async with semaphore:
+                    quote = await asyncio.wait_for(acorn.get_quote_state(
+                        quote=invoice.mint_quote, mint=invoice.mint,
+                    ), timeout=15)
+                state["failures"] = 0
+                return invoice, quote
+            except Exception as exc:
+                transient = isinstance(exc, (httpx.TransportError, TimeoutError)) or (
+                    isinstance(exc, httpx.HTTPStatusError)
+                    and (exc.response.status_code == 429 or exc.response.status_code >= 500)
                 )
-            return invoice, quote
-        except Exception as exc:
-            return invoice, exc
+                if not transient:
+                    return invoice, exc
+                state["failures"] += 1
+                delay = min(300.0, 5.0 * 2 ** min(state["failures"] - 1, 6))
+                delay = min(300.0, delay * random.uniform(1.0, 1.2))
+                if isinstance(exc, httpx.HTTPStatusError):
+                    delay = max(delay, _retry_after_seconds(exc.response))
+                    if exc.response.status_code == 429:
+                        delay = max(60.0, delay)
+                state["until"] = time() + delay
+                return invoice, exc
 
     return await asyncio.gather(*(discover(invoice) for invoice in invoices))
 
@@ -641,22 +719,40 @@ async def process_provider_payments_once(
         discoveries = await _discover_provider_settlements(acorn, due_invoices)
         for discovered_invoice, result in discoveries:
             if isinstance(result, Exception):
-                terminal_error = (
-                    "Mint quote not found"
-                    if _is_quote_not_found_error(result)
-                    else None
+                state = _discovery_state(acorn).get(discovered_invoice.mint, {})
+                delay = state.get("until", 0) - time()
+                if delay <= 0:
+                    delay = 300.0
+                summary = (
+                    "Mint cooldown" if isinstance(result, _DiscoveryDeferred)
+                    else _discovery_error_summary(result)
                 )
-                logger.warning(
-                    "provider settlement discovery failed payment_id=%s error=%s",
-                    discovered_invoice.payment_id,
-                    type(result).__name__,
+                if not isinstance(result, _DiscoveryDeferred):
+                    logger.warning(
+                        "provider settlement discovery failed payment_id=%s mint=%s "
+                        "error=%s retry_seconds=%.1f",
+                        discovered_invoice.payment_id, discovered_invoice.mint,
+                        summary, delay,
+                    )
+                if not isinstance(result, httpx.HTTPStatusError) and _is_quote_not_found_error(result):
+                    transition_provider_payment(
+                        engine, discovered_invoice.payment_id,
+                        expected_status=discovered_invoice.status,
+                        status="FAILED", error="Mint quote not found",
+                        attempts=discovered_invoice.attempts + 1, next_check_at=None,
+                    )
+                    continue
+                transition_provider_payment(
+                    engine, discovered_invoice.payment_id,
+                    expected_status=discovered_invoice.status,
+                    attempts=discovered_invoice.attempts + int(not isinstance(result, _DiscoveryDeferred)),
+                    error=f"Settlement discovery deferred: {summary}",
+                    next_check_at=utc_now() + timedelta(seconds=delay),
                 )
-                paid = False
-            else:
-                terminal_error = None
-                paid = bool(getattr(result, "paid", False)) or str(
-                    getattr(result, "state", "")
-                ).upper() == "PAID"
+                continue
+            paid = bool(getattr(result, "paid", False)) or str(
+                getattr(result, "state", "")
+            ).upper() == "PAID"
             if paid:
                 transition_provider_payment(
                     engine,
@@ -671,52 +767,34 @@ async def process_provider_payments_once(
 
             attempts = discovered_invoice.attempts + 1
             settlement_stale = (
-                terminal_error is None
-                and (
-                    discovered_invoice.status == "SETTLEMENT_UNCONFIRMED"
-                    or attempts >= MAX_PROVIDER_SETTLEMENT_ATTEMPTS
-                )
+                discovered_invoice.status == "SETTLEMENT_UNCONFIRMED"
+                or attempts >= MAX_PROVIDER_SETTLEMENT_ATTEMPTS
             )
             transition_provider_payment(
                 engine,
                 discovered_invoice.payment_id,
                 expected_status=discovered_invoice.status,
                 status=(
-                    "FAILED"
-                    if terminal_error
-                    else "SETTLEMENT_UNCONFIRMED"
+                    "SETTLEMENT_UNCONFIRMED"
                     if settlement_stale
                     else "INVOICE_PENDING"
                 ),
                 attempts=attempts,
                 error=(
-                    terminal_error
-                    or (
-                        "Settlement remains unconfirmed; continuing periodic mint checks"
-                        if settlement_stale
-                        else None
-                    )
+                    "Settlement remains unconfirmed; continuing periodic mint checks"
+                    if settlement_stale
+                    else None
                 ),
                 next_check_at=(
-                    None
-                    if terminal_error
-                    else utc_now()
+                    utc_now()
                     + timedelta(
                         seconds=(
-                            PROVIDER_STALE_SETTLEMENT_RECHECK_SECONDS
-                            if settlement_stale
-                            else PROVIDER_SETTLEMENT_RECHECK_SECONDS
+                            _unpaid_recheck_seconds(discovered_invoice)
                         )
                     )
                 ),
             )
-            if terminal_error:
-                logger.warning(
-                    "provider invoice failed payment_id=%s reason=%s",
-                    discovered_invoice.payment_id,
-                    terminal_error,
-                )
-            elif (
+            if (
                 settlement_stale
                 and discovered_invoice.status != "SETTLEMENT_UNCONFIRMED"
             ):
@@ -727,6 +805,21 @@ async def process_provider_payments_once(
                     attempts,
                 )
         changed = True
+
+        # Persist cooldown deadlines for the whole mint queue, including rows
+        # outside this batch. A restart must not immediately hammer old quotes.
+        for mint, state in _discovery_state(acorn).items():
+            remaining = state["until"] - time()
+            if remaining <= 0:
+                continue
+            deadline = utc_now() + timedelta(seconds=remaining)
+            with Session(engine) as session:
+                session.execute(update(ProviderPayment).where(
+                    ProviderPayment.mint == mint,
+                    ProviderPayment.status.in_(("INVOICE_PENDING", "SETTLEMENT_UNCONFIRMED")),
+                    or_(ProviderPayment.next_check_at.is_(None), ProviderPayment.next_check_at < deadline),
+                ).values(next_check_at=deadline))
+                session.commit()
 
     # Quote discovery above is read-only and safely concurrent. Proof minting
     # remains serialized through the single service Acorn owner.

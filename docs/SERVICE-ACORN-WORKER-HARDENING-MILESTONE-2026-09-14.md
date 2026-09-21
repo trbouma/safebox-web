@@ -1,5 +1,8 @@
 # Service Acorn Worker Hardening Milestone — 2026-09-14
 
+Follow-up: [HTTP settlement polling reliability](PROVIDER-SETTLEMENT-HTTP-RELIABILITY.md)
+documents error visibility, mint cooldowns, and progressive unpaid polling.
+
 ## Why this work was necessary
 
 Field testing exposed a class of failures that looked unrelated: settled
