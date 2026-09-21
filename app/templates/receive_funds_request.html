@@ -1,14 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
+<script src="/static/deposit-status.js" defer></script>
+<section data-deposit-panel data-status-url="/receive-funds/status/{{ quote_hash }}" aria-live="polite">
 {% if message %}<p class="error">{{ message }}</p>{% endif %}
 <p>Receive <strong>₿{{ state.amount | int }}</strong> through the Acorn home mint:</p>
 <p><code>{{ state.mint }}</code></p>
 <div class="invoice-qr">{{ invoice_svg | safe }}</div>
 <label for="invoice">Lightning invoice</label>
 <textarea id="invoice" readonly spellcheck="false">{{ state.invoice }}</textarea>
-<p>Safebox is monitoring this request in the background. You may leave this
+<p>Safebox is monitoring this request in the background for two minutes. You may leave this
 page and return later; the encrypted quote is retained by the Acorn on its home
 relay until finalization completes.</p>
+<div data-deposit-status></div>
 <form method="post" action="/receive-funds/check"
       data-progress-message="Checking and finalizing the received funds. Please wait and do not refresh this page."
       data-progress-button="Checking transfer…">
@@ -16,4 +19,5 @@ relay until finalization completes.</p>
   <input type="hidden" name="deposit_token" value="{{ state_token }}">
   <button type="submit">Refresh Transfer Status</button>
 </form>
+</section>
 {% endblock %}

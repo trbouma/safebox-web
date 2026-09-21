@@ -7743,7 +7743,8 @@ def test_legacy_deposit_routes_redirect_to_receive_funds(
     assert response.headers["location"] == canonical_path
 
 
-def test_receive_funds_persists_and_monitors_lightning_request(tmp_path) -> None:
+def test_receive_funds_persists_and_monitors_lightning_request(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(main_module, "DEPOSIT_MONITOR_SECONDS", 0.1)
     settings = replace(database_settings(tmp_path), payment_timeout_seconds=0.05)
     app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=500, deposit_paid=False)
@@ -7775,6 +7776,9 @@ def test_receive_funds_persists_and_monitors_lightning_request(tmp_path) -> None
     assert '<div class="invoice-qr"><svg' in response.text
     assert 'action="/receive-funds/check"' in response.text
     assert "monitoring this request in the background" in response.text
+    assert "for two minutes" in response.text
+    assert 'src="/static/deposit-status.js"' in response.text
+    assert f'data-status-url="/receive-funds/status/{deposit_quote_hash("pytest-deposit-quote")}"' in response.text
     assert "encrypted quote is retained" in response.text
     assert "Refresh Transfer Status" in response.text
     assert acorn.deposit_calls == [21]
@@ -7843,6 +7847,7 @@ def test_paid_deposit_is_finalized_and_redirects_to_updated_wallet(tmp_path) -> 
     app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=500, deposit_paid=True)
     app.dependency_overrides[get_deposit_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
     state = DepositQuoteState(
         quote="pytest-deposit-quote",
         amount=21,
@@ -7885,6 +7890,14 @@ def test_paid_deposit_is_finalized_and_redirects_to_updated_wallet(tmp_path) -> 
             follow_redirects=False,
         )
 
+        status_response = client.get(
+            f"/receive-funds/status/{deposit_quote_hash(state.quote)}"
+        )
+
+    assert status_response.status_code == 200
+    assert "data-deposit-complete" in status_response.text
+    assert "Payment received" in status_response.text
+    assert "lnbc21n1pytestinvoice" not in status_response.text
     assert first.status_code == 200
     assert job is not None and job["status"] == "COMPLETE"
     assert response.status_code == 303
@@ -7897,7 +7910,8 @@ def test_paid_deposit_is_finalized_and_redirects_to_updated_wallet(tmp_path) -> 
     assert acorn.pending_deposits == []
 
 
-def test_unpaid_deposit_keeps_same_invoice_available_for_recheck(tmp_path) -> None:
+def test_unpaid_deposit_keeps_same_invoice_available_for_recheck(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(main_module, "DEPOSIT_MONITOR_SECONDS", 0.1)
     settings = replace(database_settings(tmp_path), payment_timeout_seconds=0.05)
     app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=500, deposit_paid=False)
@@ -7941,6 +7955,44 @@ def test_unpaid_deposit_keeps_same_invoice_available_for_recheck(tmp_path) -> No
     assert job is not None and job["status"] == "PENDING"
     assert len(acorn.pending_deposits) == 1
     assert acorn.history_entries == []
+
+
+@pytest.mark.parametrize("status", ["RUNNING", "COMPLETE", "PENDING", "FAILED", "INTERRUPTED"])
+def test_invoice_status_fragment_is_scoped_and_server_rendered(tmp_path, monkeypatch, status) -> None:
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn()
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    quote_hash = "a" * 64
+    calls = []
+    def read_job(engine, npub, **kwargs):
+        calls.append((npub, kwargs["quote_hash"]))
+        return {"status": status, "amount": 21}
+    monkeypatch.setattr(main_module, "get_deposit_finalization_job", read_job)
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get(f"/receive-funds/status/{quote_hash}")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert calls == [(acorn.pubkey_bech32, quote_hash)]
+    assert ("data-deposit-complete" in response.text) == (status == "COMPLETE")
+    assert ("data-deposit-poll" in response.text) == (status == "RUNNING")
+    if status == "COMPLETE":
+        assert "✓" in response.text
+        assert "₿21 has been finalized" in response.text
+    assert acorn.quote_checks == []
+
+
+def test_invoice_status_does_not_expose_unknown_quotes(tmp_path, monkeypatch) -> None:
+    app = create_app(database_settings(tmp_path))
+    app.dependency_overrides[get_acorn] = lambda: FakeLoadedAcorn()
+    monkeypatch.setattr(main_module, "get_deposit_finalization_job", lambda *args, **kwargs: None)
+    with TestClient(app, base_url="https://safebox.example") as client:
+        assert client.get("/receive-funds/status/invalid").status_code == 404
+        assert client.get("/receive-funds/status/" + "b" * 64).status_code == 404
+
+
+def test_invoice_monitor_window_is_two_minutes() -> None:
+    from app.deposit_finalization import MAX_MONITOR_SECONDS
+    assert main_module.DEPOSIT_MONITOR_SECONDS == MAX_MONITOR_SECONDS == 120
 
 
 def test_confirmed_lightning_payment_runs_as_background_job(tmp_path) -> None:

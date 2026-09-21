@@ -1,0 +1,12 @@
+{% if job.status == "COMPLETE" %}
+<section data-deposit-complete role="status" aria-label="Payment completed">
+  <p class="deposit-complete-mark" aria-hidden="true">✓</p>
+  <h2>Payment received</h2>
+  <p>₿{{ "{:,}".format(job.amount) }} has been finalized into your Cash Balance.</p>
+  <p><a class="nav-button" href="/transactions">View Cash Balance</a></p>
+</section>
+{% elif job.status == "RUNNING" %}
+<p data-deposit-poll role="status">Waiting for payment confirmation…</p>
+{% else %}
+<p role="status">{% if job.status == "PENDING" %}Payment has not been confirmed yet. Use Refresh Transfer Status to resume monitoring.{% else %}Monitoring stopped. Use Refresh Transfer Status to retry safely.{% endif %}</p>
+{% endif %}

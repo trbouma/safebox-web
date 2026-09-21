@@ -23,7 +23,7 @@ logger = logging.getLogger("safebox_web.deposit_finalization")
 JOB_LEASE_SECONDS = 15 * 60
 JOB_HEARTBEAT_SECONDS = 30
 POLL_SECONDS = 3
-MAX_MONITOR_SECONDS = 30
+MAX_MONITOR_SECONDS = 120
 
 
 def deposit_quote_hash(quote: str) -> str:

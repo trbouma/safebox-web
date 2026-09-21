@@ -112,6 +112,7 @@ from app.outgoing_payment import (
     run_outgoing_payment_job_in_thread,
 )
 from app.deposit_finalization import (
+    MAX_MONITOR_SECONDS as DEPOSIT_MONITOR_SECONDS,
     claim_deposit_finalization_job,
     deposit_quote_hash,
     get_deposit_finalization_job,
@@ -3590,6 +3591,7 @@ def _lightning_payment_request_page(
         csrf_token=csrf_token,
         message=message,
         invoice_svg=_invoice_svg(state.invoice),
+        quote_hash=deposit_quote_hash(state.quote),
     )
 
 
@@ -3772,7 +3774,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     quote=state.quote,
                     quote_hash=quote_digest,
                     owner_token=owner_token,
-                    wait_seconds=request.app.state.settings.payment_timeout_seconds,
+                    wait_seconds=DEPOSIT_MONITOR_SECONDS,
                     load_timeout_seconds=(
                         request.app.state.settings.wallet_load_timeout_seconds
                     ),
@@ -5956,6 +5958,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             state,
             state_token,
             form_token.issue(),
+        )
+
+    @app.get("/receive-funds/status/{quote_hash}", response_class=HTMLResponse)
+    async def deposit_status_fragment(
+        request: Request,
+        quote_hash: str,
+        acorn: AcornDependency,
+    ) -> HTMLResponse:
+        if re.fullmatch(r"[0-9a-f]{64}", quote_hash) is None:
+            raise HTTPException(status_code=404, detail="Transfer not found")
+        job = get_deposit_finalization_job(
+            request.app.state.database_engine,
+            acorn.pubkey_bech32,
+            quote_hash=quote_hash,
+        )
+        if job is None:
+            raise HTTPException(status_code=404, detail="Transfer not found")
+        return HTMLResponse(
+            render_template("partials/deposit_status.html", job=job),
+            headers={"Cache-Control": "no-store"},
         )
 
     @app.post("/receive-funds/check")
