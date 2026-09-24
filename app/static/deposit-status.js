@@ -6,7 +6,11 @@
   const panel = document.querySelector("[data-deposit-panel]");
   if (!panel) return;
   const status = panel.querySelector("[data-deposit-status]");
-  const deadline = Date.now() + 150000;
+  const requestedWindow = Number(panel.dataset.pollWindowMs);
+  const pollWindow = Number.isFinite(requestedWindow) && requestedWindow > 0
+    ? Math.min(requestedWindow, 330000)
+    : 150000;
+  const deadline = Date.now() + pollWindow;
   let stopped = false;
   window.addEventListener("pagehide", () => { stopped = true; });
   async function refresh() {

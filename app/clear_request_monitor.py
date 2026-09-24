@@ -23,7 +23,7 @@ from app.clear_acceptance import (
 from app.outgoing_payment import get_outgoing_payment_job
 
 logger = logging.getLogger(__name__)
-MONITOR_SECONDS = 120
+MONITOR_SECONDS = 300
 POLL_SECONDS = 3
 
 

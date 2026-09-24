@@ -7864,6 +7864,8 @@ def test_receive_funds_creates_nut18_clear_request(tmp_path, monkeypatch, has_pu
     assert "Clear Payment Request" in response.text
     assert "creqA" in response.text
     assert calls[0]["state"].request_id == "pytest-clear-request"
+    assert 'data-poll-window-ms="330000"' in response.text
+    assert "for five minutes" in response.text
     expected_relay = "ws://spurline:8080" if internal else "wss://inbox.example.com"
     assert calls[0]["state"].relays == (expected_relay,)
     assert 'data-status-url="/receive-funds/clear-status?' in response.text

@@ -69,9 +69,11 @@ def test_confirmation_requires_exact_accepted_receipt_and_history(accepted, amou
     assert asyncio.run(monitor.request_status(acorn, state()))["status"] == expected
 
 
-def test_expired_monitor_remains_pending():
+@pytest.mark.parametrize("elapsed,expected", [(121, "RUNNING"), (299, "RUNNING"), (301, "PENDING")])
+def test_five_minute_monitor_window(elapsed, expected):
     acorn = SimpleNamespace(get_clear_receipts=AsyncMock(return_value=[]))
-    assert asyncio.run(monitor.request_status(acorn, replace(state(), started_at=time() - 121)))["status"] == "PENDING"
+    assert monitor.MONITOR_SECONDS == 300
+    assert asyncio.run(monitor.request_status(acorn, replace(state(), started_at=time() - elapsed)))["status"] == expected
 
 
 @pytest.mark.parametrize("routes", [(), ("wss://inbox.example.com",)])
