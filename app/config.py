@@ -377,6 +377,8 @@ class Settings:
     clear_mints: tuple[str, ...] = ()
     clear_external_mints: tuple[str, ...] = ()
     clear_units: tuple[str, ...] = ()
+    clear_request_relay_policy: str = "public"
+    clear_request_internal_relay: str = ""
     nip05_external_relays: tuple[str, ...] = ()
     background_job_threads: int = 2
     service_nsec: str | None = None
@@ -506,6 +508,14 @@ class Settings:
             raise ValueError(
                 "SAFEBOX_BACKGROUND_JOB_THREADS must be between 1 and 16"
             )
+        if self.clear_request_relay_policy not in {"public", "mint-route"}:
+            raise ValueError("SAFEBOX_CLEAR_REQUEST_RELAY_POLICY must be public or mint-route")
+        if self.clear_request_relay_policy == "mint-route":
+            relay = urlsplit(self.clear_request_internal_relay)
+            if (relay.scheme not in {"ws", "wss"} or not relay.hostname
+                    or relay.username is not None or relay.password is not None
+                    or relay.fragment or (relay.port is not None and not 0 < relay.port < 65536)):
+                raise ValueError("SAFEBOX_CLEAR_REQUEST_INTERNAL_RELAY must be a valid ws:// or wss:// URL")
         for mint in self.clear_external_mints:
             try:
                 parsed_mint = urlsplit(str(mint).strip())
@@ -768,6 +778,8 @@ class Settings:
                 "SAFEBOX_CLEAR_EXTERNAL_MINTS"
             ),
             clear_units=_comma_list_from_env("SAFEBOX_CLEAR_UNITS"),
+            clear_request_relay_policy=os.getenv("SAFEBOX_CLEAR_REQUEST_RELAY_POLICY", "public").strip(),
+            clear_request_internal_relay=os.getenv("SAFEBOX_CLEAR_REQUEST_INTERNAL_RELAY", "").strip(),
             nip05_external_relays=_comma_list_from_env(
                 "SAFEBOX_NIP05_EXTERNAL_RELAYS"
             ),

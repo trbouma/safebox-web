@@ -241,7 +241,8 @@ def test_cancelled_acceptance_resumes_via_kernel_and_fences_old_owner(tmp_path):
     engine.dispose()
 
 
-def test_background_clear_acceptance_discovers_previewed_receipt(tmp_path) -> None:
+@pytest.mark.parametrize("relays", [None, ["ws://spurline:8080", "wss://inbox.example.com"]])
+def test_background_clear_acceptance_discovers_previewed_receipt(tmp_path, relays) -> None:
     engine = job_engine(tmp_path)
     event_id = "d" * 64
     acorn = type(
@@ -277,6 +278,7 @@ def test_background_clear_acceptance_discovers_previewed_receipt(tmp_path) -> No
                 npub="npub1wallet",
                 event_id=event_id,
                 owner_token=owner_token,
+                relays=relays,
             )
         )
         job = get_clear_acceptance_job(engine, "npub1wallet")
@@ -286,6 +288,7 @@ def test_background_clear_acceptance_discovers_previewed_receipt(tmp_path) -> No
     acorn.sweep_clear_transfers.assert_awaited_once_with(
         event_id=event_id,
         advance_cursor=False,
+        **({"relays": relays} if relays else {}),
     )
     acorn.load_data.assert_awaited_once_with()
     assert acorn.accept_pending_clear_receipt.await_count == 2

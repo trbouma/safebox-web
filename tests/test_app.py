@@ -675,6 +675,9 @@ class FakeLoadedAcorn:
             quote="pytest-deposit-quote",
         )
 
+    async def get_payment_request_relays(self) -> list[str]:
+        return ["wss://inbox.example.com"]
+
     def create_payment_request(self, amount: int, **kwargs) -> str:
         self.payment_request_calls.append({"amount": amount, **kwargs})
         return encode_payment_request(PaymentRequest(
@@ -7780,15 +7783,29 @@ def test_receive_funds_rejects_unavailable_payment_method() -> None:
     assert acorn.deposit_calls == []
 
 
-def test_receive_funds_creates_nut18_clear_request(tmp_path, monkeypatch) -> None:
-    settings = database_settings(tmp_path)
+@pytest.mark.parametrize("has_public_inbox", [True, False])
+@pytest.mark.parametrize("policy,mint,internal", [
+    ("public", "https://clear.example", False),
+    ("mint-route", "https://clear.example", False),
+    ("mint-route", "http://clear:3339", True),
+    ("mint-route", "https://clear.internal", True),
+    ("mint-route", "http://192.168.1.10:3339", True),
+])
+def test_receive_funds_creates_nut18_clear_request(tmp_path, monkeypatch, has_public_inbox, policy, mint, internal) -> None:
+    settings = replace(database_settings(tmp_path),
+        clear_request_relay_policy=policy,
+        clear_request_internal_relay="ws://spurline:8080")
     calls = []
     monkeypatch.setattr(main_module, "run_clear_request_monitor", lambda **kwargs: calls.append(kwargs))
     app = create_app(settings)
     acorn = FakeLoadedAcorn(balance=500)
+    if not has_public_inbox:
+        acorn.get_payment_request_relays = AsyncMock(side_effect=ValueError(
+            "No public inbox relay is configured for this wallet."
+        ))
     acorn.clear_balances = [
         {
-            "mint": "https://clear.example",
+            "mint": mint,
             "unit": "cmu-community",
             "amount": 150,
             "proof_count": 4,
@@ -7796,7 +7813,7 @@ def test_receive_funds_creates_nut18_clear_request(tmp_path, monkeypatch) -> Non
     ]
     app.dependency_overrides[get_deposit_acorn] = lambda: acorn
     asset_id = main_module._encode_clear_payment_asset(
-        "https://clear.example",
+        mint,
         "cmu-community",
     )
 
@@ -7811,14 +7828,22 @@ def test_receive_funds_creates_nut18_clear_request(tmp_path, monkeypatch) -> Non
             },
         )
 
+    if not has_public_inbox and not internal:
+        assert response.status_code == 400
+        assert "No public inbox relay" in response.text
+        assert acorn.payment_request_calls == []
+        assert calls == []
+        return
     assert response.status_code == 200
     assert "Clear Payment Request" in response.text
     assert "creqA" in response.text
     assert calls[0]["state"].request_id == "pytest-clear-request"
+    expected_relay = "ws://spurline:8080" if internal else "wss://inbox.example.com"
+    assert calls[0]["state"].relays == (expected_relay,)
     assert 'data-status-url="/receive-funds/clear-status?' in response.text
     assert 'action="/receive-funds/clear-check"' in response.text
     assert "25 cmu-community" in response.text
-    assert "https://clear.example" in response.text
+    assert mint in response.text
     assert "Room booking credit" in response.text
     assert "single-use NUT-18 request" in response.text
     assert acorn.payment_request_calls == [
@@ -7827,10 +7852,25 @@ def test_receive_funds_creates_nut18_clear_request(tmp_path, monkeypatch) -> Non
             "unit": "cmu-community",
             "single_use": True,
             "description": "Room booking credit",
-            "mint": "https://clear.example",
+            "mint": mint,
+            "relays": [expected_relay],
+            **({"allow_internal_relays": True} if internal else {}),
         }
     ]
     assert acorn.deposit_calls == []
+
+
+@pytest.mark.parametrize("policy,relay", [
+    ("automatic", "ws://spurline:8080"),
+    ("mint-route", ""),
+    ("mint-route", "https://spurline:8080"),
+    ("mint-route", "ws://user:secret@spurline:8080"),
+])
+def test_clear_request_policy_rejects_invalid_configuration(tmp_path, policy, relay):
+    with pytest.raises(ValueError):
+        create_app(replace(database_settings(tmp_path),
+            clear_request_relay_policy=policy,
+            clear_request_internal_relay=relay))
 
 
 @pytest.mark.parametrize(

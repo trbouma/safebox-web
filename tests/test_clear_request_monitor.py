@@ -74,8 +74,10 @@ def test_expired_monitor_remains_pending():
     assert asyncio.run(monitor.request_status(acorn, replace(state(), started_at=time() - 121)))["status"] == "PENDING"
 
 
-def test_monitor_accepts_only_matching_transfer_through_existing_worker(monkeypatch):
+@pytest.mark.parametrize("routes", [(), ("wss://inbox.example.com",)])
+def test_monitor_accepts_only_matching_transfer_through_existing_worker(monkeypatch, routes):
     acorn = SimpleNamespace(
+        home_relay="ws://spurline:8080",
         load_data=AsyncMock(), get_clear_receipts=AsyncMock(return_value=[]),
         sweep_clear_transfers=AsyncMock(return_value={"previewed": [
             receipt(event_id="b" * 64, payment_request_id="other"), receipt(),
@@ -89,11 +91,15 @@ def test_monitor_accepts_only_matching_transfer_through_existing_worker(monkeypa
     monkeypatch.setattr(monitor, "claim_clear_acceptance_job", claim)
     accept = AsyncMock()
     monkeypatch.setattr(monitor, "run_clear_acceptance_job", accept)
-    asyncio.run(monitor.monitor_request(engine=None, acorn=acorn, state=state(), worker_id="worker"))
+    asyncio.run(monitor.monitor_request(engine=None, acorn=acorn,
+        state=replace(state(), relays=routes), worker_id="worker"))
     assert claims[0][2] == "a" * 64
     assert accept.await_args.kwargs["event_id"] == "a" * 64
     assert accept.await_args.kwargs["owner_token"] == "lease"
-    acorn.sweep_clear_transfers.assert_awaited_once_with(preview_only=True, advance_cursor=False)
+    route_args = {"relays": ["ws://spurline:8080", *routes]} if routes else {}
+    acorn.sweep_clear_transfers.assert_awaited_once_with(preview_only=True, advance_cursor=False, **route_args)
+    if routes:
+        assert accept.await_args.kwargs["relays"] == route_args["relays"]
 
 
 @pytest.mark.parametrize("row", [receipt(amount=24), receipt(payment_request_id="unrelated")])

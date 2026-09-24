@@ -39,6 +39,7 @@ class ClearRequestState:
     description: str
     started_at: float
     purpose: str = "clear-request-monitor-v1"
+    relays: tuple[str, ...] = ()
 
 
 class ClearRequestCipher:
@@ -51,9 +52,11 @@ class ClearRequestCipher:
 
     def decode(self, token: str, npub: str) -> ClearRequestState:
         try:
-            state = ClearRequestState(**json.loads(
+            payload = json.loads(
                 self.cipher.decrypt(token.encode("ascii"), ttl=self.ttl)
-            ))
+            )
+            payload["relays"] = tuple(payload.get("relays") or ())
+            state = ClearRequestState(**payload)
             if (state.purpose != "clear-request-monitor-v1" or state.npub != npub
                     or not state.request_id or state.amount <= 0):
                 raise ValueError("Invalid request")
@@ -98,6 +101,8 @@ async def request_status(acorn, state, timeout=20, engine=None):
 
 async def monitor_request(*, engine, acorn, state, worker_id, timeout=20):
     await asyncio.wait_for(acorn.load_data(), timeout)
+    # Keep the request's advertised inbox routes even if discovery later changes.
+    routes = list(dict.fromkeys([acorn.home_relay, *state.relays])) if state.relays else None
     deadline = monotonic() + MONITOR_SECONDS
     while monotonic() < deadline:
         try:
@@ -107,7 +112,8 @@ async def monitor_request(*, engine, acorn, state, worker_id, timeout=20):
             candidates = [r for r in receipts if matches(r, state)]
             if not candidates:
                 preview = await asyncio.wait_for(
-                    acorn.sweep_clear_transfers(preview_only=True, advance_cursor=False), timeout
+                    acorn.sweep_clear_transfers(preview_only=True, advance_cursor=False,
+                        **({"relays": routes} if routes else {})), timeout
                 )
                 candidates = [r for r in preview.get("previewed", []) if matches(r, state)]
             candidate = next((r for r in candidates
@@ -136,6 +142,7 @@ async def monitor_request(*, engine, acorn, state, worker_id, timeout=20):
                     await run_clear_acceptance_job(
                         engine=engine, acorn=acorn, npub=state.npub,
                         event_id=event_id, owner_token=owner, load_timeout_seconds=timeout,
+                        **({"relays": routes} if routes else {}),
                     )
                     # Failed acceptance stays recoverable; do not automatically
                     # retry a mint mutation within the same monitoring session.

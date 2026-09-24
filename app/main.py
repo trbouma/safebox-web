@@ -5919,16 +5919,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not request_description or len(request_description) > 200:
                 return receive_error("Description must be 1 to 200 characters.")
             try:
+                internal_request = (
+                    settings.clear_request_relay_policy == "mint-route"
+                    and _clear_availability(selected_asset[0]) != "across-networks"
+                )
+                if internal_request:
+                    request_relays = [settings.clear_request_internal_relay]
+                else:
+                    request_relays = await asyncio.wait_for(
+                        acorn.get_payment_request_relays(),
+                        timeout=settings.wallet_load_timeout_seconds,
+                    )
                 payment_request = acorn.create_payment_request(
                     amount_sats,
                     unit=selected_asset[1],
                     single_use=True,
                     description=request_description,
                     mint=selected_asset[0],
+                    relays=request_relays,
+                    **({"allow_internal_relays": True} if internal_request else {}),
                 )
                 decoded = decode_payment_request(payment_request)
                 if not decoded.payment_id:
                     raise ValueError("Clear request needs a request ID for confirmation")
+            except ValueError as exc:
+                return receive_error(str(exc), 400)
             except Exception as exc:
                 logger.warning(
                     "NUT-18 Clear request creation failed error_type=%s",
@@ -5941,6 +5956,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 display_name=str(selected.get("display_name") or selected_asset[1]),
                 payment_request=payment_request, description=request_description,
                 started_at=time(),
+                relays=tuple(request_relays),
             )
             request_token = ClearRequestCipher(settings).encode(monitor_state)
             start_clear_request_monitor(request, acorn_factory, monitor_state)

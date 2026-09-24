@@ -218,6 +218,7 @@ async def run_clear_acceptance_job(
     event_id: str,
     owner_token: str,
     load_timeout_seconds: float = 20.0,
+    relays: list[str] | None = None,
 ) -> None:
     """Load and accept one Clear receipt after the HTTP response returns."""
 
@@ -279,6 +280,7 @@ async def run_clear_acceptance_job(
             await acorn.sweep_clear_transfers(
                 event_id=event_id,
                 advance_cursor=False,
+                **({"relays": relays} if relays else {}),
             )
             logger.info(
                 "background Clear acceptance discovery complete npub=%s "
