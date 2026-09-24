@@ -7239,6 +7239,32 @@ def test_scanned_lnurl_pay_qr_derives_lightning_address() -> None:
     assert lnurl not in response.text
 
 
+def test_pasted_clear_request_from_transfer_page_opens_review_without_sending() -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    client = TestClient(app, base_url="https://safebox.example")
+    page = client.get("/pay")
+    assert page.status_code == 200
+    form = re.search(r'<form method="post" action="/scan/lightning".*?</form>', page.text, re.S)
+    assert form is not None
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', form.group(0))
+    assert csrf is not None
+    assert 'name="lightning_payment"' in form.group(0)
+    assert "Review Clear Request" in form.group(0)
+    assert 'name="amount"' not in form.group(0)
+    response = client.post("/scan/lightning", data={
+        "csrf_token": csrf.group(1),
+        "lightning_payment": "  " + TEST_NUT18_REQUEST + "\n",
+    })
+    assert response.status_code == 200
+    assert "Review Clear Payment Request" in response.text
+    assert 'name="confirmed"' in response.text
+    assert acorn.payment_request_inspections == [TEST_NUT18_REQUEST]
+    assert acorn.payment_request_sends == []
+
+
 def test_scanned_nut18_request_opens_clear_payment_review() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)

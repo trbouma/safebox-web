@@ -2,6 +2,21 @@
 {% block content %}
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 {{ balance_status | safe }}
+<section aria-labelledby="paste-clear-request-title">
+  <h2 id="paste-clear-request-title">Pay a Clear Request</h2>
+  <form method="post" action="/scan/lightning" autocomplete="off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="pasted-clear-request">Paste a Clear payment request</label>
+    <textarea id="pasted-clear-request" name="lightning_payment"
+              class="clear-token-input" rows="4" placeholder="creqA…"
+              spellcheck="false" autocapitalize="none" autocorrect="off"
+              required></textarea>
+    <p class="form-hint">Paste the full creqA request. Review the amount, mint,
+    and fees before confirming payment. No camera is needed.</p>
+    <button type="submit">Review Clear Request</button>
+  </form>
+</section>
+<h2>Transfer to an Address</h2>
 <form method="post" action="/pay" autocomplete="off"
       data-progress-message="Balance transfer in progress. Please wait and do not refresh this page."
       data-progress-button="Transferring…">

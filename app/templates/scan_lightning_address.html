@@ -14,12 +14,12 @@
 <form method="post" action="/scan/lightning" autocomplete="off"
       data-scanner-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-  <label for="lightning_payment">Scanned or manually entered code</label>
+  <label for="lightning_payment">Scan or paste a code or payment request</label>
   <input id="lightning_payment" name="lightning_payment" type="text"
          value="{{ lightning_address }}" placeholder="alice@example.com" required
          spellcheck="false" autocapitalize="none" autocomplete="off"
          data-scanner-result>
-  <button type="submit">Review Scanned Code</button>
+  <button type="submit">Review Code</button>
 </form>
 <details class="general-advisories scanner-advisories">
   <summary>Advisories</summary>
