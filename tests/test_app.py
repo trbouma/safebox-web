@@ -1197,6 +1197,72 @@ def test_direct_127001_http_is_allowed() -> None:
     }
 
 
+def test_operator_payment_closure_is_guarded_and_audited(tmp_path) -> None:
+    settings = replace(database_settings(tmp_path), management_token="test-management")
+    app = create_app(settings)
+    headers = {"Authorization": "Bearer test-management"}
+    payment_id = "a" * 32
+    url = f"/internal/provider-payments/{payment_id}"
+    payload = {"handle": "trbouma", "amount_sat": 111,
+               "operator": "test-operator", "reason": "Abandoned test payment"}
+    with TestClient(app, base_url="https://safebox.example") as client:
+        with Session(app.state.database_engine) as session:
+            session.add(ProviderPayment(
+                payment_id=payment_id, claimed_handle="trbouma", recipient_npub="test-npub",
+                recipient_relay="wss://relay.example", amount_msat=111000, amount_sat=111,
+                lnurl_metadata="[]", mint="https://mint.example", status="DELIVERY_FAILED",
+                error="Original diagnostic", invoice="secret-invoice",
+            ))
+            session.commit()
+        assert client.get(url).status_code == 401
+        assert client.post(url + "/close", json=payload).status_code == 401
+        listing = client.get("/internal/provider-payments", params={"handle": "trbouma"}, headers=headers)
+        assert listing.status_code == 200
+        assert "secret-invoice" not in listing.text
+        preview = client.post(url + "/close", json=payload, headers=headers)
+        assert preview.status_code == 200
+        assert preview.json()["dry_run"] is True
+        before = client.get(url, headers=headers).json()
+        assert before["payments"][0]["status"] == "DELIVERY_FAILED"
+        assert before["interventions"] == []
+        for mismatch in ({"handle": "other"}, {"amount_sat": 112}):
+            assert client.post(url + "/close", json={**payload, **mismatch, "confirmed": True}, headers=headers).status_code == 409
+        assert client.post(url + "/close", json={**payload, "reason": " "}, headers=headers).status_code == 422
+        closed = client.post(url + "/close", json={**payload, "confirmed": True}, headers=headers)
+        assert closed.status_code == 200
+        assert closed.json()["audit_id"]
+        final = client.get(url, headers=headers).json()
+        assert final["payments"][0]["status"] == "FAILED"
+        assert final["payments"][0]["error"] == "Original diagnostic"
+        assert len(final["interventions"]) == 1
+        audit = final["interventions"][0]
+        assert audit["operator"] == "test-operator"
+        assert audit["reason"] == payload["reason"]
+        assert audit["before"]["status"] == "DELIVERY_FAILED"
+        assert audit["after"]["status"] == "FAILED"
+        assert client.post(url + "/close", json={**payload, "confirmed": True}, headers=headers).status_code == 409
+
+
+@pytest.mark.parametrize("status,event_id", [("DELIVERING", None), ("DELIVERED", "event"), ("DELIVERY_FAILED", "event")])
+def test_operator_payment_close_refuses_active_or_delivered_payments(tmp_path, status, event_id):
+    from app.operator_payments import close_payment, ClosePaymentRequest
+    from fastapi import HTTPException
+    app = create_app(database_settings(tmp_path))
+    with TestClient(app, base_url="https://safebox.example"):
+        with Session(app.state.database_engine) as session:
+            session.add(ProviderPayment(
+                payment_id="guarded", claimed_handle="trbouma", recipient_npub="test",
+                recipient_relay="wss://relay.example", amount_msat=111000, amount_sat=111,
+                lnurl_metadata="[]", mint="https://mint.example", status=status,
+                delivery_event_id=event_id,
+            ))
+            session.commit()
+        with pytest.raises(HTTPException) as error:
+            close_payment(app.state.database_engine, "guarded", ClosePaymentRequest(
+                handle="trbouma", amount_sat=111, operator="tester", reason="Test", confirmed=True))
+        assert error.value.status_code == 409
+
+
 def test_service_acorn_reserve_endpoint_requires_management_token(tmp_path) -> None:
     settings = replace(
         TEST_SETTINGS,
@@ -4176,7 +4242,7 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "deposit_finalization_job",
         "web_worker_heartbeat",
     }.issubset(tables)
-    assert revision == ("20260827_0011",)
+    assert revision == ("20260922_0012",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -5021,6 +5087,35 @@ def test_clear_page_shows_balances_and_receipt_history(tmp_path) -> None:
     assert "spendable" not in response.text.lower()
 
 
+def test_clear_transaction_view_deduplicates_accepted_receipt_history() -> None:
+    source_event = "a" * 64
+    entries = main_module._clear_transaction_view(
+        [{
+            "event_id": source_event,
+            "status": "accepted",
+            "amount": 25,
+            "unit": "cmu-test",
+            "mint": "https://clear.example",
+            "timestamp": 1_786_430_400,
+        }],
+        {"balances": []},
+        [{
+            "event_id": "history-accept",
+            "source_event": source_event,
+            "direction": "in",
+            "operation": "accept",
+            "amount": 25,
+            "unit": "cmu-test",
+            "mint": "https://clear.example",
+            "timestamp": 1_786_430_400,
+        }],
+    )
+
+    assert len(entries) == 1
+    assert entries[0]["event_id"] == "history-accept"
+    assert entries[0]["operation"] == "accept"
+
+
 def test_clear_incoming_transfers_pane_is_collapsed_without_pending_transfers(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
@@ -5038,7 +5133,8 @@ def test_clear_incoming_transfers_pane_is_collapsed_without_pending_transfers(tm
     )
 
 
-def test_user_can_paste_and_accept_a_configured_clear_token(tmp_path) -> None:
+@pytest.mark.parametrize("prefix", ["cashuA", "cashuB", "cashu:cashuB"])
+def test_user_can_paste_and_accept_a_configured_clear_token(tmp_path, prefix) -> None:
     settings = replace(
         database_settings(tmp_path),
         clear_receive_enabled=True,
@@ -5061,7 +5157,7 @@ def test_user_can_paste_and_accept_a_configured_clear_token(tmp_path) -> None:
             "/clear/accept-token",
             data={
                 "csrf_token": token_match.group(1),
-                "token": "cashuAtest-clear-token",
+                "token": prefix + "test-clear-token",
             },
             follow_redirects=False,
         )
@@ -5085,7 +5181,7 @@ def test_user_can_paste_and_accept_a_configured_clear_token(tmp_path) -> None:
     assert job is not None
     assert job["status"] == "COMPLETE"
     assert acorn.staged_clear_tokens == [{
-        "token": "cashuAtest-clear-token",
+        "token": prefix.removeprefix("cashu:") + "test-clear-token",
     }]
     assert acorn.accepted_clear_receipts == ["9" * 64]
 
@@ -5124,7 +5220,8 @@ def test_pasted_clear_token_page_does_not_require_deployment_mints(tmp_path) -> 
     assert acorn.staged_clear_tokens == [{"token": "cashuAnew-mint-token"}]
 
 
-def test_user_can_create_a_clear_token_qr_from_a_confirmed_balance(tmp_path) -> None:
+@pytest.mark.parametrize("token_format", ["auto", "cashuA"])
+def test_user_can_create_a_clear_token_qr_from_a_confirmed_balance(tmp_path, token_format) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
     acorn.clear_balances = [{
@@ -5150,6 +5247,7 @@ def test_user_can_create_a_clear_token_qr_from_a_confirmed_balance(tmp_path) -> 
                 "asset": asset_match.group(1),
                 "amount": "25",
                 "memo": "Community lunch",
+                "token_format": token_format,
                 "confirmed": "yes",
             },
         )
@@ -5165,6 +5263,7 @@ def test_user_can_create_a_clear_token_qr_from_a_confirmed_balance(tmp_path) -> 
         "unit": "cmu-test",
         "amount": 25,
         "memo": "Community lunch",
+        **({"token_format": "cashuA"} if token_format == "cashuA" else {}),
     }]
 
 
@@ -5313,6 +5412,8 @@ def test_user_can_accept_clear_transfer_into_spendable_balance(tmp_path) -> None
     assert "Confirmed 25 cmu-test." in result.text
     assert "25 <span>cmu-test</span>" in result.text
     assert "Accept Clear Transaction" in result.text
+    assert result.text.count("Accept Clear Transaction") == 1
+    assert "Accepted Clear Transaction" not in result.text
     assert "guest passes" in result.text
     assert "Accept Clear Transfer" not in result.text
 
@@ -7068,7 +7169,7 @@ def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None
     assert "const start = async () =>" in script.text
     assert "void start();" in script.text
     assert "startButton.hidden = false;" in script.text
-    assert 'lowerValue.startsWith("cashua")' in script.text
+    assert '/^(cashu:)?cashu[ab]/.test(lowerValue)' in script.text
     assert "window.isSecureContext" in script.text
     assert "Camera scanning requires HTTPS" in script.text
 
@@ -7092,7 +7193,8 @@ def test_scanned_lightning_address_prefills_payment_review() -> None:
     assert 'value="alice@example.com"' in response.text
 
 
-def test_scanned_clear_token_starts_recoverable_acceptance(tmp_path) -> None:
+@pytest.mark.parametrize("prefix", ["cashuA", "cashuB", "cashu:cashuA", "cashu:cashuB"])
+def test_scanned_clear_token_starts_recoverable_acceptance(tmp_path, prefix) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -7101,14 +7203,14 @@ def test_scanned_clear_token_starts_recoverable_acceptance(tmp_path) -> None:
             "/scan/lightning",
             data={
                 "csrf_token": valid_csrf_token(),
-                "lightning_payment": "cashuAscanned-clear-token",
+                "lightning_payment": prefix + "scanned-clear-token",
             },
             follow_redirects=False,
         )
 
     assert response.status_code == 303
     assert response.headers["location"] == "/clear/acceptance-status"
-    assert acorn.staged_clear_tokens == [{"token": "cashuAscanned-clear-token"}]
+    assert acorn.staged_clear_tokens == [{"token": prefix.removeprefix("cashu:") + "scanned-clear-token"}]
 
 
 def test_scanned_lnurl_pay_qr_derives_lightning_address() -> None:

@@ -61,6 +61,19 @@ class ProviderPayment(SQLModel, table=True):
     next_check_at: Optional[datetime] = Field(default=None, nullable=True, index=True)
 
 
+class ProviderPaymentIntervention(SQLModel, table=True):
+    """Operator-attributed closures; no bearer material or private keys."""
+
+    __tablename__ = "provider_payment_intervention"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    payment_id: str = Field(nullable=False, index=True)
+    operator: str = Field(nullable=False)
+    reason: str = Field(nullable=False)
+    before_json: str = Field(nullable=False)
+    after_json: str = Field(nullable=False)
+    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+
+
 class ProviderIdentity(SQLModel, table=True):
     """Public signing identity of the singleton provider Acorn."""
 

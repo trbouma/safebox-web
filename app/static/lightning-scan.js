@@ -44,7 +44,7 @@ if (
           ? "Record-sharing code acquired. Opening the transfer review…"
           : lowerValue.startsWith("creqa")
             ? "Clear payment request acquired. Opening the transfer review…"
-          : lowerValue.startsWith("cashua")
+          : /^(cashu:)?cashu[ab]/.test(lowerValue)
             ? "Clear token acquired. Securing it for acceptance…"
           : lowerValue.startsWith("https://")
             ? "Website address acquired. Opening the safety review…"

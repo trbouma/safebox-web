@@ -70,6 +70,7 @@ from acorn.func_utils import (
 )
 
 from app.config import Settings
+from app.operator_payments import ClosePaymentRequest, close_payment, inspect_payments
 from app.clear_request_monitor import (
     ClearRequestCipher, ClearRequestState, request_status as clear_request_status,
     run_monitor as run_clear_request_monitor,
@@ -1557,9 +1558,21 @@ def _clear_transaction_view(
         and balance.get("mint") is not None
         and balance.get("unit") is not None
     }
+    completed_source_events = {
+        str(entry.get("source_event") or "").strip()
+        for entry in history or []
+        if isinstance(entry, dict)
+        and str(entry.get("direction") or "in") == "in"
+        and str(entry.get("operation") or "transfer") == "accept"
+    }
+    completed_source_events.discard("")
     cards: list[dict] = []
     for receipt in receipts:
         if not isinstance(receipt, dict):
+            continue
+        status = str(receipt.get("status") or "pending").strip().lower()
+        event_id = str(receipt.get("event_id") or "").strip()
+        if status != "pending" and event_id in completed_source_events:
             continue
         mint = str(receipt.get("mint") or "unknown").rstrip("/")
         unit = str(receipt.get("unit") or "unknown")
@@ -1588,8 +1601,6 @@ def _clear_transaction_view(
             if timestamp > 0
             else "Arrival time unavailable"
         )
-        status = str(receipt.get("status") or "pending").strip().lower()
-        event_id = str(receipt.get("event_id") or "").strip()
         sender = str(receipt.get("sender_pubkey") or "").strip()
         cards.append(
             {
@@ -1686,8 +1697,10 @@ async def _stage_clear_token(acorn, token: str, timeout: float) -> dict:
     """Validate and durably stage a bearer token before mint acceptance."""
 
     normalized_token = str(token or "").strip()
+    if normalized_token.startswith("cashu:"):
+        normalized_token = normalized_token[6:]
     if (
-        not normalized_token.lower().startswith("cashua")
+        not normalized_token.startswith(("cashuA", "cashuB"))
         or len(normalized_token) > 128 * 1024
     ):
         raise ValueError("Enter a valid Clear token.")
@@ -3954,6 +3967,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return None
+
+    @app.get("/internal/provider-payments")
+    async def operator_payment_list(request: Request, handle: str):
+        unauthorized = _require_management_token(request)
+        if unauthorized is not None:
+            return unauthorized
+        return inspect_payments(request.app.state.database_engine, handle=handle)
+
+    @app.get("/internal/provider-payments/{payment_id}")
+    async def operator_payment_show(request: Request, payment_id: str):
+        unauthorized = _require_management_token(request)
+        if unauthorized is not None:
+            return unauthorized
+        return inspect_payments(request.app.state.database_engine, payment_id=payment_id)
+
+    @app.post("/internal/provider-payments/{payment_id}/close")
+    async def operator_payment_close(request: Request, payment_id: str, payload: ClosePaymentRequest):
+        unauthorized = _require_management_token(request)
+        if unauthorized is not None:
+            return unauthorized
+        return close_payment(request.app.state.database_engine, payment_id, payload)
 
     @app.get("/internal/service-acorn/reserve", response_class=JSONResponse)
     async def internal_service_acorn_reserve(request: Request) -> JSONResponse:
@@ -6329,7 +6363,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Cache-Control": "no-store"},
             )
 
-        if scanned_value.lower().startswith("cashua"):
+        if scanned_value.startswith(("cashuA", "cashuB", "cashu:")):
             try:
                 receipt = await _stage_clear_token(
                     acorn,
@@ -7523,6 +7557,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         asset: str = Form(...),
         amount: str = Form(...),
         memo: str = Form("Clear transfer"),
+        token_format: str = Form("auto"),
         confirmed: str | None = Form(None),
         csrf_token: str = Form(...),
     ) -> HTMLResponse:
@@ -7601,6 +7636,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=400,
             )
         exporter = getattr(acorn, "export_clear_token", None)
+        if token_format not in {"auto", "cashuA"}:
+            return await clear_token_page(
+                request, acorn,
+                create_error="Select a supported token format.", status_code=400,
+            )
         if exporter is None:
             return await clear_token_page(
                 request,
@@ -7616,6 +7656,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     unit=unit,
                     amount=transfer_amount,
                     memo=transfer_memo,
+                    **({"token_format": "cashuA"} if token_format == "cashuA" else {}),
                 ),
                 timeout=settings.payment_timeout_seconds,
             )

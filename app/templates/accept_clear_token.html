@@ -45,6 +45,11 @@
       <input name="confirmed" type="checkbox" value="yes" required>
       I understand that this transfers value out of the selected Clear Balance.
     </label>
+    <label for="clear-token-format">Token format</label>
+    <select id="clear-token-format" name="token_format">
+      <option value="auto">Automatic — cashuB preferred</option>
+      <option value="cashuA">cashuA — older wallets</option>
+    </select>
     <button type="submit">Create Clear Token</button>
   </form>
   {% else %}
@@ -64,7 +69,7 @@
               minlength="7" maxlength="131072" autocapitalize="none"
               autocorrect="off" spellcheck="false" required>{{ token }}</textarea>
     <p class="advisory">Anyone holding this token can spend it until Safebox
-    confirms acceptance.</p>
+    confirms acceptance. Both cashuB and cashuA tokens are supported.</p>
     <button type="submit">Accept Clear Token</button>
   </form>
 </section>
