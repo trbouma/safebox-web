@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Optional
 
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import DateTime, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -13,6 +13,12 @@ def utc_now() -> datetime:
     """Return naive UTC for consistent SQLite and PostgreSQL comparisons."""
 
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _naive_datetime_field(**kwargs):
+    """Preserve the application's explicit naive-UTC storage contract."""
+
+    return Field(sa_type=DateTime(timezone=False), **kwargs)
 
 
 class ClaimedHandle(SQLModel, table=True):
@@ -56,9 +62,15 @@ class ProviderPayment(SQLModel, table=True):
     error: Optional[str] = Field(default=None, nullable=True)
     attempts: int = Field(default=0, nullable=False)
     delivery_attempts: int = Field(default=0, nullable=False)
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
-    next_check_at: Optional[datetime] = Field(default=None, nullable=True, index=True)
+    created_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    updated_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    next_check_at: Optional[datetime] = _naive_datetime_field(
+        default=None, nullable=True, index=True
+    )
 
 
 class ProviderPaymentIntervention(SQLModel, table=True):
@@ -71,7 +83,9 @@ class ProviderPaymentIntervention(SQLModel, table=True):
     reason: str = Field(nullable=False)
     before_json: str = Field(nullable=False)
     after_json: str = Field(nullable=False)
-    created_at: datetime = Field(default_factory=utc_now, nullable=False)
+    created_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
 
 
 class ProviderIdentity(SQLModel, table=True):
@@ -81,7 +95,9 @@ class ProviderIdentity(SQLModel, table=True):
 
     name: str = Field(primary_key=True)
     nostr_pubkey: str = Field(nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
 
 
 class ProviderZap(SQLModel, table=True):
@@ -113,8 +129,10 @@ class CurrencyRate(SQLModel, table=True):
     currency_symbol: str = Field(nullable=False)
     currency_description: str = Field(nullable=False)
     source: str = Field(nullable=False)
-    fetched_at: datetime = Field(nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
+    fetched_at: datetime = _naive_datetime_field(nullable=False)
+    updated_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
 
 
 class WebWorkerHeartbeat(SQLModel, table=True):
@@ -123,8 +141,10 @@ class WebWorkerHeartbeat(SQLModel, table=True):
     __tablename__ = "web_worker_heartbeat"
 
     worker_id: str = Field(primary_key=True)
-    started_at: datetime = Field(default_factory=utc_now, nullable=False)
-    heartbeat_at: datetime = Field(
+    started_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    heartbeat_at: datetime = _naive_datetime_field(
         default_factory=utc_now,
         nullable=False,
         index=True,
@@ -152,9 +172,13 @@ class FundsFinalizationJob(SQLModel, table=True):
     pending_count: int = Field(default=0, nullable=False)
     pending_amount: int = Field(default=0, nullable=False)
     error: Optional[str] = Field(default=None, nullable=True)
-    started_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
-    lease_expires_at: datetime = Field(nullable=False, index=True)
+    started_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    updated_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    lease_expires_at: datetime = _naive_datetime_field(nullable=False, index=True)
 
 
 class ClearAcceptanceJob(SQLModel, table=True):
@@ -176,9 +200,13 @@ class ClearAcceptanceJob(SQLModel, table=True):
     mint: Optional[str] = Field(default=None, nullable=True)
     unit: Optional[str] = Field(default=None, nullable=True)
     error: Optional[str] = Field(default=None, nullable=True)
-    started_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
-    lease_expires_at: datetime = Field(nullable=False, index=True)
+    started_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    updated_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    lease_expires_at: datetime = _naive_datetime_field(nullable=False, index=True)
 
 
 class OutgoingPaymentJob(SQLModel, table=True):
@@ -203,9 +231,13 @@ class OutgoingPaymentJob(SQLModel, table=True):
     lightning_fee_return: Optional[int] = Field(default=None, nullable=True)
     message: Optional[str] = Field(default=None, nullable=True)
     error: Optional[str] = Field(default=None, nullable=True)
-    started_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
-    lease_expires_at: datetime = Field(nullable=False, index=True)
+    started_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    updated_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    lease_expires_at: datetime = _naive_datetime_field(nullable=False, index=True)
 
 
 class DepositFinalizationJob(SQLModel, table=True):
@@ -222,6 +254,10 @@ class DepositFinalizationJob(SQLModel, table=True):
     status: str = Field(default="RUNNING", nullable=False, index=True)
     phase: str = Field(default="STARTING", nullable=False)
     error: Optional[str] = Field(default=None, nullable=True)
-    started_at: datetime = Field(default_factory=utc_now, nullable=False)
-    updated_at: datetime = Field(default_factory=utc_now, nullable=False)
-    lease_expires_at: datetime = Field(nullable=False, index=True)
+    started_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    updated_at: datetime = _naive_datetime_field(
+        default_factory=utc_now, nullable=False
+    )
+    lease_expires_at: datetime = _naive_datetime_field(nullable=False, index=True)
