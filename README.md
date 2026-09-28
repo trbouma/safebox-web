@@ -8,6 +8,9 @@ The user-facing project site is built with MkDocs in
 
 The browser interface follows a documented
 [server-rendered hypermedia architecture](docs/HYPERMEDIA-ARCHITECTURE.md).
+
+See [Transfer Status and Recovery](docs/TRANSFER-STATUS-AND-RECOVERY.md) for
+pending payments, monitoring windows, route accessibility, and safe recovery.
 Application and wallet logic remains in FastAPI and Acorn; browser JavaScript
 is limited to progressive presentation behavior and narrowly scoped device
 input such as QR acquisition.

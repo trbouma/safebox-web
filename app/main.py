@@ -164,6 +164,7 @@ from app.service_acorn_worker import (
 
 
 from app.templating import render_template
+from app.messages import router as messages_router
 from app.localization import (
     DEFAULT_LANGUAGE,
     SUPPORTED_LANGUAGES,
@@ -3699,6 +3700,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = runtime_settings
     app.state.clear_mint_metadata_cache = {}
     app.include_router(lnurl_pay_router)
+    app.include_router(messages_router)
     app.mount(
         "/static",
         StaticFiles(directory=static_directory),

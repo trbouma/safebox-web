@@ -17,10 +17,13 @@ Mint APIs exchange proofs rather than the cashuA/cashuB token wrapper.
 
 ## Deployment
 
-Clear requests advertise public NIP-17 inbox relays, not internal home-relay
-hostnames. The home relay remains a local receive route. If no signed inbox
+Under the default public policy, Clear requests advertise public NIP-17 inbox
+relays, not internal home-relay hostnames. The explicit `mint-route` policy can
+advertise a configured internal relay for internal mint routes; see
+[Transfer status and recovery](TRANSFER-STATUS-AND-RECOVERY.md).
+The home relay remains a local receive route. If no signed inbox
 list is available, a public home-relay URL can be advertised; an internal-only
-wallet must configure a public inbox before creating requests. Generic
+wallet must configure a public inbox before creating public requests. Generic
 discovery relays are not assumed to be wallet inboxes.
 
 The receiver retains the advertised routes for the request's monitoring and
@@ -33,7 +36,7 @@ after deploying this update.
 These changes require the accompanying `safebox-acorn` token codec and
 receipt-path changes. Publish Acorn first, then run `poetry update safebox-acorn`
 in Safebox Web, review and commit the updated lockfile, and rebuild the web
-image. The current lockfile is not updated to an unpublished local commit.
+image. Dependency locks must reference published, tested commits.
 
 Local verification can use the sibling Acorn checkout without changing the
 installed dependency:

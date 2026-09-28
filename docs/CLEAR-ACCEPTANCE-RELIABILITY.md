@@ -1,5 +1,8 @@
 # Clear asynchronous acceptance reliability
 
+See [Transfer status and recovery](TRANSFER-STATUS-AND-RECOVERY.md) for the
+current monitoring windows and the distinction between sent, pending, and accepted.
+
 Clear shares the [asynchronous receipt model](ASYNCHRONOUS-RECEIPT-ARCHITECTURE.md)
 without using the Lightning provider's invoice polling queue. Applying the same
 HTTP retry policy indiscriminately would be unsafe: Clear acceptance can submit

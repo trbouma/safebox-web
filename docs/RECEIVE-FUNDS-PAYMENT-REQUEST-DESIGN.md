@@ -2,6 +2,9 @@
 
 Status: Lightning cash and bidirectional NUT-18 Clear request methods implemented
 
+For current monitoring windows and recovery behaviour, see
+[Transfer status and recovery](TRANSFER-STATUS-AND-RECOVERY.md).
+
 ## Purpose
 
 Safebox Web presents one receiver-initiated workflow for bringing funds into an
@@ -35,7 +38,8 @@ invoice, and exact issuing mint in encrypted relay-backed wallet state before
 the invoice is shown. A bounded in-memory job then checks and finalizes the
 quote without holding the HTTP request open.
 
-The browser does not poll or contain wallet logic. It may leave the page and
+The browser may poll server-rendered status HTML but does not contact the mint
+or contain wallet logic. The user may leave the page and
 later return to **Receive Funds**, where every outstanding invoice has a
 server-rendered **Resume** action. The resume action reconstructs a fresh Acorn
 from the still-valid encrypted session and restarts finalization from the
@@ -83,13 +87,14 @@ Compatible senders deliver the NUT-18 payment payload as a NIP-17 kind `14`
 message inside its private gift-wrap transport. Acorn recognizes the standard
 `id`, `memo`, `mint`, `unit`, and `proofs` payload, validates its bearer proof
 structure, and records it in the existing pending Clear receipt pipeline. The
-user then opens Clear Balances and explicitly accepts the transfer. It becomes
-confirmed only after the issuing mint accepts and refreshes its proofs.
+request monitor can automatically accept a matching transfer during its bounded
+window; users can also explicitly accept pending transfers in Clear Balances.
+It becomes confirmed only after the issuing mint accepts and refreshes its proofs.
 
 ## Scanning and paying a Clear request
 
-The shared scanner recognizes the `creqA...` prefix and submits the acquired
-request to Safebox through its ordinary CSRF-protected form. The server:
+The shared scanner and the Transfer a Balance page's paste form recognize the
+`creqA...` request and submit it through an ordinary CSRF-protected form. The server:
 
 1. decodes and validates the NUT-18 CBOR request;
 2. requires a supported Nostr NIP-17 transport;

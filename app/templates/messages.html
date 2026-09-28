@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/wallet">Back to Wallet</a> · <a href="/messages">Refresh inbox</a></p>
+<p>Encrypted NIP-17 messages. Safebox decrypts messages during your active session. Message content is displayed as text only; it never triggers payments or automatic replies.</p>
+{% if sent %}<p role="status">Message accepted by a relay. This does not confirm that the recipient has read it.</p>{% endif %}
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+<section>
+  <h2>New message</h2>
+  <form method="post" action="/messages">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="recipient">Recipient (NIP-05 address, npub, or public key)</label>
+    <input id="recipient" name="recipient" required maxlength="320" value="{{ recipient or '' }}" autocomplete="off">
+    <label for="message">Message</label>
+    <textarea id="message" name="message" required maxlength="4000" rows="5" autocomplete="off">{{ draft or '' }}</textarea>
+    <button type="submit">Send private message</button>
+  </form>
+</section>
+<section>
+  <h2>Recent inbox</h2>
+  <p>Up to 50 recent messages available from your home and advertised inbox relays. Refresh to check for new messages. Sent history and read receipts are not yet available.</p>
+  {% for message in messages %}
+  <article>
+    <p class="breakable">From <code>{{ message.sender }}</code></p>
+    <p>{{ message.date }}</p>
+    <p style="white-space: pre-wrap; overflow-wrap: anywhere">{{ message.content }}</p>
+  </article>
+  {% else %}{% if not error %}<p>No recent messages found.</p>{% endif %}{% endfor %}
+</section>
+{% endblock %}

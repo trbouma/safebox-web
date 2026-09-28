@@ -2,6 +2,7 @@
 {% from "partials/cmu_link.html" import cmu_link with context %}
 {% block content %}
 <p class="continuity-mode">{{ _("Connected Mode") }}</p>
+<p><a class="nav-button" href="/messages">Private Messages</a></p>
 {% if preferences_updated %}<p role="status"><strong>{{ _("Display preferences updated.") }}</strong></p>{% endif %}
 {% if lightning_lnurl %}
 <section class="wallet-address" aria-label="Transfer address">
