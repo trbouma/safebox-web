@@ -2,12 +2,16 @@
 import asyncio
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlmodel import select
 
-from app.dependencies import AcornDependency, SettingsDependency
+from app.dependencies import AcornDependency, SettingsDependency, DatabaseSessionDependency
+from app.models import ClaimedHandle
+from app.lnurl_pay import public_request_host
 from app.security import CsrfProtector
 from app.templating import render_template
+from app.private_messages import encode_message, present_messages
 
 router = APIRouter()
 HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
@@ -25,6 +29,7 @@ async def inbox(acorn: AcornDependency, settings: SettingsDependency, sent: bool
         return page(settings, error="Private messaging requires the updated Safebox Acorn component. Ask the operator to update it.")
     try:
         messages = await asyncio.wait_for(acorn.get_private_messages(), timeout=25)
+        messages = await present_messages(messages)
         for message in messages:
             message["date"] = datetime.fromtimestamp(message["created_at"], timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         error = None
@@ -35,7 +40,8 @@ async def inbox(acorn: AcornDependency, settings: SettingsDependency, sent: bool
 
 
 @router.post("/messages", response_class=HTMLResponse)
-async def send(acorn: AcornDependency, settings: SettingsDependency,
+async def send(request: Request, acorn: AcornDependency, settings: SettingsDependency,
+               session: DatabaseSessionDependency,
                recipient: str = Form(..., max_length=320),
                message: str = Form(..., max_length=4000),
                csrf_token: str = Form(...)):
@@ -45,8 +51,16 @@ async def send(acorn: AcornDependency, settings: SettingsDependency,
         raise HTTPException(503, "Update Safebox Acorn before using private messaging")
     if not recipient.strip() or not message.strip():
         return page(settings, error="Enter a recipient and a message.", recipient=recipient, draft=message)
+    registration = session.exec(
+        select(ClaimedHandle).where(ClaimedHandle.npub == acorn.pubkey_bech32)
+    ).first()
+    sender = (
+        f"{registration.claimed_handle}@{public_request_host(request)}".lower()
+        if registration is not None else None
+    )
+    outgoing_message = encode_message(message, sender)
     try:
-        await asyncio.wait_for(acorn.secure_dm(recipient.strip(), message), timeout=30)
+        await asyncio.wait_for(acorn.secure_dm(recipient.strip(), outgoing_message), timeout=30)
     except Exception:
         # Never echo arbitrary library exceptions: they can contain private data.
         return page(settings, error="Delivery could not be confirmed. The message may have reached a relay. Check with the recipient before sending again.", recipient=recipient, draft=message)

@@ -6,6 +6,31 @@ An explicit refresh checks again; there is no background listener or automatic
 reply. POST validates CSRF, sends using recipient inbox discovery, and redirects
 after relay acknowledgement. That acknowledgement is not a read receipt.
 
+Web sends an encrypted JSON message envelope:
+
+```json
+{"type":"safebox.dm","version":1,"sender":"alice@example.com","message":"Hello!"}
+```
+
+The sender address comes from the authenticated user's registered handle and
+the same public host as the wallet address. Without a handle, `sender` is null.
+Acorn still transports kind-14 content unchanged; Web parses this envelope for
+display. Plain-text messages (including older `From:` prefixes), unrelated JSON,
+and unsupported envelope versions remain visible as literal text.
+
+Web resolves the claimed NIP-05 address and compares its key against Acorn's
+authenticated event author. The UI labels it verified, mismatch, or unverified;
+the actual public key remains visible and messages are never hidden merely
+because address verification fails. Verification describes the current address
+association, not necessarily its historical ownership at send time.
+
+Lookups use HTTPS, public IPs only, DNS-pinned connections with hostname TLS
+verification, no redirects or environment proxies, a 64-KiB response limit, and
+a three-second deadline. At most ten distinct claims are checked per page.
+The bounded process-local cache lasts five minutes for successful resolutions
+and thirty seconds for failures. Private/local-only address hosts remain
+unverified. External address servers can observe that a lookup occurred.
+
 The receiving Acorn validates the gift-wrap and seal signatures, checks that the
 rumour author matches the seal signer, and requires the recipient tag. Invalid
 envelopes are skipped individually. Duplicate rumour IDs are collapsed.

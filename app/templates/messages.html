@@ -20,6 +20,13 @@
   <p>Up to 50 recent messages available from your home and advertised inbox relays. Refresh to check for new messages. Sent history and read receipts are not yet available.</p>
   {% for message in messages %}
   <article>
+    {% if message.claimed_sender %}
+    <p class="breakable">Claimed address: {{ message.claimed_sender }} —
+      {% if message.verification == 'verified' %}Verified NIP-05 (current lookup)
+      {% elif message.verification == 'mismatch' %}<strong>Mismatch: this address belongs to a different public key.</strong>
+      {% else %}Unverified NIP-05{% endif %}
+    </p>
+    {% endif %}
     <p class="breakable">From <code>{{ message.sender }}</code></p>
     <p>{{ message.date }}</p>
     <p style="white-space: pre-wrap; overflow-wrap: anywhere">{{ message.content }}</p>
