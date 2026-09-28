@@ -14,6 +14,8 @@
   --credit: #b7d485;
   --debit: #e9a270;
   --advisory: #aebce5;
+  --transaction-finalized: #82baff;
+  --transaction-incoming: #ffffff;
   --note-border: #45493e;
 }
 html[data-theme="light"] {
@@ -32,6 +34,8 @@ html[data-theme="light"] {
   --credit: #465533;
   --debit: #7d431b;
   --advisory: #68769a;
+  --transaction-finalized: #185abc;
+  --transaction-incoming: #20211d;
   --note-border: #e2dfd6;
 }
 html { min-height: 100%; -webkit-text-size-adjust: 100%; background: var(--page); }
@@ -337,9 +341,9 @@ figure.blob-preview { padding: .75rem; }
 .pending-transactions-table th, .pending-transactions-table td { padding: .75rem .8rem; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
 .pending-transactions-table tr:last-child td { border-bottom: 0; }
 .pending-transactions-table thead th { color: var(--muted); font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; }
-.pending-transfer-amount { color: var(--advisory); font-weight: 700; white-space: nowrap; }
+.pending-transfer-amount { color: var(--transaction-incoming); font-weight: 700; white-space: nowrap; }
 .transaction-card.pending { border-left-color: var(--advisory); background: var(--surface-soft); }
-.transaction-card.pending .transaction-amount { color: var(--advisory); }
+.transaction-card.pending .transaction-amount { color: var(--transaction-incoming); }
 .pending-transaction-stage { margin: 0; }
 .pending-transaction-reference { display: block; margin: .35rem 0 0; color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
 .incoming-funds { margin: 0 0 1.25rem; }
@@ -385,6 +389,10 @@ figure.blob-preview { padding: .75rem; }
 .transaction-amount { font-size: 1.45rem; font-weight: 750; margin: .45rem 0 .75rem; }
 .transaction-card.credit .transaction-amount { color: var(--credit); }
 .transaction-card.debit .transaction-amount { color: var(--debit); }
+.finalized-transactions .transaction-card .transaction-amount,
+.finalized-transactions .transaction-unit { color: var(--transaction-finalized); }
+.incoming-funds .transaction-card .transaction-amount,
+.incoming-funds .transaction-unit { color: var(--transaction-incoming); }
 .transaction-details { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem 1rem; margin: 0; }
 .transaction-details div { min-width: 0; }
 .transaction-details dt { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; }

@@ -88,7 +88,7 @@
 </a>
 {% endif %}
 {% if entries %}
-<section class="transaction-list" aria-label="Cash transaction history">
+<section class="transaction-list finalized-transactions" aria-label="Cash transaction history">
   {% for entry in entries %}
   <article class="transaction-card {{ entry.style }}">
     <header class="transaction-header">
