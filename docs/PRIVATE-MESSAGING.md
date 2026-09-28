@@ -9,8 +9,14 @@ after relay acknowledgement. That acknowledgement is not a read receipt.
 The receiving Acorn validates the gift-wrap and seal signatures, checks that the
 rumour author matches the seal signer, and requires the recipient tag. Invalid
 envelopes are skipped individually. Duplicate rumour IDs are collapsed.
-Messages are escaped text, including payment payloads: viewing them cannot
-redeem tokens, make payments, or execute instructions.
+Acorn distinguishes NUT-18 payments from chat after decryption: JSON objects
+containing `mint`, `unit`, and `proofs` are omitted from the chat inbox, for both
+Bitcoin ecash and Clear units. This also excludes malformed payment-shaped
+objects; validation and acceptance remain the responsibility of the existing
+transfer flow. Ordinary text and unrelated JSON are still displayed as escaped
+text. No event kinds or advertised transports change. Viewing the inbox cannot
+redeem tokens, make payments, or execute instructions. Bare Cashu tokens pasted
+into a chat message are not NUT-18 payloads and remain text messages.
 
 Messages are decrypted in the authenticated server request. The Web server is
 therefore trusted with session keys and plaintext, although transport to relays
