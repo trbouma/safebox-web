@@ -188,3 +188,21 @@ the Lightning structure.
 
 - [Cashu NUT-18 Payment Requests](https://github.com/cashubtc/nuts/blob/main/18.md)
 - [Clear CMU Transfer Request Design](https://github.com/trbouma/clear/blob/main/docs/CMU-PAYMENT-REQUEST-DESIGN.md)
+# Accepted request encodings
+
+The paste and scan flows accept existing `creqA` requests and NUT-26
+Bech32m/TLV `creqb1` requests (all uppercase or all lowercase), including a
+single `creq` parameter in a Bitcoin URI. They use the same review and explicit
+confirmation flow; decoding never sends funds. Request generation remains
+`creqA` for now.
+
+NUT-26 Nostr public keys and relay tags are mapped to the existing transport
+model. Targets without relay hints require discoverable recipient inbox relays;
+the sender's home relay is not used as an implicit destination. Payments still
+require NIP-17 and a supported Clear balance. HTTP POST, NIP-04-only, in-band,
+and NUT-10-locked requests are not newly enabled. Unsupported spending
+conditions are rejected rather than silently dropped.
+
+Deployment requires publishing the companion Acorn decoder changes, updating
+Web's locked Acorn revision, and rebuilding. Existing requests and receive
+monitoring remain unchanged.

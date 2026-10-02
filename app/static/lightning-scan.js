@@ -42,7 +42,7 @@ if (
         ? "Record presentation acquired. Opening the temporary view…"
         : lowerValue.startsWith("acorn:record-transfer:")
           ? "Record-sharing code acquired. Opening the transfer review…"
-          : lowerValue.startsWith("creqa")
+          : (lowerValue.startsWith("creqa") || lowerValue.startsWith("creqb1") || (lowerValue.startsWith("bitcoin:") && /[?&]creq=/.test(lowerValue)))
             ? "Clear payment request acquired. Opening the transfer review…"
           : /^(cashu:)?cashu[ab]/.test(lowerValue)
             ? "Clear token acquired. Securing it for acceptance…"

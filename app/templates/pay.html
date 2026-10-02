@@ -8,10 +8,10 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="pasted-clear-request">Paste a Clear payment request</label>
     <textarea id="pasted-clear-request" name="lightning_payment"
-              class="clear-token-input" rows="4" placeholder="creqA…"
+              class="clear-token-input" rows="4" placeholder="creqA… or CREQB1…"
               spellcheck="false" autocapitalize="none" autocorrect="off"
               required></textarea>
-    <p class="form-hint">Paste the full creqA request. Review the amount, mint,
+    <p class="form-hint">Paste the full creqA or CREQB1 request, or a bitcoin URI containing creq. Review the amount, mint,
     and fees before confirming payment. No camera is needed.</p>
     <button type="submit">Review Clear Request</button>
   </form>

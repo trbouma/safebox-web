@@ -80,3 +80,21 @@ when Web runs under Mainstay.
 Publish required Acorn changes, update Web's dependency lock, rebuild, and
 recreate services to apply configuration. Generate a new request after route
 changes: a copied old request still advertises its old routes.
+# Address-based Clear sends
+
+Clear transfers entered as a NIP-05 address now use the same background outgoing
+payment worker as Lightning and scanned/pasted Clear requests. After validation
+and address resolution, the POST redirects to `/pay/status`; token export and
+relay delivery no longer run under the HTTP request's payment timeout.
+
+The worker receives the resolved recipient, selected mint and unit, memo, and
+explicit internal relay or external relay hints. Its authenticated Acorn runs
+independently of the browser request. The existing per-wallet running-job guard
+prevents a second submission from starting another send while that job is active.
+Clear fees and status links remain in Clear units and point to Clear history.
+
+This is an in-memory execution job with persisted status, not a durable restart
+queue. Leaving the page does not cancel it, but process interruption still
+requires review. Relay acknowledgement failures or timeouts are uncertain
+outcomes: no automatic retry is made, and Clear failures are not written into
+the Cash transaction journal. Recipient acceptance remains a separate step.

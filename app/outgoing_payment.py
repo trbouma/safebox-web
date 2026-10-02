@@ -56,9 +56,10 @@ def _public_payment_error(exc: Exception, payment_kind: str) -> str:
         marker in normalized for marker in invalid_address_markers
     ):
         return INVALID_LIGHTNING_ADDRESS_MESSAGE
-    if payment_kind == "clear-request":
+    if payment_kind in {"clear-request", "clear-address"}:
         if isinstance(exc, ValueError):
-            return f"Clear payment request rejected: {detail}"
+            label = "Clear transfer" if payment_kind == "clear-address" else "Clear payment request"
+            return f"{label} rejected: {detail}"
         return (
             "The Clear transfer did not return a confirmed result. Do not retry "
             "blindly; review Clear Transactions first."
@@ -86,7 +87,7 @@ def _payment_error_code(
         )
     ):
         return "invalid_lightning_address"
-    if payment_kind == "clear-request":
+    if payment_kind in {"clear-request", "clear-address"}:
         if isinstance(exc, ValueError):
             return "clear_payment_request_rejected"
         if outcome_uncertain:
@@ -276,6 +277,7 @@ async def run_outgoing_payment_job(
     comment: str,
     tendered_amount: float | None = None,
     tendered_currency: str = "SAT",
+    clear_transfer: dict | None = None,
 ) -> None:
     async def maintain_lease() -> None:
         while True:
@@ -294,15 +296,21 @@ async def run_outgoing_payment_job(
             engine,
             npub,
             owner_token,
-            phase="SENDING" if payment_kind == "clear-request" else "PAYING",
+            phase="SENDING" if payment_kind in {"clear-request", "clear-address"} else "PAYING",
         )
-        if payment_kind == "clear-request":
-            sender = getattr(acorn, "send_payment_request", None)
+        if payment_kind in {"clear-request", "clear-address"}:
+            sender = getattr(acorn, "send_clear_transfer" if payment_kind == "clear-address" else "send_payment_request", None)
             if sender is None:
                 raise RuntimeError(
-                    "This Safebox installation cannot yet pay NUT-18 requests"
+                    "This Safebox installation does not support this Clear transfer method"
                 )
-            delivery = await sender(recipient, memo=comment)
+            if payment_kind == "clear-address":
+                if not clear_transfer:
+                    raise ValueError("Missing Clear transfer details")
+                delivery = await sender(amount=int(amount), recipient=recipient,
+                                        comment=comment, **clear_transfer)
+            else:
+                delivery = await sender(recipient, memo=comment)
             if not isinstance(delivery, dict) or delivery.get("status") != "OK":
                 raise RuntimeError(
                     "The Clear payment did not return a confirmed successful result"
@@ -315,6 +323,8 @@ async def run_outgoing_payment_job(
                 "NUT-18 payment delivered privately through NIP-17. The recipient "
                 "must accept it through the issuing Clear mint."
             )
+            if payment_kind == "clear-address":
+                message = "Clear transfer delivered privately. The recipient must accept it into the matching Clear Balance."
             if event_id:
                 message += f" Event: {event_id}."
             update_outgoing_payment_job(
@@ -382,7 +392,8 @@ async def run_outgoing_payment_job(
         error_text = str(exc).strip() or type(exc).__name__
         public_error = _public_payment_error(exc, payment_kind)
         outcome_uncertain = (
-            "unknown" in type(exc).__name__.lower()
+            isinstance(exc, TimeoutError)
+            or "unknown" in type(exc).__name__.lower()
             or "finalization" in type(exc).__name__.lower()
             or "unresolved" in error_text.lower()
             or "do not retry" in error_text.lower()
@@ -394,7 +405,7 @@ async def run_outgoing_payment_job(
         )
         history_recorded = bool(getattr(exc, "history_recorded", False))
         history_error = None
-        if not history_recorded and payment_kind != "clear-request":
+        if not history_recorded and payment_kind not in {"clear-request", "clear-address"}:
             try:
                 await acorn.add_tx_history(
                     tx_type="X",
@@ -443,6 +454,7 @@ def run_outgoing_payment_job_in_thread(
     tendered_amount: float | None,
     tendered_currency: str,
     load_timeout_seconds: float,
+    clear_transfer: dict | None = None,
 ) -> None:
     async def execute() -> None:
         acorn = acorn_factory()
@@ -453,6 +465,7 @@ def run_outgoing_payment_job_in_thread(
             comment=comment,
             tendered_amount=tendered_amount,
             tendered_currency=tendered_currency,
+            clear_transfer=clear_transfer,
         )
 
     try:

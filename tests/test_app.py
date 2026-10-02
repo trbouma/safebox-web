@@ -6804,8 +6804,63 @@ def test_payment_form_lists_each_clear_balance_without_combining_it() -> None:
     assert "cmu-two — 40 cmu-two" in response.text
 
 
+def _await_clear_address_job(client, app, acorn):
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        job = get_outgoing_payment_job(app.state.database_engine, acorn.pubkey_bech32)
+        if job and job["status"] != "RUNNING":
+            assert job["payment_kind"] == "clear-address"
+            return client.get("/pay/status")
+        time.sleep(0.01)
+    raise AssertionError("Clear address worker did not finish")
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_clear_address_send_outlives_request_timeout_without_duplicate(tmp_path, monkeypatch, fail):
+    started = threading.Event()
+    release = threading.Event()
+    class SlowAcorn(FakeLoadedAcorn):
+        async def send_clear_transfer(self, **kwargs):
+            self.clear_transfers.append(dict(kwargs))
+            started.set()
+            while not release.is_set():
+                await asyncio.sleep(0.01)
+            if fail:
+                raise TimeoutError("Delivery acknowledgement unavailable")
+            return {"status": "OK", "fee": 2, "event_id": "test-delivery"}
+    app = create_app(replace(database_settings(tmp_path), payment_timeout_seconds=0.05))
+    acorn = SlowAcorn(balance=500)
+    acorn.clear_balances = [{"mint": "https://clear.one", "unit": "cmu-one", "amount": 25, "proof_count": 3}]
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    monkeypatch.setattr(main_module, "_resolve_safebox_clear_recipient", AsyncMock(return_value={
+        "npub": "recipient", "relay_hints": ["wss://relay.example"]}))
+    data = {"csrf_token": valid_csrf_token(), "payment_asset": main_module._encode_clear_payment_asset("https://clear.one", "cmu-one"),
+            "lightning_address": "alice@example.com", "amount": "5", "comment": "slow transfer", "payment_mode": "confirmed", "confirmed": "yes"}
+    with TestClient(app, base_url="https://safebox.example") as client:
+        try:
+            response = client.post("/pay", data=data, follow_redirects=False)
+            assert response.status_code == 303
+            assert response.headers["location"] == "/pay/status"
+            assert started.wait(2)
+            time.sleep(0.1)
+            assert get_outgoing_payment_job(app.state.database_engine, acorn.pubkey_bech32)["status"] == "RUNNING"
+            assert "being processed" in client.get("/pay/status").text
+            assert client.post("/pay", data=data, follow_redirects=False).status_code == 303
+            assert len(acorn.clear_transfers) == 1
+        finally:
+            release.set()
+        response = _await_clear_address_job(client, app, acorn)
+        assert ("Do not retry blindly" if fail else "Transfer completed") in response.text
+        assert 'href="/clear"' in response.text
+        if not fail:
+            assert "2 cmu-one" in response.text
+            assert "test-delivery" in response.text
+    assert acorn.payments == []
+
+
 def test_clear_payment_sends_public_mint_unknown_to_compatible_receiver(
-    monkeypatch,
+    monkeypatch, tmp_path,
 ) -> None:
     recipient_hex = "11" * 32
     recipient_npub = main_module.Keys.hex_to_bech32(recipient_hex, prefix="npub")
@@ -6852,7 +6907,7 @@ def test_clear_payment_sends_public_mint_unknown_to_compatible_receiver(
         "_read_proof_verification",
         cash_mint_must_not_be_checked,
     )
-    app = create_app(TEST_SETTINGS)
+    app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     acorn.clear_balances = [
         {
@@ -6863,26 +6918,27 @@ def test_clear_payment_sends_public_mint_unknown_to_compatible_receiver(
         }
     ]
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.post(
-        "/pay",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "payment_asset": main_module._encode_clear_payment_asset(
-                "https://clear.one",
-                "cmu-one",
-            ),
-            "lightning_address": "alice@example.com",
-            "amount": "5",
-            "comment": "meeting room",
-            "payment_mode": "confirmed",
-            "confirmed": "yes",
-        },
-    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "payment_asset": main_module._encode_clear_payment_asset(
+                    "https://clear.one",
+                    "cmu-one",
+                ),
+                "lightning_address": "alice@example.com",
+                "amount": "5",
+                "comment": "meeting room",
+                "payment_mode": "confirmed",
+                "confirmed": "yes",
+            },
+        )
+        response = _await_clear_address_job(client, app, acorn)
 
     assert response.status_code == 200
-    assert "Clear balance transferred" in response.text
+    assert "Transfer completed" in response.text
     assert "5 cmu-one" in response.text
     assert "recipient must accept" in response.text
     assert acorn.payments == []
@@ -6900,7 +6956,7 @@ def test_clear_payment_sends_public_mint_unknown_to_compatible_receiver(
 
 
 def test_clear_payment_sends_local_mint_to_compatible_local_instance(
-    monkeypatch,
+    monkeypatch, tmp_path,
 ) -> None:
     recipient_npub = main_module.Keys.hex_to_bech32("11" * 32, prefix="npub")
     resolver = AsyncMock(
@@ -6911,7 +6967,7 @@ def test_clear_payment_sends_local_mint_to_compatible_local_instance(
         }
     )
     monkeypatch.setattr(main_module, "_resolve_safebox_clear_recipient", resolver)
-    app = create_app(TEST_SETTINGS)
+    app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     acorn.clear_balances = [
         {
@@ -6922,23 +6978,24 @@ def test_clear_payment_sends_local_mint_to_compatible_local_instance(
         }
     ]
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
-
-    response = client.post(
-        "/pay",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "payment_asset": main_module._encode_clear_payment_asset(
-                "http://192.168.1.20:3339",
-                "cmu-local",
-            ),
-            "lightning_address": "alice@community.local",
-            "amount": "5",
-            "comment": "local network transfer",
-            "payment_mode": "confirmed",
-            "confirmed": "yes",
-        },
-    )
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "payment_asset": main_module._encode_clear_payment_asset(
+                    "http://192.168.1.20:3339",
+                    "cmu-local",
+                ),
+                "lightning_address": "alice@community.local",
+                "amount": "5",
+                "comment": "local network transfer",
+                "payment_mode": "confirmed",
+                "confirmed": "yes",
+            },
+        )
+        response = _await_clear_address_job(client, app, acorn)
 
     assert response.status_code == 200, response.text
     resolver.assert_awaited_once()
@@ -6954,7 +7011,7 @@ def test_clear_payment_sends_local_mint_to_compatible_local_instance(
     ]
 
 
-def test_clear_payment_reports_unavailable_recipient_relay(monkeypatch) -> None:
+def test_clear_payment_reports_unavailable_recipient_relay(monkeypatch, tmp_path) -> None:
     recipient_npub = main_module.Keys.hex_to_bech32("11" * 32, prefix="npub")
 
     class UnreachableRelayAcorn(FakeLoadedAcorn):
@@ -6974,7 +7031,7 @@ def test_clear_payment_reports_unavailable_recipient_relay(monkeypatch) -> None:
             }
         ),
     )
-    app = create_app(TEST_SETTINGS)
+    app = create_app(database_settings(tmp_path))
     acorn = UnreachableRelayAcorn(balance=500)
     acorn.clear_balances = [
         {
@@ -6985,27 +7042,27 @@ def test_clear_payment_reports_unavailable_recipient_relay(monkeypatch) -> None:
         }
     ]
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
-    client = TestClient(app, base_url="https://safebox.example")
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post(
+            "/pay",
+            data={
+                "csrf_token": valid_csrf_token(),
+                "payment_asset": main_module._encode_clear_payment_asset(
+                    "https://clear.one",
+                    "cmu-one",
+                ),
+                "lightning_address": "alice@example.com",
+                "amount": "5",
+                "comment": "meeting room",
+                "payment_mode": "confirmed",
+                "confirmed": "yes",
+            },
+        )
+        response = _await_clear_address_job(client, app, acorn)
 
-    response = client.post(
-        "/pay",
-        data={
-            "csrf_token": valid_csrf_token(),
-            "payment_asset": main_module._encode_clear_payment_asset(
-                "https://clear.one",
-                "cmu-one",
-            ),
-            "lightning_address": "alice@example.com",
-            "amount": "5",
-            "comment": "meeting room",
-            "payment_mode": "confirmed",
-            "confirmed": "yes",
-        },
-    )
-
-    assert response.status_code == 503
-    assert "Recipient relay unavailable" in response.text
-    assert "No value was sent" in response.text
+    assert response.status_code == 200
+    assert "Do not retry blindly" in response.text
     assert len(acorn.clear_transfers) == 1
 
 
@@ -7032,6 +7089,7 @@ def test_local_clear_payment_uses_internal_relay_without_https(
         }
     ]
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
     with TestClient(app, base_url="http://192.168.1.20:8888") as client:
         with Session(app.state.database_engine) as session:
             session.add(
@@ -7057,6 +7115,7 @@ def test_local_clear_payment_uses_internal_relay_without_https(
                 "confirmed": "yes",
             },
         )
+        response = _await_clear_address_job(client, app, acorn)
 
     assert response.status_code == 200, response.text
     assert acorn.clear_transfers == [
@@ -7265,7 +7324,13 @@ def test_pasted_clear_request_from_transfer_page_opens_review_without_sending() 
     assert acorn.payment_request_sends == []
 
 
-def test_scanned_nut18_request_opens_clear_payment_review() -> None:
+@pytest.mark.parametrize("encoded", [
+    TEST_NUT18_REQUEST,
+    "CREQB1QYQQWER9D4HNZV3NQGQQSQQQQQQQQQQRAQPSQQGQQSQQZQG9QQVXSAR5WPEN5TE0D45KUAPWV4UXZMTSD3JJUCM0D5RQQRJRDANXVET9YPCXZ7TDV4H8GXHR3TQ",
+    "creqb1qyqqwer9d4hnzv3nqgqqsqqqqqqqqqqraqpsqqgqqsqqzqg9qqvxsar5wpen5te0d45kuapwv4uxzmtsd3jjucm0d5rqqrjrdanxvet9ypcxz7tdv4h8gxhr3tq",
+    "bitcoin:?creq=CREQB1QYQQWER9D4HNZV3NQGQQSQQQQQQQQQQRAQPSQQGQQSQQZQG9QQVXSAR5WPEN5TE0D45KUAPWV4UXZMTSD3JJUCM0D5RQQRJRDANXVET9YPCXZ7TDV4H8GXHR3TQ",
+])
+def test_scanned_nut18_request_opens_clear_payment_review(encoded) -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -7275,7 +7340,7 @@ def test_scanned_nut18_request_opens_clear_payment_review() -> None:
         "/scan/lightning",
         data={
             "csrf_token": valid_csrf_token(),
-            "lightning_payment": TEST_NUT18_REQUEST,
+            "lightning_payment": encoded,
         },
     )
 
@@ -7289,9 +7354,9 @@ def test_scanned_nut18_request_opens_clear_payment_review() -> None:
     assert "Proof value sent" in response.text
     assert "26 cmu-community" in response.text
     assert 'action="/scan/payment-request"' in response.text
-    assert f'value="{TEST_NUT18_REQUEST}"' in response.text
+    assert f'value="{encoded}"' in response.text
     assert "Clear payment in progress" in response.text
-    assert acorn.payment_request_inspections == [TEST_NUT18_REQUEST]
+    assert acorn.payment_request_inspections == [encoded]
     assert acorn.payment_request_sends == []
 
 

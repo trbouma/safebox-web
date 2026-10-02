@@ -20,7 +20,7 @@ from pathlib import Path
 import re
 import secrets
 from time import monotonic, time
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit, parse_qs
 import zipfile
 
 from aztec_code_generator import AztecCode
@@ -3718,6 +3718,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         amount: int,
         comment: str,
         capture_tender: bool = True,
+        clear_transfer: dict | None = None,
     ) -> RedirectResponse:
         npub = acorn.pubkey_bech32
         if capture_tender:
@@ -3755,6 +3756,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     recipient=recipient,
                     amount=amount,
                     comment=comment,
+                    clear_transfer=clear_transfer,
                     tendered_amount=tendered_amount,
                     tendered_currency=tendered_currency,
                     load_timeout_seconds=(
@@ -6413,7 +6415,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 scan_error,
             )
 
-        if scanned_value.lower().startswith("creqa"):
+        if (scanned_value.lower().startswith(("creqa", "creqb1"))
+                or (scanned_value.lower().startswith("bitcoin:")
+                    and "creq" in parse_qs(urlsplit(scanned_value).query, keep_blank_values=True))):
             try:
                 payment_request = decode_payment_request(scanned_value)
                 inspector = getattr(acorn, "inspect_payment_request", None)
@@ -7041,103 +7045,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if explicit_clear_relay is not None
                 else _supported_relay_hint_kwargs(sender, clear_relay_hints)
             )
-            try:
-                delivery = await asyncio.wait_for(
-                    sender(
-                        amount=payment_amount,
-                        recipient=str(clear_recipient["npub"]),
-                        mint=str(selected_clear["mint"]),
-                        unit=str(selected_clear["unit"]),
-                        comment=payment_comment,
-                        **clear_routing_kwargs,
-                    ),
-                    timeout=settings.payment_timeout_seconds,
-                )
-            except TransferRelayUnavailable as exc:
-                logger.warning(
-                    "Clear payment relay unavailable recipient=%s mint=%s unit=%s",
-                    clear_recipient["npub"],
-                    selected_clear["mint"],
-                    selected_clear["unit"],
-                )
-                return HTMLResponse(
-                    _page(
-                        "Recipient relay unavailable",
-                        f"<p>{escape(str(exc))}</p>"
-                        '<p><a href="/pay">Return to transfer</a></p>',
-                    ),
-                    status_code=503,
-                )
-            except TimeoutError:
-                logger.warning(
-                    "Clear payment timed out outcome=unknown recipient=%s mint=%s unit=%s",
-                    clear_recipient["npub"],
-                    selected_clear["mint"],
-                    selected_clear["unit"],
-                )
-                return HTMLResponse(
-                    _page(
-                        "Clear transfer status unresolved",
-                        "<p>The Clear transfer timed out before Safebox received a "
-                        "final result. Do not retry it blindly. Review Clear "
-                        "Transactions before attempting another transfer.</p>"
-                        '<p><a href="/clear">Review Clear Transactions</a></p>',
-                    ),
-                    status_code=504,
-                )
-            except Exception as exc:
-                error_reason = str(exc).strip()
-                logger.warning(
-                    "Clear payment failed recipient=%s mint=%s unit=%s error_type=%s",
-                    clear_recipient["npub"],
-                    selected_clear["mint"],
-                    selected_clear["unit"],
-                    type(exc).__name__,
-                )
-                return HTMLResponse(
-                    _page(
-                        "Clear transfer not confirmed",
-                        "<p>Safebox did not receive a confirmed successful Clear "
-                        "transfer result. Do not retry blindly. Review Clear "
-                        "Transactions first.</p>"
-                        + (
-                            f"<p><strong>Reason:</strong> {escape(error_reason)}</p>"
-                            if error_reason
-                            else ""
-                        )
-                        + '<p><a href="/clear">Review Clear Transactions</a></p>',
-                    ),
-                    status_code=502,
-                )
-            if not isinstance(delivery, dict) or delivery.get("status") != "OK":
-                return HTMLResponse(
-                    _page(
-                        "Clear transfer not confirmed",
-                        "<p>The transfer did not return a confirmed successful "
-                        "result. Do not retry blindly. Review Clear Transactions "
-                        "first.</p>"
-                        '<p><a href="/clear">Review Clear Transactions</a></p>',
-                    ),
-                    status_code=502,
-                )
-            event_id = str(delivery.get("event_id") or "")
-            message = "Clear transfer sent."
-            if event_id:
-                message += f" Event: {event_id}."
-            message += (
-                f" Canonical CMU: {selected_clear['unit']}. "
-                "The recipient must accept it into the matching Clear Balance."
-            )
-            return render_template(
-                "payment_result.html",
-                title="Clear balance transferred",
-                amount=f"{payment_amount:,}",
-                fees=f"{int(delivery.get('fee') or 0):,}",
-                unit=str(
-                    selected_clear.get("display_unit") or selected_clear["unit"]
-                ),
-                recipient=recipient,
-                message=message,
+            return start_outgoing_payment(
+                request,
+                acorn=acorn,
+                acorn_factory=acorn_factory,
+                payment_kind="clear-address",
+                recipient=str(clear_recipient["npub"]),
+                display_recipient=str(selected_clear.get("display_unit") or selected_clear["unit"]),
+                amount=payment_amount,
+                comment=payment_comment,
+                capture_tender=False,
+                clear_transfer={
+                    "mint": str(selected_clear["mint"]),
+                    "unit": str(selected_clear["unit"]),
+                    **clear_routing_kwargs,
+                },
             )
 
         direct_recipient = _resolve_local_safebox_recipient(
@@ -7361,7 +7283,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "payment_status.html",
                 title=(
                     "Clear Balance Transfer"
-                    if job.get("payment_kind") == "clear-request"
+                    if job.get("payment_kind") in {"clear-request", "clear-address"}
                     else "Balance Transfer"
                 ),
                 job=job,
