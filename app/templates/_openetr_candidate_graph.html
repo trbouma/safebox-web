@@ -1,8 +1,11 @@
 {% with graph_number=graph_number, graph=graph %}{% include "_anchor_signer.html" %}{% endwith %}
+<details class="openetr-protocol-details">
+<summary>Related events and technical details</summary>
+<div class="openetr-protocol-details-content">
 {% set dcr = graph.digital_controllable_record|default({"record_count": 1 + graph.controls|length, "status": "candidate"}) %}
 
 <dl class="openetr-event-fields openetr-human-fields openetr-evaluation-status">
-  <dt>DCR</dt><dd>{{ dcr.record_count }} end-verifiable record{% if dcr.record_count != 1 %}s{% endif %}</dd>
+  <dt>Candidate DCR</dt><dd>{{ dcr.record_count }} end-verifiable record{% if dcr.record_count != 1 %}s{% endif %}</dd>
 </dl>
 
 <h3>Control Events</h3>
@@ -24,7 +27,7 @@
   <dt>Recognition</dt><dd>Not evaluated</dd>
   <dt>Effect</dt><dd>Not evaluated</dd>
 </dl>
-<p class="openetr-evidence-note">The displayed events are valid evidence, but
+<p class="openetr-evidence-note">The displayed events passed cryptographic checks, but
 this candidate Digital Controllable Record has not yet been evaluated by a
 versioned OpenETR state-derivation engine.
 Cryptographic validity does not by itself establish that the signer is a
@@ -34,3 +37,5 @@ recognized authority or that this record has effect for a particular purpose.</p
 <p class="openetr-warning"><strong>Note:</strong> {{ warning }}</p>
 {% endfor %}
 {% with history=history, graph=graph %}{% include "_openetr_protocol_details.html" %}{% endwith %}
+</div>
+</details>

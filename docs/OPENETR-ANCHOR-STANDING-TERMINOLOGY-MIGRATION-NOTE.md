@@ -1,5 +1,25 @@
 # OpenETR Artifact, DCR, Recognition, and Standing Migration Note
 
+## Implemented Web verifier policy (2026-10)
+
+The primary Web Check pane now answers only whether a cryptographically valid
+kind-1415 Anchor Event references the Record File's exact SHA-256 digest.
+It reports **Anchor found**, **No anchor found**, or **Check unavailable**.
+The negative result is scoped to configured relays and the bounded query;
+a lookup failure is not evidence of absence. Multiple anchors are shown without
+choosing an authoritative one. Signer key, anchor ID, and date remain visible.
+
+Related events, candidate DCR information, and unevaluated state/recognition/
+effect are collapsed into optional technical details. An optional related-event
+lookup failure does not invalidate an otherwise successful anchor check.
+The primary UI does not claim recognized authority, current control, ownership,
+or legal effect. Downloads say Record File, not Original; evidence links do not
+claim a completed verification result. Wire kinds, actions, and links are unchanged.
+
+The broader migration discussion below is architectural context, not an expanded
+Web verification policy. In the revised OpenETR model, Standing is not a separate
+core primitive; standing-related status can be domain-specific consequential state.
+
 ## Status
 
 Migration in progress for Safebox Web. Anchor/signer projection changes and

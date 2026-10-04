@@ -9609,9 +9609,9 @@ def test_scanned_presentation_displays_record_and_history_without_import(monkeyp
     assert response.status_code == 200
     assert "Presented Credential" in response.text
     assert "verified copy" in response.text
-    assert "Control History" in response.text
+    assert "Anchor Check" in response.text
     assert "Attested record" in response.text
-    assert "Verification QR Code" in response.text
+    assert "OpenETR Evidence Link" in response.text
     assert 'data-copy-value="https://openetr.org/etr/' in response.text
     assert "https://openetr.org/etr/" in response.text
     assert 'aria-label="OpenETR durable link QR code"' in response.text
@@ -9882,7 +9882,7 @@ def test_blob_upload_follow_redirect_renders_saved_record() -> None:
     assert str(response.url).endswith("/record?label=Private+Notes&saved=1")
     assert "Record saved and verified." in response.text
     assert "Safebox stored Record File type for notes.txt: text/plain." in response.text
-    assert '<a class="record-capability" href="/record/blob?label=Private+Notes">Original</a>' in response.text
+    assert '<a class="record-capability" href="/record/blob?label=Private+Notes">Record File</a>' in response.text
 
 
 def test_pkpass_blob_upload_records_wallet_pass_media_type() -> None:
@@ -10410,7 +10410,7 @@ def test_blob_record_download_returns_decrypted_attachment() -> None:
     assert 'class="record-fingerprint"' in detail.text
     assert "Record File Fingerprint:</span> <code>1EA23F2B</code>" in detail.text
     assert '<nav class="record-capabilities" aria-label="Record actions">' in detail.text
-    assert 'href="/record/blob?label=Private+Notes">Original</a>' in detail.text
+    assert 'href="/record/blob?label=Private+Notes">Record File</a>' in detail.text
     assert 'href="/record/share?label=Private+Notes">Share</a>' in detail.text
     assert 'href="/record/present?label=Private+Notes">Present</a>' in detail.text
     assert ">Issue</button>" not in detail.text
@@ -10660,7 +10660,7 @@ def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
         "Anchored warehouse receipt"
     ) < response.text.index("Protocol Details")
     durable_url = f"https://openetr.org/etr/{digest}"
-    assert "Verification QR Code" in response.text
+    assert "OpenETR Evidence Link" in response.text
     assert 'class="record-fingerprint openetr-verification-fingerprint"' in response.text
     assert "Record File Fingerprint:</span> <code>1EA23F2B</code>" in response.text
     assert "Tap the QR code to copy its link." in response.text
@@ -10668,7 +10668,7 @@ def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
     assert f'href="{durable_url}"' not in response.text
     assert f'data-copy-value="{durable_url}"' in response.text
     assert 'aria-label="OpenETR durable link QR code"' in response.text
-    assert response.text.index("Verification QR Code") < response.text.index(
+    assert response.text.index("OpenETR Evidence Link") < response.text.index(
         "Anchor and Signer"
     ) < response.text.index("Control Events") < response.text.index(
         "Protocol Details"
@@ -10728,7 +10728,7 @@ def test_identity_resolved_image_blob_remains_visible_and_retrievable() -> None:
 
     assert detail.status_code == 200
     assert '<img src="/record/blob?label=Grove+Photo&amp;inline=1"' in detail.text
-    assert 'href="/record/blob?label=Grove+Photo">Original</a>' in detail.text
+    assert 'href="/record/blob?label=Grove+Photo">Record File</a>' in detail.text
     assert "Record File type" in detail.text
     assert edit.status_code == 200
     assert "retain the existing Record File" in edit.text
@@ -10758,7 +10758,7 @@ def test_pdf_blob_uses_pdfjs_progressive_viewer_with_download_fallback() -> None
     assert 'href="/record/blob?label=Report&amp;inline=1"' in response.text
     assert "Open PDF full screen" in response.text
     assert "JavaScript is required for the inline PDF preview" in response.text
-    assert 'href="/record/blob?label=Report">Original</a>' in response.text
+    assert 'href="/record/blob?label=Report">Record File</a>' in response.text
 
 
 def test_blob_fingerprint_is_hidden_when_plaintext_digest_is_invalid() -> None:

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <p>Ask the recipient to scan this code with Safebox. It grants temporary access
-to view <strong>{{ label }}</strong> and its Control History.</p>
+to view <strong>{{ label }}</strong> and check its OpenETR anchor.</p>
 <div class="invoice-qr" aria-label="Record presentation QR code">
   {{ presentation_qr | safe }}
 </div>

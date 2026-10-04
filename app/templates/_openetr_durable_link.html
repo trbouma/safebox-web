@@ -1,6 +1,6 @@
 {% if durable_url and durable_qr %}
 <section class="openetr-durable-link" aria-labelledby="openetr-verification-link-heading">
-  <h2 id="openetr-verification-link-heading">Verification QR Code</h2>
+  <h2 id="openetr-verification-link-heading">OpenETR Evidence Link</h2>
   {% if blob_fingerprint %}
   <p class="record-fingerprint openetr-verification-fingerprint">
     <svg class="inline-icon" viewBox="0 0 24 24" fill="none"
@@ -15,7 +15,7 @@
     <span>Record File Fingerprint:</span> <code>{{ blob_fingerprint }}</code>
   </p>
   {% endif %}
-  <p class="openetr-evidence-note">Scan to open the durable verification record.
+  <p class="openetr-evidence-note">Scan to inspect the available OpenETR evidence.
   Tap the QR code to copy its link.</p>
   <button type="button" class="openetr-durable-qr-button"
           data-copy-value="{{ durable_url }}"

@@ -368,18 +368,27 @@ async def query_openetr_history(
             wait_connect=True,
             timeout=timeout,
         )
-        control_events = await client.query(
-            {**event_filter, "kinds": [CONTROL_KIND]},
-            emulate_single=True,
-            wait_connect=True,
-            timeout=timeout,
-        )
+        related_events_unavailable = False
+        try:
+            control_events = await client.query(
+                {**event_filter, "kinds": [CONTROL_KIND]},
+                emulate_single=True,
+                wait_connect=True,
+                timeout=timeout,
+            )
+        except Exception:
+            control_events = []
+            related_events_unavailable = True
         history = build_openetr_history(
             normalized_digest,
             [*anchor_events, *control_events],
             relay_list,
         )
         candidate_graphs = history["candidate_graphs"]
+        if related_events_unavailable:
+            history["warnings"].append(
+                "Related events are temporarily unavailable; the anchor check completed."
+            )
         if candidate_graphs:
             signer_pubkeys = sorted(
                 {graph["anchor"]["author_hex"] for graph in candidate_graphs}

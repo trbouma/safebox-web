@@ -9720,7 +9720,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             return render_template(
                 "_control_history_content.html" if fragment else "control_history.html",
-                title="Control History",
+                title="Anchor Check",
                 label=label,
                 record_url=record_url,
                 has_blob=_record_has_blob(record_value),

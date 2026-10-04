@@ -2,6 +2,10 @@
 {% set profile = graph.signer_profile %}
 <section class="openetr-event openetr-anchor-signer" aria-labelledby="openetr-anchor-signer-heading-{{ graph_number }}">
   <h2 id="openetr-anchor-signer-heading-{{ graph_number }}">Anchor and Signer</h2>
+  <dl class="openetr-event-fields openetr-human-fields">
+    <dt>Signer Public Key</dt><dd><code>{{ anchor.author }}</code></dd>
+    <dt>Anchor Event ID</dt><dd><code>{{ anchor.id }}</code></dd>
+  </dl>
 
   {% if profile %}
   <dl class="openetr-event-fields openetr-human-fields">

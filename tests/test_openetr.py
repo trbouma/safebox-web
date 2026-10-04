@@ -1,8 +1,58 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+import asyncio
 
 import pytest
+from app.templating import render_template
+from app import openetr as openetr_module
+
+
+@pytest.mark.parametrize("outcome", ["found", "empty", "unavailable"])
+def test_minimal_anchor_check_states(outcome):
+    digest = "ab" * 32
+    anchors = [event("01" * 32, kind=ANCHOR_KIND, created_at=100, tags=[["o", digest]])] if outcome == "found" else []
+    history = build_openetr_history(digest, anchors, ["wss://relay.example"])
+    if outcome == "unavailable":
+        history["error"] = "timeout"
+    html = render_template("_control_history_content.html", has_blob=True,
+                           blob_fingerprint=digest, openetr_history=history)
+    expected = {"found": "Anchor found", "empty": "No anchor found", "unavailable": "Check unavailable"}[outcome]
+    assert f"<strong>{expected}</strong>" in html
+    if outcome == "found":
+        assert "01" * 32 in html
+        assert "Signer Public Key" in html
+        assert '<details class="openetr-protocol-details">\n<summary>Related events and technical details</summary>' in html
+        assert "not recognized authority, current control, ownership, or legal effect" in html
+    elif outcome == "unavailable":
+        assert "<strong>No anchor found</strong>" not in html
+
+
+def test_related_event_failure_preserves_anchor_check(monkeypatch):
+    digest = "ab" * 32
+    anchor = event("01" * 32, kind=ANCHOR_KIND, created_at=100, tags=[["o", digest]])
+    class Pool:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def query(self, filters, **kwargs):
+            if filters["kinds"] == [ANCHOR_KIND]: return [anchor]
+            raise TimeoutError()
+    monkeypatch.setattr(openetr_module, "ClientPool", Pool)
+    history = asyncio.run(openetr_module.query_openetr_history(digest, ["wss://relay.example"]))
+    assert history["candidate_graphs"][0]["anchor"]["id"] == anchor.id
+    assert history["error"] is None
+    assert "Related events" in history["warnings"][0]
+
+
+def test_multiple_anchors_not_ranked_as_authoritative():
+    digest = "ab" * 32
+    anchors = [event(f"{i:064x}", kind=ANCHOR_KIND, created_at=i, tags=[["o", digest]]) for i in (1, 2)]
+    history = build_openetr_history(digest, anchors, ["wss://relay.example"])
+    html = render_template("_control_history_content.html", has_blob=True,
+                           blob_fingerprint=digest, openetr_history=history)
+    assert "None is selected as authoritative" in html
+    assert all(anchor.id in html for anchor in anchors)
 
 from app.openetr import (
     ANCHOR_KIND,

@@ -1,17 +1,20 @@
-<section class="openetr-history-content" aria-label="Control history details">
+<section class="openetr-history-content" aria-label="Anchor check details">
   {% if not has_blob %}
-  <p>A Record File is required before its control history can be queried.</p>
+  <p>A Record File is required before its anchor can be checked.</p>
   {% elif not blob_fingerprint %}
   <p>This Record File does not contain a valid SHA-256 object digest.</p>
   {% elif openetr_history.error %}
-  <p class="error">{{ openetr_history.error }}</p>
+  <p role="status"><strong>Check unavailable</strong></p>
+  <p>The relay lookup could not be completed. Try again later; this does not mean no anchor exists.</p>
   {% elif not openetr_history.candidate_graphs %}
-  <p>No OpenETR Anchor Event was found for this Record File.</p>
+  <p role="status"><strong>No anchor found</strong></p>
+  <p>No cryptographically valid OpenETR Anchor Event matching this Record File's exact SHA-256 digest was returned by the queried relays. This is not a search of every relay.</p>
   {% else %}
+  <p role="status"><strong>Anchor found</strong></p>
+  <p>A cryptographically valid OpenETR Anchor Event references this Record File's exact SHA-256 digest.</p>
+  <p class="openetr-evidence-note">This check confirms a signed reference to the file, not recognized authority, current control, ownership, or legal effect.</p>
+  {% if openetr_history.candidate_graphs|length > 1 %}<p>Multiple anchors were found. None is selected as authoritative.</p>{% endif %}
   {% include "_openetr_durable_link.html" %}
-  <p class="openetr-evidence-note">These are cryptographically valid signed
-  events returned by the configured OpenETR relay infrastructure. Recognition
-  of the signer and the effect of an event remain separate questions.</p>
   {% for graph in openetr_history.candidate_graphs %}
   <section class="openetr-candidate-graph" aria-label="Candidate anchor graph {{ loop.index }}">
     {% if openetr_history.candidate_graphs|length > 1 %}<h2>Candidate {{ loop.index }}</h2>{% endif %}
