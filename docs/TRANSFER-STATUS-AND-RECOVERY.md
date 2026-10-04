@@ -98,3 +98,25 @@ queue. Leaving the page does not cancel it, but process interruption still
 requires review. Relay acknowledgement failures or timeouts are uncertain
 outcomes: no automatic retry is made, and Clear failures are not written into
 the Cash transaction journal. Recipient acceptance remains a separate step.
+# Incoming Clear checks
+
+`POST /clear/receive` now starts a per-Acorn background scan and redirects to
+`GET /clear/receive-status`. Starting and reading status use the authenticated
+session without loading wallet relay state in the HTTP request. The worker
+loads its own Acorn, discovers and stores incoming receipts, and reports a
+stored count. The scan has a five-minute worker deadline, separate from the
+wallet-load timeout; it is not an indefinite incoming-payment monitor.
+
+The status page refreshes every three seconds only while running. Leaving the
+page does not cancel the worker. The Clear page includes a link back to the
+last check. Display aliases are resolved when viewing Clear Transactions, not
+as part of scan completion. Receipt acceptance remains a separate operation.
+
+The `clear_receive_job` table stores only public identity and coordination
+metadata, never session secrets or tokens. Migration `20261004_0013` creates
+this table at startup. An active per-wallet scan is not queued twice; failed,
+partial, or interrupted scans are not reported as an empty inbox. Review stored
+receipts before starting another check. Workers do not automatically resume
+after a process restart; Acorn's relay-backed cursor and receipts support the
+next explicit check. Existing Clear receipt handling remains responsible for
+idempotency and recovery.

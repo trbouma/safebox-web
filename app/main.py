@@ -164,6 +164,9 @@ from app.service_acorn_worker import (
 
 
 from app.templating import render_template
+from app.clear_receive import (
+    claim_clear_receive_job, get_clear_receive_job, run_clear_receive_job_in_thread,
+)
 from app.messages import router as messages_router
 from app.localization import (
     DEFAULT_LANGUAGE,
@@ -1760,6 +1763,9 @@ def _start_clear_acceptance(
 
     settings = request.app.state.settings
     npub = acorn.pubkey_bech32
+    receive_job = get_clear_receive_job(request.app.state.database_engine, npub)
+    if receive_job and receive_job.get("status") == "RUNNING":
+        return RedirectResponse("/clear/receive-status", status_code=303)
     outgoing_job = get_outgoing_payment_job(
         request.app.state.database_engine,
         npub,
@@ -3664,6 +3670,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.finalization_tasks = {}
         app.state.clear_acceptance_tasks = {}
+        app.state.clear_receive_tasks = {}
         app.state.outgoing_payment_tasks = {}
         app.state.deposit_finalization_tasks = {}
         app.state.clear_request_tasks = {}
@@ -3677,6 +3684,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             tasks = [
                 *app.state.finalization_tasks.values(),
                 *app.state.clear_acceptance_tasks.values(),
+                *app.state.clear_receive_tasks.values(),
                 *app.state.outgoing_payment_tasks.values(),
                 *app.state.deposit_finalization_tasks.values(),
                 *app.state.clear_request_tasks.values(),
@@ -3728,6 +3736,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         else:
             tendered_amount, tendered_currency = None, "SAT"
+        receive_job = get_clear_receive_job(request.app.state.database_engine, npub)
+        if receive_job and receive_job.get("status") == "RUNNING":
+            return RedirectResponse("/clear/receive-status", status_code=303)
         cash_job = get_finalization_job(request.app.state.database_engine, npub)
         if cash_job and cash_job.get("status") == "RUNNING":
             return RedirectResponse("/transactions?finalization=running", status_code=303)
@@ -7816,76 +7827,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/clear/receive", response_class=HTMLResponse)
     async def receive_clear_transfers(
         request: Request,
-        acorn: LoadedAcornDependency,
+        acorn: AcornDependency,
+        acorn_factory: BackgroundAcornFactoryDependency,
         csrf_token: str = Form(...),
     ):
         settings = request.app.state.settings
         if not CsrfProtector(settings).verify(csrf_token):
-            return HTMLResponse(
-                _page(
-                    "Clear transfers not checked",
-                    '<p class="error">The form token is invalid or expired.</p>'
-                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
-                ),
-                status_code=403,
-            )
+            raise HTTPException(403, "The form token is invalid or expired.")
+        engine = request.app.state.database_engine
+        npub = acorn.pubkey_bech32
+        for getter, destination in (
+            (get_outgoing_payment_job, "/pay/status"),
+            (get_clear_acceptance_job, "/clear/acceptance-status"),
+            (get_finalization_job, "/transactions?finalization=running"),
+        ):
+            job = getter(engine, npub)
+            if job and job.get("status") == "RUNNING":
+                return RedirectResponse(destination, status_code=303)
+        claimed, owner_token, _job = claim_clear_receive_job(
+            engine, npub, worker_id=request.app.state.worker_id)
+        if claimed:
+            task = asyncio.wrap_future(request.app.state.background_job_executor.submit(
+                run_clear_receive_job_in_thread,
+                engine=engine, acorn_factory=acorn_factory, npub=npub,
+                owner_token=owner_token,
+                load_timeout_seconds=settings.wallet_load_timeout_seconds))
+            request.app.state.clear_receive_tasks[npub] = task
+            def remove_completed(completed):
+                if request.app.state.clear_receive_tasks.get(npub) is completed:
+                    request.app.state.clear_receive_tasks.pop(npub, None)
+            task.add_done_callback(remove_completed)
+        return RedirectResponse("/clear/receive-status", status_code=303)
 
-        receiver = getattr(acorn, "sweep_clear_transfers", None)
-        if receiver is None:
-            return HTMLResponse(
-                _page(
-                    "Clear transfer receive unavailable",
-                    "<p class=\"error\">This Safebox Acorn installation does not "
-                    "support receiving Clear transfers. Update the component "
-                    "before trying again.</p>"
-                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
-                ),
-                status_code=501,
-            )
-        try:
-            result = await asyncio.wait_for(
-                receiver(),
-                timeout=settings.wallet_load_timeout_seconds,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Clear transfer receive failed error_type=%s",
-                type(exc).__name__,
-            )
-            return HTMLResponse(
-                _page(
-                    "Clear transfers not checked",
-                    '<p class="error">Safebox could not complete the Clear '
-                    "transfer relay check.</p>"
-                    '<p><a href="/clear">Return to Clear Transactions</a></p>',
-                ),
-                status_code=502,
-            )
-
-        # Warm display metadata as soon as newly received token envelopes have
-        # exposed their mint, unit, and (when available) proof keyset IDs. This
-        # cache is presentational only; the receipt and proof identities remain
-        # authoritative relay-backed Acorn state.
-        try:
-            pending_receipts = await _read_clear_receipts(
-                acorn,
-                settings.wallet_load_timeout_seconds,
-                status="pending",
-            )
-            await _resolve_clear_aliases(
-                _clear_balance_summary(pending_receipts),
-                timeout=settings.wallet_load_timeout_seconds,
-                configured_mints=settings.clear_mints,
-                cache=request.app.state.clear_mint_metadata_cache,
-            )
-        except Exception as exc:
-            logger.info(
-                "Clear receive metadata refresh skipped error_type=%s",
-                type(exc).__name__,
-            )
-
-        stored_count = max(0, int((result or {}).get("stored_count", 0)))
-        return RedirectResponse(f"/clear?received={stored_count}", status_code=303)
+    @app.get("/clear/receive-status", response_class=HTMLResponse)
+    async def clear_receive_status(request: Request, acorn: AcornDependency):
+        job = get_clear_receive_job(request.app.state.database_engine, acorn.pubkey_bech32)
+        if job is None:
+            return RedirectResponse("/clear", status_code=303)
+        return HTMLResponse(render_template(
+            "clear_receive_status.html", title="Check Incoming Clear Transfers", job=job),
+            headers={"Cache-Control": "no-store",
+                     **({"Refresh": "3"} if job["status"] == "RUNNING" else {})})
 
     @app.post("/clear/receipts/accept", response_class=HTMLResponse)
     async def accept_pending_clear_receipt(
@@ -8060,6 +8042,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "/clear/acceptance-status",
                 status_code=303,
             )
+        receive_job = get_clear_receive_job(request.app.state.database_engine, npub)
+        if receive_job and receive_job.get("status") == "RUNNING":
+            return RedirectResponse("/clear/receive-status", status_code=303)
         claimed, owner_token, _job = claim_finalization_job(
             request.app.state.database_engine,
             npub,

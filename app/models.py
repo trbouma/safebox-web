@@ -209,6 +209,22 @@ class ClearAcceptanceJob(SQLModel, table=True):
     lease_expires_at: datetime = _naive_datetime_field(nullable=False, index=True)
 
 
+class ClearReceiveJob(SQLModel, table=True):
+    """Non-secret status for one incoming Clear scan per Acorn."""
+
+    __tablename__ = "clear_receive_job"
+    npub: str = Field(primary_key=True)
+    owner_token: str = Field(nullable=False)
+    owner_worker_id: Optional[str] = Field(default=None, nullable=True, index=True)
+    status: str = Field(default="RUNNING", nullable=False, index=True)
+    phase: str = Field(default="STARTING", nullable=False)
+    stored_count: int = Field(default=0, nullable=False)
+    error: Optional[str] = Field(default=None, nullable=True)
+    started_at: datetime = _naive_datetime_field(default_factory=utc_now, nullable=False)
+    updated_at: datetime = _naive_datetime_field(default_factory=utc_now, nullable=False)
+    lease_expires_at: datetime = _naive_datetime_field(nullable=False, index=True)
+
+
 class OutgoingPaymentJob(SQLModel, table=True):
     """Non-secret coordination state for one outgoing Lightning payment."""
 

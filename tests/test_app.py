@@ -76,6 +76,7 @@ from app.main import create_app
 from app.models import ClaimedHandle, ProviderPayment
 from app.funds_finalization import claim_finalization_job, get_finalization_job
 from app.clear_acceptance import get_clear_acceptance_job
+from app.clear_receive import get_clear_receive_job
 from app.outgoing_payment import get_outgoing_payment_job
 from app.deposit_finalization import (
     claim_deposit_finalization_job,
@@ -4245,7 +4246,7 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "deposit_finalization_job",
         "web_worker_heartbeat",
     }.issubset(tables)
-    assert revision == ("20260922_0012",)
+    assert revision == ("20261004_0013",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",
@@ -5294,6 +5295,53 @@ def test_clear_token_creation_rejects_an_unavailable_balance(tmp_path) -> None:
     assert acorn.exported_clear_tokens == []
 
 
+def _await_clear_receive(app, acorn):
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        job = get_clear_receive_job(app.state.database_engine, acorn.pubkey_bech32)
+        if job and job["status"] != "RUNNING":
+            return job
+        time.sleep(0.01)
+    raise AssertionError("Incoming Clear check did not finish")
+
+
+def test_clear_receive_runs_without_blocking_or_duplicate_scans(tmp_path):
+    started, release = threading.Event(), threading.Event()
+    thread_names = []
+    class SlowAcorn(FakeLoadedAcorn):
+        async def sweep_clear_transfers(self, **kwargs):
+            self.clear_sweep_calls += 1
+            thread_names.append(threading.current_thread().name)
+            started.set()
+            while not release.is_set():
+                await asyncio.sleep(0.01)
+            return {"status": "OK", "stored_count": 1}
+    app = create_app(replace(database_settings(tmp_path), wallet_load_timeout_seconds=0.05))
+    acorn = SlowAcorn(balance=100)
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_background_acorn_factory] = lambda: lambda: acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        try:
+            bad = client.post("/clear/receive", data={"csrf_token": "bad"})
+            assert bad.status_code == 403
+            assert not started.is_set()
+            response = client.post("/clear/receive", data={"csrf_token": valid_csrf_token()}, follow_redirects=False)
+            assert response.status_code == 303
+            assert started.wait(2)
+            time.sleep(0.1)
+            status = client.get(response.headers["location"])
+            assert "Checking incoming Clear transfers in the background" in status.text
+            assert status.headers["refresh"] == "3"
+            assert status.headers["cache-control"] == "no-store"
+            client.post("/clear/receive", data={"csrf_token": valid_csrf_token()}, follow_redirects=False)
+            assert acorn.clear_sweep_calls == 1
+        finally:
+            release.set()
+        assert _await_clear_receive(app, acorn)["status"] == "COMPLETE"
+        assert "refresh" not in client.get("/clear/receive-status").headers
+    assert thread_names[0].startswith("safebox-wallet-job")
+
+
 def test_user_can_check_for_new_clear_transfers(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
@@ -5309,6 +5357,8 @@ def test_user_can_check_for_new_clear_transfers(tmp_path) -> None:
         }
     ]
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_background_acorn_factory] = lambda: lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
         page = client.get("/clear")
@@ -5322,12 +5372,14 @@ def test_user_can_check_for_new_clear_transfers(tmp_path) -> None:
             data={"csrf_token": token_match.group(1)},
             follow_redirects=False,
         )
-        result = client.get(response.headers["location"])
+        _await_clear_receive(app, acorn)
+        status = client.get(response.headers["location"])
+        result = client.get("/clear")
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/clear?received=1"
+    assert response.headers["location"] == "/clear/receive-status"
     assert acorn.clear_sweep_calls == 1
-    assert "Received 1 new Clear transfer." in result.text
+    assert "1 transfer receipt stored" in status.text
     assert "0 <span>cmu-test</span>" in result.text
     assert "100 pending in 1 transfer" in result.text
     assert "Pending Clear Transfer" in result.text
@@ -5337,6 +5389,8 @@ def test_clear_transfer_check_reports_when_nothing_new(tmp_path) -> None:
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=100)
     app.dependency_overrides[get_loaded_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    app.dependency_overrides[get_background_acorn_factory] = lambda: lambda: acorn
 
     with TestClient(app, base_url="https://safebox.example") as client:
         page = client.get("/clear")
@@ -5350,12 +5404,13 @@ def test_clear_transfer_check_reports_when_nothing_new(tmp_path) -> None:
             data={"csrf_token": token_match.group(1)},
             follow_redirects=False,
         )
+        _await_clear_receive(app, acorn)
         result = client.get(response.headers["location"])
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/clear?received=0"
+    assert response.headers["location"] == "/clear/receive-status"
     assert acorn.clear_sweep_calls == 1
-    assert "No new Clear transfers found." in result.text
+    assert "0 transfer receipts stored" in result.text
 
 
 def test_user_can_accept_clear_transfer_into_spendable_balance(tmp_path) -> None:
@@ -5527,7 +5582,8 @@ def test_user_can_check_then_accept_relay_clear_transfer(tmp_path) -> None:
             data={"csrf_token": token_match.group(1)},
             follow_redirects=True,
         )
-        page = checked
+        _await_clear_receive(app, acorn)
+        page = client.get("/clear")
         token_match = re.search(
             r'name="csrf_token" value="([^"]+)"',
             page.text,
@@ -5891,7 +5947,7 @@ def test_clear_history_uses_friendly_alias_when_history_lacks_keyset_id(
 
     assert response.status_code == 200
     assert "+25 Clear Lab Credits" in response.text
-    assert "<dt>Unit label</dt><dd>credits</dd>" in response.text
+    assert '<dt>Unit label</dt><dd class="transaction-unit">credits</dd>' in response.text
     assert "history without keyset" in response.text
     assert '<a href="https://clear.safebox.dev/cmus/keyset-new">Clear Lab Credits</a>' in response.text
     history_section = response.text.split('id="clear-history-heading"', 1)[1]

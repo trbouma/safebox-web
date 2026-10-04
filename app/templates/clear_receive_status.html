@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+{% if job.status == "RUNNING" %}
+<p role="status"><strong>Checking incoming Clear transfers in the background.</strong></p>
+<p>You can leave this page and return later. Current phase: {{ job.phase | lower }}.</p>
+<p>This page refreshes while the check runs.</p>
+<a class="nav-button" href="/clear/receive-status">Refresh Status</a>
+{% elif job.status == "COMPLETE" %}
+<p role="status"><strong>Incoming Clear check completed.</strong></p>
+<p>{{ job.stored_count }} transfer receipt{% if job.stored_count != 1 %}s{% endif %} stored. Open Clear Transactions to review and accept pending transfers.</p>
+{% else %}
+<p role="status"><strong>Incoming Clear check needs attention.</strong></p>
+{% if job.stored_count %}<p>{{ job.stored_count }} transfer receipts stored before the check stopped.</p>{% endif %}
+<p>{{ job.error }}</p>
+{% endif %}
+<a class="nav-button" href="/clear">Open Clear Transactions</a>
+<a class="nav-button" href="/wallet">Home</a>
+{% endblock %}
