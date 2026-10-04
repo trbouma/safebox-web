@@ -10621,7 +10621,7 @@ def test_record_offers_control_history_button_without_querying(monkeypatch) -> N
     assert queried is True
 
 
-def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
+def test_record_renders_openetr_anchor_and_publisher_notices(monkeypatch) -> None:
     digest = "1ea23f2b" + "0" * 56
     query_args = {}
 
@@ -10644,10 +10644,11 @@ def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
                     "id": "02" * 32,
                     "author": "npub1controller",
                     "created_at": "2026-08-10 13:00 UTC",
-                    "action_label": "Transfer initiated",
+                    "action_label": "Publisher notice",
+                    "notice_type": "caution",
                     "prior_event_id": "01" * 32,
                     "participant": "npub1recipient",
-                    "content": "Transfer to recipient",
+                    "content": "The publisher advises caution",
                     "kind": 1416,
                 }
                 ],
@@ -10662,6 +10663,11 @@ def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
                 "lightning_address": None,
                 "website": "https://example.com",
                 "picture": None,
+                },
+                "publisher_position_label": "The publisher advises caution when using this record.",
+                "consequential_state": {
+                    "anchor_state": "anchored", "publisher_position": "caution",
+                    "terminal_notice_event_ids": ["02" * 32],
                 },
                 "signer_profile_error": None,
                 "warnings": [],
@@ -10703,7 +10709,9 @@ def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
     assert "NIP-05" in response.text
     assert "warehouse@example.com" in response.text
     assert "does not independently establish" in response.text
-    assert "Consequential State</dt><dd>Not derived" in response.text
+    assert "Anchor state</dt><dd>anchored" in response.text
+    assert "Publisher position:" in response.text
+    assert "The publisher advises caution" in response.text
     assert "Recognition</dt><dd>Not evaluated" in response.text
     assert "Effect</dt><dd>Not evaluated" in response.text
     assert "Protocol Details" in response.text
@@ -10726,10 +10734,10 @@ def test_record_renders_openetr_anchor_and_control_events(monkeypatch) -> None:
     assert 'aria-label="OpenETR durable link QR code"' in response.text
     assert response.text.index("OpenETR Evidence Link") < response.text.index(
         "Anchor and Signer"
-    ) < response.text.index("Control Events") < response.text.index(
+    ) < response.text.index("Publisher Notices") < response.text.index(
         "Protocol Details"
     )
-    assert "Transfer initiated" in response.text
+    assert "Publisher notice" in response.text
     assert "npub1recipient" in response.text
     assert query_args == {
         "digest": digest,

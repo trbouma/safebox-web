@@ -129,7 +129,7 @@ from app.worker_liveness import (
     stop_worker_heartbeat,
 )
 from app.handles import default_handle_from_pubkey
-from app.openetr import query_openetr_history
+from app.openetr import query_openetr_history, unavailable_openetr_history
 from app.provider_payments import provider_recipient_queue
 from app.lnurl_pay import (
     encode_lnurl,
@@ -6328,15 +6328,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "presentation control history failed error_type=%s",
                         type(exc).__name__,
                     )
-                    control_history = {
-                        "digest": str(blob_sha256),
-                        "relays": settings.openetr_relays,
-                        "candidate_graphs": [],
-                        "unlinked_events": [],
-                        "invalid_event_count": 0,
-                        "warnings": [],
-                        "error": "Control history is temporarily unavailable.",
-                    }
+                    control_history = unavailable_openetr_history(
+                        str(blob_sha256), settings.openetr_relays
+                    )
             return HTMLResponse(
                 render_template(
                     "record_presentation_view.html",
@@ -9683,15 +9677,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "OpenETR history query failed error_type=%s",
                     type(exc).__name__,
                 )
-                openetr_history = {
-                    "digest": str(record_value.origsha256).strip().lower(),
-                    "relays": settings.openetr_relays,
-                    "candidate_graphs": [],
-                    "unlinked_events": [],
-                    "invalid_event_count": 0,
-                    "warnings": [],
-                    "error": "OpenETR history is temporarily unavailable.",
-                }
+                openetr_history = unavailable_openetr_history(
+                    str(record_value.origsha256).strip().lower(), settings.openetr_relays
+                )
         blob_query = urlencode({"label": label})
         record_url = f"/record?{blob_query}"
         if openetr:

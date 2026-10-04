@@ -6,12 +6,15 @@
   {% elif openetr_history.error %}
   <p role="status"><strong>Check unavailable</strong></p>
   <p>The relay lookup could not be completed. Try again later; this does not mean no anchor exists.</p>
+  {% elif openetr_history.verification and openetr_history.verification.aggregate_state == 'unverifiable' %}
+  <p role="status"><strong>Check unavailable</strong></p>
+  <p>The supplied evidence could not be verified.</p>
   {% elif not openetr_history.candidate_graphs %}
   <p role="status"><strong>No anchor found</strong></p>
-  <p>No cryptographically valid OpenETR Anchor Event matching this Record File's exact SHA-256 digest was returned by the queried relays. This is not a search of every relay.</p>
+  <p>No qualifying OpenETR Anchor Event matching this Record File's exact SHA-256 digest was returned by the queried relays. This is not a search of every relay.</p>
   {% else %}
   <p role="status"><strong>Anchor found</strong></p>
-  <p>A cryptographically valid OpenETR Anchor Event references this Record File's exact SHA-256 digest.</p>
+  <p>A qualifying signed OpenETR Anchor Event references this Record File's exact SHA-256 digest.</p>
   <p class="openetr-evidence-note">This check confirms a signed reference to the file, not recognized authority, current control, ownership, or legal effect.</p>
   {% if openetr_history.candidate_graphs|length > 1 %}<p>Multiple anchors were found. None is selected as authoritative.</p>{% endif %}
   {% include "_openetr_durable_link.html" %}
@@ -34,5 +37,18 @@
     </div>
   </details>
   {% endif %}
+  {% endif %}
+  {% if openetr_history and openetr_history.verification %}
+  <p>Ruleset: <code>{{ openetr_history.verification.ruleset.id }}</code></p>
+  <p>Results apply only to the supplied or retrieved evidence. Relay completeness and signer-declared times are not independently verified.</p>
+  <details class="openetr-protocol-details">
+    <summary>Ruleset findings and signed evidence</summary>
+    <p>Digest source: {{ openetr_history.verification.artifact.digest_source }}. A supplied digest is not a fresh verification of the file bytes.</p>
+    <ul>{% for finding in openetr_history.verification.findings %}
+      <li><code>{{ finding.code }}</code>{% if finding.event_id %} — <code>{{ finding.event_id }}</code>{% endif %}</li>
+    {% endfor %}</ul>
+    <p>Machine-readable result, including the raw signed evidence:</p>
+    <pre>{{ openetr_history.verification|tojson(indent=2) }}</pre>
+  </details>
   {% endif %}
 </section>

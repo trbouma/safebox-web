@@ -2,19 +2,45 @@
 
 ## Implemented Web verifier policy (2026-10)
 
-The primary Web Check pane now answers only whether a cryptographically valid
-kind-1415 Anchor Event references the Record File's exact SHA-256 digest.
-It reports **Anchor found**, **No anchor found**, or **Check unavailable**.
-The negative result is scoped to configured relays and the bounded query;
-a lookup failure is not evidence of absence. Multiple anchors are shown without
-choosing an authoritative one. Signer key, anchor ID, and date remain visible.
+The Web Check pane now evaluates **OpenETR Core Record Ruleset 1.0**
+(`openetr:core-record:1.0`), based on the draft
+[Core Record specification](https://github.com/trbouma/openetr/blob/main/docs/specs/OPENETR_CORE_RECORD_RULESET_1_0.md).
+It reports **Anchor found**, **No anchor found**, or **Check unavailable**, and
+shows a separate attributable **Publisher position** for each qualifying anchor.
+This supersedes the former signature-and-digest-only check.
 
-Related events, candidate DCR information, and unevaluated state/recognition/
-effect are collapsed into optional technical details. An optional related-event
-lookup failure does not invalidate an otherwise successful anchor check.
-The primary UI does not claim recognized authority, current control, ownership,
-or legal effect. Downloads say Record File, not Original; evidence links do not
-claim a completed verification result. Wire kinds, actions, and links are unchanged.
+- Anchors require valid event IDs/signatures, kind 1415, exactly one matching
+  lowercase SHA-256 `o` tag, and exactly one `action=issue` tag.
+- Notices require kind 1416, the same signing key, exactly one matching `o`,
+  `action=notice`, `notice_type`, and exact predecessor `e` reference.
+- Notice state follows exact links, never timestamps or legacy `origin` tags.
+  Conflicting branches are retained. Withdrawal does not erase anchoring.
+- Multiple anchors are evaluated independently; none is chosen as authoritative.
+- A structurally qualifying, same-publisher notice with a missing predecessor
+  causes an incomplete-chain warning for that publisher's candidate anchors:
+  the missing link prevents assigning it to a unique candidate with certainty.
+- Unknown/legacy actions, invalid evidence, and unsupported notice types remain
+  inspectable with findings; transfer actions do not establish Core Record state.
+- Notice-query failure preserves a verified anchor but makes publisher position
+  `unverifiable`, not `no_notice_found`.
+
+The machine-readable result and raw signed events are available in the expandable
+evidence details, including ruleset version, finding codes, terminal notices,
+branches, queried sources/filters, query interval, and retrieval limitations.
+Queries remain bounded and unpaginated. The relay pool does not expose per-source
+completion or authentication failures. Completeness is therefore always unknown
+(`null`), never assumed from a successful response. Results describe the retrieved
+evidence, not global status. Record metadata digests are labeled `supplied` rather
+than claiming a fresh hash of the file bytes. Times are labeled signer-declared.
+
+Recognition and effect remain unevaluated. The UI does not claim recognized
+authority, current control, ownership, or legal effect. Downloads still say
+Record File; existing evidence links and wire kinds remain unchanged.
+
+Implementation: `app/openetr_rules.py` contains the deterministic evaluator;
+`app/openetr.py` handles retrieval and display adaptation. Signed-event tests in
+`tests/test_openetr.py` cover anchor/notice validation, branches, missing parents,
+unsupported notices, duplicate observations, backdated times, and lookup failure.
 
 The broader migration discussion below is architectural context, not an expanded
 Web verification policy. In the revised OpenETR model, Standing is not a separate

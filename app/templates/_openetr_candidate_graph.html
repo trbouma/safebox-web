@@ -1,4 +1,12 @@
 {% with graph_number=graph_number, graph=graph %}{% include "_anchor_signer.html" %}{% endwith %}
+{% if graph.publisher_position_label %}
+<p role="status"><strong>Publisher position:</strong> {{ graph.publisher_position_label }}</p>
+{% for event in graph.controls %}
+{% if event.id in graph.consequential_state.terminal_notice_event_ids %}
+<p><strong>Publisher statement:</strong> {{ event.content }}</p>
+{% endif %}
+{% endfor %}
+{% endif %}
 <details class="openetr-protocol-details">
 <summary>Related events and technical details</summary>
 <div class="openetr-protocol-details-content">
@@ -8,29 +16,28 @@
   <dt>Candidate DCR</dt><dd>{{ dcr.record_count }} end-verifiable record{% if dcr.record_count != 1 %}s{% endif %}</dd>
 </dl>
 
-<h3>Control Events</h3>
+<h3>Publisher Notices</h3>
 {% for event in graph.controls %}
 <article class="openetr-event">
   <h3>{{ event.action_label }}</h3>
   <dl class="openetr-event-fields openetr-human-fields">
-    <dt>Created</dt><dd>{{ event.created_at }}</dd>
+    <dt>Signer-declared time</dt><dd>{{ event.created_at }}</dd>
+    <dt>Notice type</dt><dd>{{ event.notice_type }}</dd>
     {% if event.participant %}<dt>Participant</dt><dd><code>{{ event.participant }}</code></dd>{% endif %}
     {% if event.content %}<dt>Statement</dt><dd>{{ event.content }}</dd>{% endif %}
   </dl>
 </article>
 {% else %}
-<p>No related control events were found for this candidate Anchor Event.</p>
+<p>No qualifying publisher notices were found for this candidate Anchor Event.</p>
 {% endfor %}
 
 <dl class="openetr-event-fields openetr-human-fields openetr-evaluation-status">
-  <dt>Consequential State</dt><dd>Not derived</dd>
+  <dt>Anchor state</dt><dd>{{ (graph.consequential_state|default({})).anchor_state|default('Not evaluated') }}</dd>
   <dt>Recognition</dt><dd>Not evaluated</dd>
   <dt>Effect</dt><dd>Not evaluated</dd>
 </dl>
-<p class="openetr-evidence-note">The displayed events passed cryptographic checks, but
-this candidate Digital Controllable Record has not yet been evaluated by a
-versioned OpenETR state-derivation engine.
-Cryptographic validity does not by itself establish that the signer is a
+<p class="openetr-evidence-note">Core Record Ruleset 1.0 evaluates anchoring and publisher notices, not transfer or ownership.
+Ruleset verification does not by itself establish that the signer is a
 recognized authority or that this record has effect for a particular purpose.</p>
 
 {% for warning in graph.warnings %}
