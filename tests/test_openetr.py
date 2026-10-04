@@ -170,7 +170,7 @@ def test_anchor_check_render(outcome):
     if outcome == "found":
         assert "Publisher position:" in html
         assert "Signer-declared anchor time" in html
-        assert "No qualifying publisher notice" in html
+        assert "No subsequent publisher notices found in the retrieved evidence." in html
 
 
 def test_withdrawal_and_invalid_evidence_are_inspectable_in_ui():

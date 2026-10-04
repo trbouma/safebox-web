@@ -17,7 +17,7 @@ NOTICE_TYPES = {
     "corrected", "other",
 }
 POSITION_LABELS = {
-    "no_notice_found": "No qualifying publisher notice found in the retrieved evidence.",
+    "no_notice_found": "No subsequent publisher notices found in the retrieved evidence.",
     "information": "The publisher supplies additional information.",
     "caution": "The publisher advises caution when using this record.",
     "do_not_use": "The publisher states that this record should not be used.",
