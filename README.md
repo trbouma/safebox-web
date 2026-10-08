@@ -33,6 +33,12 @@ The corresponding public-facing argument appears in the
 [Beyond the Device-Bound Wallet](website/policy-briefs/beyond-the-device-bound-wallet.md)
 policy brief.
 
+The dedicated [Policy Briefs](website/policy-briefs/index.md) section also
+includes [High Assurance Identity and User-Controlled Continuity](website/policy-briefs/high-assurance-identity-and-user-controlled-continuity.md),
+covering NIST's mDL practice guide. Its supporting
+[technical analysis](docs/NIST-SP-1800-42A-ANALYSIS.md) remains in the repository
+documentation.
+
 Informational fiat estimates use a database-backed cache refreshed by the
 singleton worker; web requests do not contact the external rate provider. See
 the [Informational Currency Rate Cache](docs/CURRENCY-RATE-CACHE.md) for process,

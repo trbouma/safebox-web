@@ -15,7 +15,6 @@ theme:
   favicon: assets/images/safebox-logo.png
   features:
     - navigation.top
-    - navigation.sections
     - search.suggest
     - search.highlight
     - content.code.copy
@@ -47,14 +46,15 @@ nav:
       - Records-First Architecture: records-first-architecture.md
       - Product Architecture: product-architecture.md
       - Trust Boundary: trust-boundary.md
+  - Policy Briefs:
+      - Overview: policy-briefs/index.md
+      - High Assurance Identity and User-Controlled Continuity: policy-briefs/high-assurance-identity-and-user-controlled-continuity.md
+      - Beyond the Device-Bound Wallet: policy-briefs/beyond-the-device-bound-wallet.md
   - Use Safebox Web:
       - Getting Started: getting-started.md
       - Verifiable Records: records-and-wallet-passes.md
       - Receiving Funds: receiving-funds.md
       - Local-First Stack: local-first-stack.md
-  - Policy Briefs:
-      - Overview: policy-briefs/index.md
-      - Beyond the Device-Bound Wallet: policy-briefs/beyond-the-device-bound-wallet.md
   - Project Status: project-status.md
 
 markdown_extensions:

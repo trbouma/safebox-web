@@ -21,6 +21,7 @@ description: A local-first application for user-controlled value, verifiable rec
 
 [Why Safebox Web?](why-safebox-web.md){ .md-button .md-button--primary }
 [Records-First Architecture](records-first-architecture.md){ .md-button .md-button--primary }
+[Policy Briefs](policy-briefs/index.md){ .md-button }
 [View the source](https://github.com/trbouma/safebox-web){ .md-button }
 
 </section>
@@ -243,6 +244,22 @@ This is still a lab milestone. Acceptance into spendable Clear proof state and
 onward wallet spending remain under development.
 
 [Read about Cash and Clear](cash-and-clear.md){ .md-button .md-button--primary }
+
+## Policy briefs
+
+Explore the policy choices behind user-controlled records, digital identity,
+device security, and recovery. These briefs separate today's capabilities
+from proposed improvements and explain the implications for institutions,
+communities, and wallet designers.
+
+- [High Assurance Identity and User-Controlled Continuity](policy-briefs/high-assurance-identity-and-user-controlled-continuity.md)
+  examines NIST's mDL practice guide and the distinction between identity
+  assurance and portable Safebox records.
+- [Beyond the Device-Bound Wallet](policy-briefs/beyond-the-device-bound-wallet.md)
+  explains how hardware-backed credential security can complement
+  relay-backed continuity.
+
+[Browse all policy briefs](policy-briefs/index.md){ .md-button .md-button--primary }
 
 ## Part of the Mainstay product family
 
