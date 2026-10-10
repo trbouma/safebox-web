@@ -751,6 +751,7 @@ SAFEBOX_DEFAULT_HOME_MINT=https://mint.getsafebox.app
 SAFEBOX_OPENETR_RELAYS=wss://relay.openetr.org
 SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS=5
 SAFEBOX_OPENETR_QUERY_LIMIT=100
+SAFEBOX_OPENETR_BLOSSOM_SERVERS=
 SAFEBOX_WEB_WORKERS=1
 SAFEBOX_BACKGROUND_JOB_THREADS=2
 SAFEBOX_SERVICE_ACORN_ENABLED=true
@@ -765,6 +766,44 @@ The service gift-wrap retention variable defaults to seven days when absent.
 Set it explicitly to `0` to omit NIP-40 expiration tags; values from `3600` to
 `2592000` select a retention period from one hour to 30 days. Relay expiry is
 advisory and does not guarantee physical erasure.
+
+### GS1 Digital Link scanning
+
+The scanner (and its paste field) recognizes the bounded OpenQR/OpenETR product
+link format: `https://example.com/01/{GTIN}/10/{lot}/21/{serial}?d={digest}`.
+GTIN must be 14 digits with a valid check digit. Lot and serial are optional,
+case-sensitive, and limited to 20 supported GS1 characters; leading zeros are
+preserved. Qualifiers are percent-decoded once. Unsupported AIs, out-of-order
+qualifiers, spaces, slashes in qualifiers, and ambiguous query parameters are
+rejected. This is not a general-purpose GS1 resolver.
+
+The optional `d` parameter (alias `digest`) is an application extension, not a
+GS1 AI. It accepts a canonical 43-character unpadded Base64URL SHA-256 digest or
+64 lowercase hexadecimal characters. Duplicated parameters, including `d` plus
+`digest`, are rejected. Without a digest, the page displays identifiers only.
+
+Scanning redirects to an authenticated `/product` page. Safebox queries
+`SAFEBOX_OPENETR_RELAYS` by the normalized hex digest and retrieves the public
+artifact from `SAFEBOX_OPENETR_BLOSSOM_SERVERS` (a comma-separated operator-selected
+pool), or `SAFEBOX_BLOSSOM_HOME_SERVER` when the pool is empty. Relay and storage
+lookups run concurrently. Each storage attempt has an overall timeout using
+`SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS`; downloads are limited by
+`SAFEBOX_MAX_BLOB_BYTES`. Multiple storage servers are tried sequentially until
+one returns matching bytes. No scanned host, event-provided storage hint, redirect,
+or nested resource is fetched. Internal HTTP storage is allowed only when explicitly
+configured by the operator. Only configure trusted storage destinations.
+
+Exact-byte SHA-256 verification is required before a file is offered as a binary
+attachment, and is repeated on download. Files are not rendered or executed in
+the page. Core Record Ruleset 1.0 validates anchor evidence and publisher notices;
+the page separately compares `gs1_gtin`, `gs1_lot`, and `gs1_serial` tags on each
+qualifying anchor. Missing, conflicting, or duplicate tags do not establish a
+match. All qualifying anchors remain visible, including mismatches. A valid
+signature and digest do not prove manufacturer authority, truth of the artifact,
+GS1 allocation, or authenticity of a physical item. Lookups are bounded, and a
+missing result is not proof of global absence. No database migration is required.
+
+### Starting the Compose services
 
 `FORWARDED_ALLOW_IPS` identifies the immediate reverse proxy, not the browser
 or public client. Replace the loopback default when the proxy connects from the

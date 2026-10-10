@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<section aria-label="Scanned product identifiers">
+  <p>These identifiers were parsed from the scanned GS1 Digital Link. The printed website was not contacted.</p>
+  <dl class="invoice-review">
+    <div><dt>GTIN</dt><dd><code>{{ product.gtin }}</code></dd></div>
+    <div><dt>Lot No</dt><dd>{{ product.lot or 'Not provided' }}</dd></div>
+    <div><dt>Serial No</dt><dd>{{ product.serial or 'Not provided' }}</dd></div>
+    <div><dt>SHA-256 digest</dt><dd>{% if product.digest %}<code>{{ product.digest }}</code>{% else %}Not provided{% endif %}</dd></div>
+  </dl>
+</section>
+{% if not product.digest %}
+<p>No digest was supplied. Content-addressed lookup requires a <code>d</code> or <code>digest</code> parameter; GTIN, lot and serial are not used as relay search keys.</p>
+{% else %}
+<section aria-label="Artifact lookup">
+  <h2>Product information artifact</h2>
+  {% if artifact.status == 'verified' %}
+  <p><strong>File digest verified.</strong> The retrieved file's exact bytes match the scanned digest ({{ artifact.size }} bytes).</p>
+  <p><a class="nav-button" href="/product/artifact/{{ product.digest }}">Download verified file</a></p>
+  <p>The file is downloaded as binary data, not executed or rendered inside Safebox. It is rechecked when downloaded.</p>
+  {% elif artifact.status == 'not_found' %}
+  <p>No file was found on the configured Blossom servers. It may exist elsewhere.</p>
+  {% else %}
+  <p><strong>File lookup unavailable or verification failed.</strong> No unverified file will be offered for download. See storage results below.</p>
+  {% endif %}
+  <details><summary>Storage results</summary>
+    <ul>{% for attempt in artifact.attempts %}<li>{{ attempt.server }} — {{ attempt.status }}</li>{% endfor %}</ul>
+  </details>
+</section>
+<section aria-label="Signed product associations">
+  <h2>Signed product associations</h2>
+  {% for association in associations %}
+  <p>Anchor <code>{{ association.event_id }}</code>:
+    <strong>{{ 'Product identifiers match the signed tags.' if association.matches else 'Product identifiers do not match all signed tags.' }}</strong></p>
+  {% if not association.matches %}
+  <ul>{% for field in association.fields %}{% if not field.matches %}
+    <li>{{ field.name }} — scanned: {{ field.expected or 'not provided' }};
+      signed: {{ field.values|join(', ') or 'not provided or malformed' }} (missing, different, or repeated tag).</li>
+  {% endif %}{% endfor %}</ul>
+  {% endif %}
+  {% else %}<p>No qualifying signed product association is available in the retrieved evidence.</p>{% endfor %}
+  <p>A matching signed association is a claim by the signing key. It does not establish GS1 allocation, manufacturer authority, accuracy of the file, or authenticity of a physical item.</p>
+</section>
+<section aria-label="OpenETR evidence">
+  <h2>Anchors and publisher notices</h2>
+  {% if openetr_history.error %}
+  <p>Relay lookup unavailable. This does not mean no anchor exists.</p>
+  {% elif not openetr_history.candidate_graphs %}
+  <p>No qualifying anchor was returned by the configured relays.</p>
+  {% endif %}
+  {% for graph in openetr_history.candidate_graphs %}
+    {% with history=openetr_history, graph_number=loop.index %}{% include "_openetr_candidate_graph.html" %}{% endwith %}
+  {% endfor %}
+  <p>All qualifying anchors are shown; none is selected as authoritative. Results are limited to retrieved evidence, not a complete search of all relays.</p>
+  <details><summary>Ruleset findings and signed evidence</summary>
+    <pre>{{ openetr_history.verification|tojson(indent=2) }}</pre>
+  </details>
+</section>
+{% endif %}
+<details><summary>Lookup sources and supported format</summary>
+  <p>Relays: {{ relays|join(', ') }}</p>
+  <p>Blossom servers: {{ servers|join(', ') }}</p>
+  <p>Supported subset: /01/{GTIN}, optionally /10/{lot} then /21/{serial}, and one optional d or digest parameter. This is not a full GS1 resolver. URLs in scanned codes and storage hints in events do not select retrieval destinations.</p>
+</details>
+<p><a class="nav-button" href="/scan/lightning">Scan another code</a></p>
+{% endblock %}

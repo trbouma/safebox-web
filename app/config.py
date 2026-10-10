@@ -348,6 +348,7 @@ class Settings:
     bitcoin_lookup_timeout_seconds: float = DEFAULT_BITCOIN_LOOKUP_TIMEOUT_SECONDS
     bitcoin_sweep_fee_rate: float = DEFAULT_BITCOIN_SWEEP_FEE_RATE
     openetr_relays: tuple[str, ...] = DEFAULT_OPENETR_RELAYS
+    openetr_blossom_servers: tuple[str, ...] = ()
     openetr_public_base_url: str = DEFAULT_OPENETR_PUBLIC_BASE_URL
     openetr_query_timeout_seconds: float = DEFAULT_OPENETR_QUERY_TIMEOUT_SECONDS
     openetr_query_limit: int = DEFAULT_OPENETR_QUERY_LIMIT
@@ -454,6 +455,14 @@ class Settings:
             raise ValueError("SAFEBOX_BITCOIN_SWEEP_FEE_RATE must be positive")
         if not self.openetr_relays:
             raise ValueError("SAFEBOX_OPENETR_RELAYS must contain at least one relay")
+        for server in self.openetr_blossom_servers:
+            source = urlsplit(server)
+            if (source.scheme not in {"http", "https"} or not source.hostname
+                    or source.username is not None or source.password is not None
+                    or source.query or source.fragment or "\\" in server
+                    or any(c.isspace() or ord(c) < 32 for c in server)
+                    or (source.port is not None and not 1 <= source.port <= 65535)):
+                raise ValueError("SAFEBOX_OPENETR_BLOSSOM_SERVERS must contain HTTP(S) server URLs without credentials, queries or fragments")
         openetr_public_url = urlsplit(self.openetr_public_base_url.strip())
         if (
             openetr_public_url.scheme.lower() != "https"
@@ -712,6 +721,7 @@ class Settings:
             bitcoin_lookup_timeout_seconds=bitcoin_lookup_timeout,
             bitcoin_sweep_fee_rate=bitcoin_sweep_fee_rate,
             openetr_relays=_openetr_relays_from_env(),
+            openetr_blossom_servers=_comma_list_from_env("SAFEBOX_OPENETR_BLOSSOM_SERVERS"),
             openetr_public_base_url=os.getenv(
                 "SAFEBOX_OPENETR_PUBLIC_BASE_URL",
                 DEFAULT_OPENETR_PUBLIC_BASE_URL,

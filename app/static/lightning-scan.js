@@ -46,6 +46,8 @@ if (
             ? "Clear payment request acquired. Opening the transfer review…"
           : /^(cashu:)?cashu[ab]/.test(lowerValue)
             ? "Clear token acquired. Securing it for acceptance…"
+          : /^https?:\/\/[^/]+\/01(?:\/|$)/.test(lowerValue)
+            ? "Product code acquired. Looking up product information…"
           : lowerValue.startsWith("https://")
             ? "Website address acquired. Opening the safety review…"
           : "Payment code acquired. Opening the payment review…";

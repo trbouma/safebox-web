@@ -7549,6 +7549,93 @@ def test_scanner_browser_module_recognizes_presentation_before_transfer() -> Non
     assert "scanForm.requestSubmit()" in response.text
 
 
+def test_scanned_gs1_redirects_to_internal_product_page(monkeypatch) -> None:
+    app = create_app(TEST_SETTINGS)
+    acorn = FakeLoadedAcorn(balance=500)
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
+    client = TestClient(app, base_url="https://safebox.example")
+    lookup = AsyncMock()
+    monkeypatch.setattr(main_module, "query_openetr_history", lookup)
+    destination = "https://printed.invalid/01/09520123456788/10/LOT1/21/0002"
+    response = client.post("/scan/lightning", data={
+        "csrf_token": valid_csrf_token(), "lightning_payment": destination,
+    }, follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"].startswith("/product?link=")
+    page = client.get(response.headers["location"])
+    assert page.status_code == 200
+    assert "09520123456788" in page.text and "LOT1" in page.text and "0002" in page.text
+    assert "No digest was supplied" in page.text
+    assert "Open this website?" not in page.text
+    lookup.assert_not_called()
+    assert acorn.payments == []
+    invalid = client.post("/scan/lightning", data={
+        "csrf_token": valid_csrf_token(), "lightning_payment": destination + "?d=bad",
+    })
+    assert invalid.status_code == 400
+    assert "digest must be" in invalid.text
+
+
+@pytest.mark.parametrize("custom_pool", [(), ("https://one.invalid", "https://two.invalid")])
+def test_product_page_uses_configured_sources_and_verified_download(monkeypatch, custom_pool):
+    from app.openetr import build_openetr_history
+    from stroma import Event
+    import hashlib
+    data = b"<script>alert('not rendered')</script>"
+    digest = hashlib.sha256(data).hexdigest()
+    anchor = Event(kind=1415, created_at=100, content="Product", tags=[
+        ["o", digest], ["action", "issue"], ["gs1_gtin", "09520123456788"]])
+    anchor.sign("01" * 32)
+    settings = replace(TEST_SETTINGS, openetr_blossom_servers=custom_pool)
+    history = AsyncMock(return_value=build_openetr_history(digest, [anchor], settings.openetr_relays))
+    storage = AsyncMock(return_value={"status": "verified", "data": data, "size": len(data), "attempts": []})
+    monkeypatch.setattr(main_module, "query_openetr_history", history)
+    monkeypatch.setattr(main_module, "retrieve_product_artifact", storage)
+    app = create_app(settings)
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
+    client = TestClient(app, base_url="https://safebox.example")
+    response = client.get("/product", params={"link": f"https://printed.invalid/01/09520123456788?d={digest}"})
+    assert response.status_code == 200
+    assert "File digest verified" in response.text
+    assert "Product identifiers match the signed tags" in response.text
+    assert "not rendered" not in response.text
+    assert history.call_args.args == (digest, settings.openetr_relays)
+    assert storage.call_args.args == (digest, custom_pool or (settings.blossom_home_server,))
+    download = client.get(f"/product/artifact/{digest}")
+    assert download.content == data
+    assert download.headers["content-type"] == "application/octet-stream"
+    assert download.headers["content-disposition"].startswith("attachment;")
+    assert "sandbox" in download.headers["content-security-policy"]
+    assert storage.await_count == 2
+    storage.return_value = {"status": "unavailable", "data": None, "attempts": []}
+    history.side_effect = TimeoutError
+    unavailable = client.get("/product", params={"link": f"https://printed.invalid/01/09520123456788?d={digest}"})
+    assert unavailable.status_code == 200
+    assert "Relay lookup unavailable" in unavailable.text
+    assert "File lookup unavailable" in unavailable.text
+    assert "Download verified file" not in unavailable.text
+    assert client.get(f"/product/artifact/{digest}").status_code == 502
+    assert client.get("/product/artifact/invalid").status_code == 400
+
+
+def test_product_storage_pool_configuration(monkeypatch):
+    monkeypatch.setenv("SAFEBOX_OPENETR_BLOSSOM_SERVERS", "https://one.invalid, http://blossom:3000")
+    assert Settings.from_env().openetr_blossom_servers == ("https://one.invalid", "http://blossom:3000")
+    for url in ("file:///tmp", "https://user:pass@storage.invalid", "https://storage.invalid?url=elsewhere"):
+        with pytest.raises(ValueError):
+            replace(TEST_SETTINGS, openetr_blossom_servers=(url,))
+
+
+def test_product_routes_require_session():
+    client = TestClient(create_app(TEST_SETTINGS), base_url="https://safebox.example")
+    for path in ("/product?link=https://printed.invalid/01/09520123456788", "/product/artifact/" + "ab" * 32):
+        response = client.get(path, follow_redirects=False)
+        assert response.status_code in {303, 401, 403}
+
+
 def test_scanned_https_url_requires_confirmation_before_redirect() -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)

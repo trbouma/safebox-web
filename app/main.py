@@ -130,6 +130,7 @@ from app.worker_liveness import (
 )
 from app.handles import default_handle_from_pubkey
 from app.openetr import query_openetr_history, unavailable_openetr_history
+from app.gs1 import parse_product_link, product_associations, retrieve_product_artifact
 from app.provider_payments import provider_recipient_queue
 from app.lnurl_pay import (
     encode_lnurl,
@@ -3947,6 +3948,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
+        if request.url.path.startswith("/product/artifact/"):
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'none'; frame-ancestors 'none'; sandbox"
+            )
         if (
             request.url.path == "/record/blob"
             and response.headers.get("Content-Disposition", "").startswith("inline;")
@@ -6219,6 +6224,69 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def legacy_lightning_address_scanner() -> RedirectResponse:
         return RedirectResponse("/scan/lightning", status_code=303)
 
+    @app.get("/product", response_class=HTMLResponse)
+    async def product_information(
+        request: Request,
+        credentials: CredentialsDependency,
+        link: str,
+    ) -> HTMLResponse:
+        del credentials
+        try:
+            product = parse_product_link(link)
+            if product is None:
+                raise ValueError("Use a GS1 Digital Link beginning with /01/{GTIN}.")
+        except ValueError as exc:
+            return HTMLResponse(_page("Product Information", escape(str(exc))), status_code=400)
+        settings = request.app.state.settings
+        servers = settings.openetr_blossom_servers or (settings.blossom_home_server,)
+        history = artifact = None
+        associations = []
+        if product.digest:
+            async def lookup_history():
+                try:
+                    return await asyncio.wait_for(
+                        query_openetr_history(product.digest, settings.openetr_relays,
+                                              timeout=settings.openetr_query_timeout_seconds,
+                                              limit=settings.openetr_query_limit),
+                        timeout=settings.openetr_query_timeout_seconds * 3 + 1,
+                    )
+                except Exception:
+                    return unavailable_openetr_history(product.digest, settings.openetr_relays)
+
+            history, artifact = await asyncio.gather(
+                lookup_history(),
+                retrieve_product_artifact(product.digest, servers,
+                                          timeout=settings.openetr_query_timeout_seconds,
+                                          max_bytes=settings.max_blob_bytes),
+            )
+            associations = product_associations(product, history)
+        return HTMLResponse(render_template(
+            "product_information.html", title="Product Information", product=product,
+            openetr_history=history, artifact=artifact, associations=associations,
+            relays=settings.openetr_relays, servers=servers,
+        ))
+
+    @app.get("/product/artifact/{digest}")
+    async def product_artifact(
+        request: Request, credentials: CredentialsDependency, digest: str,
+    ) -> Response:
+        del credentials
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise HTTPException(400, "Invalid artifact digest")
+        settings = request.app.state.settings
+        artifact = await retrieve_product_artifact(
+            digest, settings.openetr_blossom_servers or (settings.blossom_home_server,),
+            timeout=settings.openetr_query_timeout_seconds, max_bytes=settings.max_blob_bytes,
+        )
+        if artifact["status"] != "verified":
+            raise HTTPException(404 if artifact["status"] == "not_found" else 502,
+                                "No digest-verified artifact could be retrieved from configured storage.")
+        return Response(artifact["data"], media_type="application/octet-stream", headers={
+            "Content-Disposition": f'attachment; filename="{digest}.bin"',
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "X-Content-Type-Options": "nosniff",
+        })
+
     @app.get("/scan/lightning", response_class=HTMLResponse)
     async def lightning_scanner(
         request: Request,
@@ -6254,6 +6322,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return scan_error("The form token is invalid or expired. Scan again.", 403)
 
         scanned_value = str(lightning_payment).strip()
+        try:
+            product = parse_product_link(scanned_value)
+        except ValueError as exc:
+            return scan_error(str(exc))
+        if product is not None:
+            return RedirectResponse("/product?" + urlencode({"link": scanned_value}), status_code=303)
         scanned_https_url = _normalize_scanned_https_url(scanned_value)
         if scanned_https_url is not None:
             return HTMLResponse(
