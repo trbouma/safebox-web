@@ -122,6 +122,30 @@ def test_untrusted_storage_rejected(monkeypatch, status, headers, digest, max_by
     assert len(requests) == 1
 
 
+@pytest.mark.parametrize("signed_values,display", [
+    ([], "not provided or malformed"),
+    (["different-lot"], "different-lot"),
+    (["23", "23"], "23, 23"),
+    (["<untrusted>"], "&lt;untrusted&gt;"),
+])
+def test_product_page_renders_mismatched_signed_tags(signed_values, display):
+    from app.templating import render_template
+
+    product = parse_product_link(BASE + "/10/23/21/12345?d=" + DIGEST)
+    event = anchor(["gs1_gtin", GTIN], *[["gs1_lot", value] for value in signed_values])
+    history = build_openetr_history(DIGEST, [event], ("wss://relay.invalid",))
+    page = render_template(
+        "product_information.html", title="Product Information", product=product,
+        openetr_history=history, associations=product_associations(product, history),
+        artifact={"status": "not_found", "attempts": []},
+        relays=("wss://relay.invalid",), servers=("https://storage.invalid",),
+    )
+    assert "Product identifiers do not match all signed tags." in page
+    assert f"signed: {display}" in page
+    assert "gs1_serial — scanned: 12345" in page
+    assert "<untrusted>" not in page
+
+
 def test_timeout_and_invalid_source(monkeypatch):
     async def handle(request):
         await asyncio.sleep(1)

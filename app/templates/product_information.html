@@ -35,7 +35,7 @@
   {% if not association.matches %}
   <ul>{% for field in association.fields %}{% if not field.matches %}
     <li>{{ field.name }} — scanned: {{ field.expected or 'not provided' }};
-      signed: {{ field.values|join(', ') or 'not provided or malformed' }} (missing, different, or repeated tag).</li>
+      signed: {{ field['values']|join(', ') or 'not provided or malformed' }} (missing, different, or repeated tag).</li>
   {% endif %}{% endfor %}</ul>
   {% endif %}
   {% else %}<p>No qualifying signed product association is available in the retrieved evidence.</p>{% endfor %}
