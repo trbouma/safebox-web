@@ -17,7 +17,28 @@
   {% if artifact.status == 'verified' %}
   <p><strong>File digest verified.</strong> The retrieved file's exact bytes match the scanned digest ({{ artifact.size }} bytes).</p>
   <p><a class="nav-button" href="/product/artifact/{{ product.digest }}">Download verified file</a></p>
-  <p>The file is downloaded as binary data, not executed or rendered inside Safebox. It is rechecked when downloaded.</p>
+  {% if blob_preview == "image" %}
+  <figure class="blob-preview"><img src="{{ blob_inline_url }}" alt="Verified product information image"></figure>
+  {% elif blob_preview == "pdf" %}
+  <p><a class="pdf-open-link nav-button" href="{{ blob_inline_url }}">Open PDF full screen</a></p>
+  <div class="blob-preview blob-preview-pdf" data-pdf-viewer
+       data-pdf-url="{{ blob_inline_url }}" aria-label="Verified product information PDF">
+    <p data-pdf-status role="status">Loading PDF…</p>
+    <div class="pdf-controls" data-pdf-controls hidden>
+      <button type="button" data-pdf-previous>Previous</button>
+      <span data-pdf-page aria-live="polite"></span>
+      <button type="button" data-pdf-next>Next</button>
+    </div>
+    <canvas class="pdf-canvas" aria-label="Rendered PDF page" hidden></canvas>
+  </div>
+  <noscript><p>Use the open or download link to view this PDF without JavaScript.</p></noscript>
+  <script type="module" src="/static/pdf-viewer.js"></script>
+  {% elif blob_preview == "video" %}
+  <figure class="blob-preview"><video src="{{ blob_inline_url }}" controls playsinline preload="none" aria-label="Verified product information video"></video></figure>
+  {% else %}
+  <p>No inline preview is available for this file format. Use the download link.</p>
+  {% endif %}
+  <p>File bytes are rechecked against the digest before each preview or download. A preview does not establish the truth of the content.</p>
   {% elif artifact.status == 'not_found' %}
   <p>No file was found on the configured Blossom servers. It may exist elsewhere.</p>
   {% else %}

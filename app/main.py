@@ -130,7 +130,7 @@ from app.worker_liveness import (
 )
 from app.handles import default_handle_from_pubkey
 from app.openetr import query_openetr_history, unavailable_openetr_history
-from app.gs1 import parse_product_link, product_associations, retrieve_product_artifact
+from app.gs1 import parse_product_link, product_associations, product_media_type, retrieve_product_artifact
 from app.provider_payments import provider_recipient_queue
 from app.lnurl_pay import (
     encode_lnurl,
@@ -3953,7 +3953,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "default-src 'none'; frame-ancestors 'none'; sandbox"
             )
         if (
-            request.url.path == "/record/blob"
+            (request.url.path == "/record/blob" or request.url.path.startswith("/product/artifact/"))
             and response.headers.get("Content-Disposition", "").startswith("inline;")
         ):
             # Only allow the narrowly typed decrypted image/PDF response to be
@@ -6260,15 +6260,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                           max_bytes=settings.max_blob_bytes),
             )
             associations = product_associations(product, history)
+        media_type = product_media_type(artifact["data"]) if artifact and artifact["status"] == "verified" else None
         return HTMLResponse(render_template(
             "product_information.html", title="Product Information", product=product,
             openetr_history=history, artifact=artifact, associations=associations,
             relays=settings.openetr_relays, servers=servers,
+            blob_preview="video" if media_type == "video/mp4" else _blob_preview_kind(media_type),
+            blob_inline_url=f"/product/artifact/{product.digest}?inline=true" if product.digest else None,
         ))
 
     @app.get("/product/artifact/{digest}")
     async def product_artifact(
-        request: Request, credentials: CredentialsDependency, digest: str,
+        request: Request, credentials: CredentialsDependency, digest: str, inline: bool = False,
     ) -> Response:
         del credentials
         if not re.fullmatch(r"[0-9a-f]{64}", digest):
@@ -6281,8 +6284,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if artifact["status"] != "verified":
             raise HTTPException(404 if artifact["status"] == "not_found" else 502,
                                 "No digest-verified artifact could be retrieved from configured storage.")
-        return Response(artifact["data"], media_type="application/octet-stream", headers={
-            "Content-Disposition": f'attachment; filename="{digest}.bin"',
+        media_type = product_media_type(artifact["data"])
+        allow_inline = inline and (media_type == "video/mp4" or _blob_preview_kind(media_type) is not None)
+        extension = {"application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg",
+                     "image/gif": "gif", "image/webp": "webp", "video/mp4": "mp4"}.get(media_type, "bin")
+        disposition = "inline" if allow_inline else "attachment"
+        return Response(artifact["data"], media_type=media_type, headers={
+            "Content-Disposition": f'{disposition}; filename="{digest}.{extension}"',
             "Content-Security-Policy": "sandbox; default-src 'none'",
             "X-Content-Type-Options": "nosniff",
         })

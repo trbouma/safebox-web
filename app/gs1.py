@@ -107,6 +107,25 @@ def product_associations(product: ProductLink, history: dict) -> list[dict]:
     return results
 
 
+def product_media_type(data: bytes) -> str:
+    """Identify previewable bytes without trusting storage MIME headers."""
+    if data.startswith(b"%PDF-"):
+        return "application/pdf"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    if len(data) >= 16 and data[4:8] == b"ftyp" and data[8:12] in {
+        b"isom", b"iso2", b"mp41", b"mp42", b"avc1", b"M4V ",
+    }:
+        return "video/mp4"
+    return "application/octet-stream"
+
+
 async def retrieve_product_artifact(digest: str, servers: tuple[str, ...], *,
                                     timeout: float, max_bytes: int) -> dict:
     """Bounded exact-byte downloads, no redirects, credentials, cookies or hints."""

@@ -793,9 +793,12 @@ one returns matching bytes. No scanned host, event-provided storage hint, redire
 or nested resource is fetched. Internal HTTP storage is allowed only when explicitly
 configured by the operator. Only configure trusted storage destinations.
 
-Exact-byte SHA-256 verification is required before a file is offered as a binary
-attachment, and is repeated on download. Files are not rendered or executed in
-the page. Core Record Ruleset 1.0 validates anchor evidence and publisher notices;
+Exact-byte SHA-256 verification is required before a file is offered, and is
+repeated on preview and download. Recognized raster images, PDFs (using the record
+page's PDF viewer), and MP4 videos can be previewed. Types are identified from the
+verified bytes, not storage MIME headers. HTML, SVG, and other unsupported formats
+remain binary downloads; previews do not follow artifact-embedded resource URLs.
+Core Record Ruleset 1.0 validates anchor evidence and publisher notices;
 the page separately compares `gs1_gtin`, `gs1_lot`, and `gs1_serial` tags on each
 qualifying anchor. Missing, conflicting, or duplicate tags do not establish a
 match. All qualifying anchors remain visible, including mismatches. A valid

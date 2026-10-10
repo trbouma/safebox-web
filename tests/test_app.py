@@ -7621,6 +7621,42 @@ def test_product_page_uses_configured_sources_and_verified_download(monkeypatch,
     assert client.get("/product/artifact/invalid").status_code == 400
 
 
+@pytest.mark.parametrize("data,media_type,marker", [
+    (b"%PDF-1.7\nexample", "application/pdf", 'data-pdf-viewer'),
+    (b"\x89PNG\r\n\x1a\nexample", "image/png", 'alt="Verified product information image"'),
+    (b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00", "video/mp4", '<video'),
+    (b"<html><script>alert(1)</script></html>", "application/octet-stream", "No inline preview"),
+    (b'<svg xmlns="http://www.w3.org/2000/svg"></svg>', "application/octet-stream", "No inline preview"),
+])
+def test_product_artifact_previews_are_verified_and_narrowly_typed(monkeypatch, data, media_type, marker):
+    import hashlib
+    from app.openetr import build_openetr_history
+    digest = hashlib.sha256(data).hexdigest()
+    monkeypatch.setattr(main_module, "query_openetr_history", AsyncMock(
+        return_value=build_openetr_history(digest, [], TEST_SETTINGS.openetr_relays)))
+    storage = AsyncMock(return_value={"status": "verified", "data": data, "size": len(data), "attempts": []})
+    monkeypatch.setattr(main_module, "retrieve_product_artifact", storage)
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
+    client = TestClient(app, base_url="https://safebox.example")
+    page = client.get("/product", params={"link": f"https://printed.invalid/01/09520123456788?d={digest}"})
+    assert page.status_code == 200
+    assert marker in page.text
+    inline = client.get(f"/product/artifact/{digest}?inline=true")
+    assert inline.content == data
+    assert inline.headers["content-type"] == media_type
+    supported = media_type != "application/octet-stream"
+    assert inline.headers["content-disposition"].startswith("inline;" if supported else "attachment;")
+    assert "sandbox" in inline.headers["content-security-policy"]
+    assert inline.headers["x-frame-options"] == ("SAMEORIGIN" if supported else "DENY")
+    download = client.get(f"/product/artifact/{digest}")
+    assert download.headers["content-disposition"].startswith("attachment;")
+    assert storage.await_count == 3
+    storage.return_value = {"status": "unavailable", "data": None, "attempts": []}
+    assert client.get(f"/product/artifact/{digest}?inline=true").status_code == 502
+
+
 def test_product_storage_pool_configuration(monkeypatch):
     monkeypatch.setenv("SAFEBOX_OPENETR_BLOSSOM_SERVERS", "https://one.invalid, http://blossom:3000")
     assert Settings.from_env().openetr_blossom_servers == ("https://one.invalid", "http://blossom:3000")
