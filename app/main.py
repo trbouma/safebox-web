@@ -6373,6 +6373,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 csrf_token=protector.issue(), destination_url=destination,
                 destination_host=urlsplit(destination).hostname,
             ), headers={"Cache-Control": "no-store"})
+        scanned_value = lightning_payment.strip()
+        is_clear_request = (
+            scanned_value.lower().startswith(("creqa", "creqb1"))
+            or (scanned_value.lower().startswith("bitcoin:")
+                and "creq" in parse_qs(urlsplit(scanned_value).query, keep_blank_values=True))
+        )
+        if _normalize_lightning_address(scanned_value) is not None or is_clear_request:
+            # Preserve the POST body (including the original encoded capture)
+            # and use the existing validation/review flow. This does not send
+            # payment and never puts requests into browser URLs or access logs.
+            return RedirectResponse("/scan/lightning", status_code=307)
         # Other payloads still need interpretation. A POST keeps tokens and
         # capabilities out of URL logs.
         return HTMLResponse(_scan_review_form(protector.issue(), lightning_payment, symbology=symbology))

@@ -771,7 +771,10 @@ advisory and does not guarantee physical erasure.
 
 Camera acquisition and interpretation are separate pages. Captured URLs are
 classified locally: recognized product links go directly to product verification,
-and ordinary HTTPS links go to a website warning. Other captured or pasted
+and ordinary HTTPS links go to a website warning. Lightning/NIP-05 addresses
+and Clear payment requests (`creqA`, `creqb1`, and Bitcoin URI `creq` parameters)
+automatically continue to the existing payment review, with no interpretation
+step. Payment still requires confirmation. Other captured or pasted
 text opens a camera-free interpretation form without loading wallet data or
 querying relays/mints. The original text (including ASCII GS separators) and
 decoder format are retained. Choose Automatic, GS1 element string, or GTIN/EAN

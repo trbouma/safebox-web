@@ -7293,23 +7293,29 @@ def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None
     assert "Camera scanning requires HTTPS" in script.text
 
 
-def test_scanned_lightning_address_prefills_payment_review() -> None:
+@pytest.mark.parametrize("route", ["/scan/lightning", "/scan/review"])
+@pytest.mark.parametrize("address", ["LIGHTNING:alice@example.com", "alice@example.com"])
+def test_scanned_lightning_address_prefills_payment_review(route, address) -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
-        "/scan/lightning",
+        route,
         data={
             "csrf_token": valid_csrf_token(),
-            "lightning_payment": "LIGHTNING:alice@example.com",
+            "lightning_payment": address,
+            "acquired_payload": base64.b64encode(address.encode()).decode() if route == "/scan/review" else "",
         },
     )
 
     assert response.status_code == 200
     assert "Transfer a Balance" in response.text
     assert 'value="alice@example.com"' in response.text
+    assert acorn.payments == []
 
 
 @pytest.mark.parametrize("prefix", ["cashuA", "cashuB", "cashu:cashuA", "cashu:cashuB"])
@@ -7387,17 +7393,21 @@ def test_pasted_clear_request_from_transfer_page_opens_review_without_sending() 
     "creqb1qyqqwer9d4hnzv3nqgqqsqqqqqqqqqqraqpsqqgqqsqqzqg9qqvxsar5wpen5te0d45kuapwv4uxzmtsd3jjucm0d5rqqrjrdanxvet9ypcxz7tdv4h8gxhr3tq",
     "bitcoin:?creq=CREQB1QYQQWER9D4HNZV3NQGQQSQQQQQQQQQQRAQPSQQGQQSQQZQG9QQVXSAR5WPEN5TE0D45KUAPWV4UXZMTSD3JJUCM0D5RQQRJRDANXVET9YPCXZ7TDV4H8GXHR3TQ",
 ])
-def test_scanned_nut18_request_opens_clear_payment_review(encoded) -> None:
+@pytest.mark.parametrize("route", ["/scan/lightning", "/scan/review"])
+def test_scanned_nut18_request_opens_clear_payment_review(encoded, route) -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
     client = TestClient(app, base_url="https://safebox.example")
 
     response = client.post(
-        "/scan/lightning",
+        route,
         data={
             "csrf_token": valid_csrf_token(),
             "lightning_payment": encoded,
+            "acquired_payload": base64.b64encode(encoded.encode()).decode() if route == "/scan/review" else "",
         },
     )
 
