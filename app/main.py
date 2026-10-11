@@ -6354,8 +6354,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(400, "Invalid acquired payload encoding.")
         if not lightning_payment or len(lightning_payment.encode("utf-8")) > 65536:
             raise HTTPException(400, "The acquired code is empty or too large.")
-        # Acquisition is not interpretation: no wallet load, relay query or mint
-        # operation here. A POST keeps tokens and capabilities out of URL logs.
+        # Classify URLs locally without contacting the printed destination or
+        # loading the wallet. Product verification uses our configured sources.
+        try:
+            product = parse_product_link(lightning_payment)
+        except ValueError as exc:
+            return HTMLResponse(_scan_review_form(
+                protector.issue(), lightning_payment, symbology=symbology,
+                error=str(exc)), status_code=400)
+        if product is not None:
+            return RedirectResponse("/product?" + urlencode({
+                "link": lightning_payment.strip(), "mode": "auto",
+            }), status_code=303)
+        destination = _normalize_scanned_https_url(lightning_payment.strip())
+        if destination is not None:
+            return HTMLResponse(render_template(
+                "scanned_https_review.html", title="Review Website",
+                csrf_token=protector.issue(), destination_url=destination,
+                destination_host=urlsplit(destination).hostname,
+            ), headers={"Cache-Control": "no-store"})
+        # Other payloads still need interpretation. A POST keeps tokens and
+        # capabilities out of URL logs.
         return HTMLResponse(_scan_review_form(protector.issue(), lightning_payment, symbology=symbology))
 
     @app.post("/scan/lightning", response_class=HTMLResponse)

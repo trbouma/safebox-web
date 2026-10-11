@@ -769,7 +769,9 @@ advisory and does not guarantee physical erasure.
 
 ### GS1 barcode acquisition and anchor discovery
 
-Camera acquisition and interpretation are separate pages. Capturing or pasting
+Camera acquisition and interpretation are separate pages. Captured URLs are
+classified locally: recognized product links go directly to product verification,
+and ordinary HTTPS links go to a website warning. Other captured or pasted
 text opens a camera-free interpretation form without loading wallet data or
 querying relays/mints. The original text (including ASCII GS separators) and
 decoder format are retained. Choose Automatic, GS1 element string, or GTIN/EAN
@@ -791,6 +793,12 @@ GS1 AI. It accepts a canonical 43-character unpadded Base64URL SHA-256 digest or
 64 lowercase hexadecimal characters. Duplicated parameters, including `d` plus
 `digest`, are rejected. Digital Link expiry uses query attribute `17=YYMMDD`,
 not a path qualifier; duplicate expiry attributes are rejected.
+
+Recognized GS1 Digital Links automatically open the internal product verification
+page after capture, using configured relays and Blossom servers rather than the
+printed website. Invalid product links remain on the interpretation page with an
+error; they never fall back to opening that website. Ordinary HTTPS links show a
+warning and require confirmation before leaving Safebox.
 
 For ordinary GS1 labels, scan or paste, then select **GS1 element string** on the
 interpretation page. For

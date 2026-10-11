@@ -14,6 +14,7 @@ import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import urlencode
 from pathlib import Path
 import zipfile
 
@@ -7579,6 +7580,44 @@ def test_acquired_gs1_review_preserves_payload_and_never_starts_camera(monkeypat
         "acquired_payload": encoded, "symbology": "data_matrix", "acquisition_mode": "gs1"}, follow_redirects=False)
     assert result.status_code == 303 and result.headers["location"].startswith("/product?")
     assert "%1D" in result.headers["location"]
+
+
+@pytest.mark.parametrize("encoded", [False, True])
+def test_scan_review_routes_urls_without_wallet_or_network(monkeypatch, encoded):
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
+    def no_wallet():
+        raise AssertionError("URL classification must not load the wallet")
+    app.dependency_overrides[get_payment_acorn] = no_wallet
+    discovery = AsyncMock(side_effect=AssertionError("Classification must not query relays"))
+    monkeypatch.setattr(main_module, "discover_product", discovery)
+    client = TestClient(app, base_url="https://safebox.example")
+    def capture(raw):
+        data = {"csrf_token": valid_csrf_token(), "lightning_payment": raw,
+                "symbology": "qr_code"}
+        if encoded:
+            data["acquired_payload"] = base64.b64encode(raw.encode()).decode()
+            data["lightning_payment"] = "display text"
+        return client.post("/scan/review", data=data, follow_redirects=False)
+    link = "https://printed.invalid/01/09520123456788/10/LOT1/21/0002?d=" + "a" * 64
+    product = capture(link)
+    assert product.status_code == 303
+    assert product.headers["location"].startswith("/product?link=")
+    assert urlencode({"link": link}) in product.headers["location"]
+    website = capture("https://example.org/info")
+    assert website.status_code == 200 and "location" not in website.headers
+    assert "Safebox has not verified this website" in website.text
+    assert 'action="/scan/open-url"' in website.text
+    assert "https://example.org/info" in website.text
+    invalid = capture("https://printed.invalid/01/09520123456789")
+    assert invalid.status_code == 400 and "location" not in invalid.headers
+    assert "GTIN check digit is invalid" in invalid.text
+    assert 'action="/scan/open-url"' not in invalid.text
+    unsafe = capture("javascript:alert(1)")
+    assert unsafe.status_code == 200 and "location" not in unsafe.headers
+    assert 'action="/scan/open-url"' not in unsafe.text
+    discovery.assert_not_awaited()
 
 
 def test_scan_review_auth_csrf_and_mode_retention():
