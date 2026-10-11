@@ -131,6 +131,7 @@ from app.worker_liveness import (
 from app.handles import default_handle_from_pubkey
 from app.openetr import query_openetr_history, unavailable_openetr_history
 from app.gs1 import parse_product_link, product_associations, product_media_type, retrieve_product_artifact
+from app.gs1_discovery import acquire_product, discover_product
 from app.provider_payments import provider_recipient_queue
 from app.lnurl_pay import (
     encode_lnurl,
@@ -6229,18 +6230,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         credentials: CredentialsDependency,
         link: str,
+        mode: str = "auto",
+        symbology: str = "",
+        anchor: str | None = None,
     ) -> HTMLResponse:
         del credentials
         try:
-            product = parse_product_link(link)
+            product = acquire_product(link, mode, symbology)
             if product is None:
-                raise ValueError("Use a GS1 Digital Link beginning with /01/{GTIN}.")
+                raise ValueError("Use a supported GS1 barcode or Digital Link.")
         except ValueError as exc:
             return HTMLResponse(_page("Product Information", escape(str(exc))), status_code=400)
         settings = request.app.state.settings
         servers = settings.openetr_blossom_servers or (settings.blossom_home_server,)
         history = artifact = None
         associations = []
+        discovery = None
+        selected_candidate = None
+        scanned_digest = product.digest
+        if not product.digest:
+            discovery = await discover_product(product, settings.openetr_relays,
+                                               timeout=settings.openetr_query_timeout_seconds,
+                                               limit=settings.openetr_query_limit)
+            for candidate in discovery["candidates"]:
+                candidate["url"] = "/product?" + urlencode({"link": link, "mode": mode, "symbology": symbology, "anchor": candidate["id"]})
+            if anchor:
+                selected_candidate = next((c for c in discovery["candidates"] if c["id"] == anchor), None)
+                if selected_candidate is None:
+                    return HTMLResponse(_page("Product Information", "The selected anchor could not be revalidated in this lookup. Return to the scan and retry."), status_code=409)
+                product = replace(product, digest=selected_candidate["digest"])
         if product.digest:
             async def lookup_history():
                 try:
@@ -6267,6 +6285,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             relays=settings.openetr_relays, servers=servers,
             blob_preview="video" if media_type == "video/mp4" else _blob_preview_kind(media_type),
             blob_inline_url=f"/product/artifact/{product.digest}?inline=true" if product.digest else None,
+            discovery=discovery, selected_candidate=selected_candidate, scanned_digest=scanned_digest,
+            raw_payload=link, acquisition_mode=mode, symbology=symbology,
         ))
 
     @app.get("/product/artifact/{digest}")
@@ -6312,6 +6332,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         acorn_factory: PaymentAcornFactoryDependency,
         csrf_token: str = Form(...),
         lightning_payment: str = Form(...),
+        acquisition_mode: str = Form("auto"),
+        symbology: str = Form(""),
     ) -> HTMLResponse:
         settings = request.app.state.settings
         form_token = CsrfProtector(settings)
@@ -6321,7 +6343,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 _lightning_scan_form(
                     form_token.issue(),
                     error=message,
-                    lightning_address=str(lightning_payment).strip(),
+                    lightning_address=str(lightning_payment),
                 ),
                 status_code=status_code,
             )
@@ -6331,11 +6353,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         scanned_value = str(lightning_payment).strip()
         try:
-            product = parse_product_link(scanned_value)
+            product = acquire_product(lightning_payment, acquisition_mode, symbology)
         except ValueError as exc:
             return scan_error(str(exc))
         if product is not None:
-            return RedirectResponse("/product?" + urlencode({"link": scanned_value}), status_code=303)
+            return RedirectResponse("/product?" + urlencode({"link": lightning_payment, "mode": acquisition_mode, "symbology": symbology}), status_code=303)
         scanned_https_url = _normalize_scanned_https_url(scanned_value)
         if scanned_https_url is not None:
             return HTMLResponse(

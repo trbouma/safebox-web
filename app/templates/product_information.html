@@ -1,16 +1,46 @@
 {% extends "base.html" %}
 {% block content %}
 <section aria-label="Scanned product identifiers">
-  <p>These identifiers were parsed from the scanned GS1 Digital Link. The printed website was not contacted.</p>
+  <p>These identifiers were parsed independently from the barcode. The printed website was not contacted.</p>
   <dl class="invoice-review">
     <div><dt>GTIN</dt><dd><code>{{ product.gtin }}</code></dd></div>
     <div><dt>Lot No</dt><dd>{{ product.lot or 'Not provided' }}</dd></div>
     <div><dt>Serial No</dt><dd>{{ product.serial or 'Not provided' }}</dd></div>
+    <div><dt>Expiry (YYMMDD)</dt><dd>{{ product.expiry or 'Not provided' }}</dd></div>
     <div><dt>SHA-256 digest</dt><dd>{% if product.digest %}<code>{{ product.digest }}</code>{% else %}Not provided{% endif %}</dd></div>
   </dl>
 </section>
+{% if product.expiry %}
+<p>Expiry is preserved exactly as encoded. Century and current-expiry assessment are not determined.
+{% if product.expiry.endswith('00') %}Day 00 denotes end of month in legacy GS1 usage; it is not an explicitly encoded final day and is not compliant with the regulated-healthcare valid-day requirement effective in 2025.{% endif %}</p>
+{% endif %}
+<details><summary>Acquisition details</summary><p>Mode: {{ acquisition_mode }}. Symbology: {{ symbology or 'not supplied' }}.</p><pre>{{ raw_payload|default('')|tojson }}</pre></details>
+{% if discovery %}
+<section aria-label="GTIN anchor discovery">
+  <h2>Discovered product anchors</h2>
+  <p>The scan did not supply an artifact digest. Choose a signed candidate to retrieve its file. Field matching does not establish issuer recognition or physical authenticity.</p>
+  {% if selected_candidate %}<p>Selected anchor: <code>{{ selected_candidate.id }}</code>. The artifact digest was learned from this signed anchor, not the barcode. Selection does not promote its match status or recognize its publisher.</p>{% endif %}
+  {% if not discovery.candidates|selectattr('status', 'equalto', 'Exact field match')|list %}<p>No matching anchor found in the queried relays.</p>{% endif %}
+  {% for candidate in discovery.candidates %}
+  <article>
+    <h3>{{ candidate.status }}</h3>
+    <p>Publisher: <code>{{ candidate.publisher }}</code> — recognition not evaluated.</p>
+    <p>Lot: {{ candidate.fields.lot or 'absent' }}; expiry: {{ candidate.fields.expiry or 'absent' }}; serial: {{ candidate.fields.serial or 'absent' }}.</p>
+    <p>Artifact: <code>{{ candidate.digest }}</code></p>
+    {% for reason in candidate.reasons %}<p>{{ reason }}</p>{% endfor %}
+    <p><a class="nav-button" href="{{ candidate.url }}">Inspect this candidate's file</a></p>
+    <details><summary>Signed anchor</summary><pre>{{ candidate.event|tojson(indent=2) }}</pre></details>
+  </article>
+  {% endfor %}
+  <details open><summary>Query coverage</summary>
+    <p>Queries use kind 1415 and #g only. Searches may be incomplete; no global completeness is asserted. Legacy-only gs1_gtin anchors cannot be discovered by #g.</p>
+    <ul>{% for source in discovery.coverage %}<li>{{ source.relay }}: {{ source.status }} ({{ source.pages }} pages; limit {{ source.limit }} per page).</li>{% endfor %}</ul>
+    {% for rejected in discovery.rejected %}<p>Rejected association <code>{{ rejected.id }}</code>: {{ rejected.reason }}</p>{% endfor %}
+  </details>
+</section>
+{% endif %}
 {% if not product.digest %}
-<p>No digest was supplied. Content-addressed lookup requires a <code>d</code> or <code>digest</code> parameter; GTIN, lot and serial are not used as relay search keys.</p>
+<p>No digest was supplied. No candidate files have been downloaded automatically.</p>
 {% else %}
 <section aria-label="Artifact lookup">
   <h2>Product information artifact</h2>
@@ -54,6 +84,7 @@
   <p>Anchor <code>{{ association.event_id }}</code>:
     <strong>{{ 'Product identifiers match the signed tags.' if association.matches else 'Product identifiers do not match all signed tags.' }}</strong></p>
   {% if not association.matches %}
+  <p>{{ association.status }}{% for reason in association.reasons %} — {{ reason }}{% endfor %}</p>
   <ul>{% for field in association.fields %}{% if not field.matches %}
     <li>{{ field.name }} — scanned: {{ field.expected or 'not provided' }};
       signed: {{ field['values']|join(', ') or 'not provided or malformed' }} (missing, different, or repeated tag).</li>
@@ -81,7 +112,7 @@
 <details><summary>Lookup sources and supported format</summary>
   <p>Relays: {{ relays|join(', ') }}</p>
   <p>Blossom servers: {{ servers|join(', ') }}</p>
-  <p>Supported subset: /01/{GTIN}, optionally /10/{lot} then /21/{serial}, and one optional d or digest parameter. This is not a full GS1 resolver. URLs in scanned codes and storage hints in events do not select retrieval destinations.</p>
+  <p>Supported subset: Digital Links with /01/{GTIN}, optional /10/{lot} then /21/{serial}, optional query attribute 17 for expiry, and one optional d or digest parameter. Also supported: validated GTIN/EAN/UPC and explicitly identified GS1 element strings with AIs 01, 10, 17 and 21. This is not a full GS1 resolver. URLs in scanned codes and storage hints in events do not select retrieval destinations.</p>
 </details>
 <p><a class="nav-button" href="/scan/lightning">Scan another code</a></p>
 {% endblock %}

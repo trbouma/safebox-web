@@ -7558,6 +7558,7 @@ def test_scanned_gs1_redirects_to_internal_product_page(monkeypatch) -> None:
     client = TestClient(app, base_url="https://safebox.example")
     lookup = AsyncMock()
     monkeypatch.setattr(main_module, "query_openetr_history", lookup)
+    monkeypatch.setattr(main_module, "discover_product", AsyncMock(return_value={"candidates": [], "rejected": [], "coverage": []}))
     destination = "https://printed.invalid/01/09520123456788/10/LOT1/21/0002"
     response = client.post("/scan/lightning", data={
         "csrf_token": valid_csrf_token(), "lightning_payment": destination,
@@ -7655,6 +7656,49 @@ def test_product_artifact_previews_are_verified_and_narrowly_typed(monkeypatch, 
     assert storage.await_count == 3
     storage.return_value = {"status": "unavailable", "data": None, "attempts": []}
     assert client.get(f"/product/artifact/{digest}?inline=true").status_code == 502
+
+
+def test_gs1_element_discovery_requires_selection_before_artifact_fetch(monkeypatch):
+    from app.gs1_discovery import acquire_product, evaluate_candidate
+    from app.openetr import build_openetr_history
+    from stroma import Event
+    import hashlib
+
+    raw = "10693773\x1d172701310100057606029096"
+    product = acquire_product(raw, "gs1")
+    data = b"%PDF-1.7\nexample"
+    digest = hashlib.sha256(data).hexdigest()
+    event = Event(kind=1415, created_at=100, content="Certificate", tags=[
+        ["action", "issue"], ["o", digest], ["g", product.gtin],
+        ["gs1_lot", "693773"], ["gs1_expiry", "270131"]])
+    event.sign("01" * 32)
+    candidate = evaluate_candidate(product, event)
+    discovery = AsyncMock(return_value={"candidates": [candidate], "rejected": [], "coverage": []})
+    storage = AsyncMock(return_value={"status": "verified", "data": data, "size": len(data), "attempts": []})
+    monkeypatch.setattr(main_module, "discover_product", discovery)
+    monkeypatch.setattr(main_module, "retrieve_product_artifact", storage)
+    monkeypatch.setattr(main_module, "query_openetr_history", AsyncMock(return_value=build_openetr_history(digest, [event], ())))
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_payment_acorn] = lambda: FakeLoadedAcorn(balance=0)
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
+    client = TestClient(app, base_url="https://safebox.example")
+    response = client.post("/scan/lightning", data={"csrf_token": valid_csrf_token(),
+        "lightning_payment": raw, "acquisition_mode": "gs1", "symbology": "data_matrix"}, follow_redirects=False)
+    assert response.status_code == 303
+    assert "%1D" in response.headers["location"]
+    page = client.get(response.headers["location"])
+    assert page.status_code == 200
+    assert "Exact field match" in page.text and "270131" in page.text
+    assert "No candidate files have been downloaded" in page.text
+    storage.assert_not_awaited()
+    assert discovery.call_args.args == (product, TEST_SETTINGS.openetr_relays)
+    selected = client.get(candidate["url"])
+    assert selected.status_code == 200
+    assert "learned from this signed anchor" in selected.text
+    assert "data-pdf-viewer" in selected.text
+    storage.assert_awaited_once()
+    assert client.get("/product", params={"link": raw, "mode": "gs1", "anchor": "00" * 32}).status_code == 409
+    assert storage.await_count == 1
 
 
 def test_product_storage_pool_configuration(monkeypatch):

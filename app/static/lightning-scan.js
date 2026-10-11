@@ -9,6 +9,7 @@ const startButton = root?.querySelector("[data-scanner-start]");
 const stopButton = root?.querySelector("[data-scanner-stop]");
 const resultInput = document.querySelector("[data-scanner-result]");
 const scanForm = document.querySelector("[data-scanner-form]");
+const symbologyInput = document.querySelector("[data-scanner-symbology]");
 
 if (
   root instanceof HTMLElement &&
@@ -20,23 +21,26 @@ if (
   scanForm instanceof HTMLFormElement
 ) {
   let accepted = false;
+  let cameraRunning = false;
+  let detector = null;
+  let detecting = false;
   const cameraAvailable =
     window.isSecureContext &&
     navigator.mediaDevices != null &&
     typeof navigator.mediaDevices.getUserMedia === "function";
 
-  const scanner = new QrScanner(
-    video,
-    (result) => {
+  const acceptResult = (result) => {
       if (accepted) return;
       accepted = true;
-      const scannedValue = String(result.data || "").trim();
+      // Do not trim the payload: ASCII GS (0x1D) defines GS1 field boundaries.
+      const scannedValue = String(result.data || "");
       if (!scannedValue) {
         accepted = false;
         status.textContent = "The QR code did not contain any data. Try again.";
         return;
       }
       resultInput.value = scannedValue;
+      if (symbologyInput) symbologyInput.value = result.symbology || "qr_code";
       const lowerValue = scannedValue.toLowerCase();
       status.textContent = lowerValue.startsWith("acorn:record-presentation:")
         ? "Record presentation acquired. Opening the temporary view…"
@@ -52,11 +56,15 @@ if (
             ? "Website address acquired. Opening the safety review…"
           : "Payment code acquired. Opening the payment review…";
       scanner.stop();
+      cameraRunning = false;
       startButton.hidden = false;
       startButton.disabled = false;
       stopButton.hidden = true;
       scanForm.requestSubmit();
-    },
+    };
+  const scanner = new QrScanner(
+    video,
+    acceptResult,
     {
       preferredCamera: "environment",
       highlightScanRegion: true,
@@ -74,7 +82,36 @@ if (
     },
   );
 
+  resultInput.addEventListener("input", () => {
+    if (symbologyInput) symbologyInput.value = "";
+  });
+  // QrScanner remains the cross-browser QR fallback. Native decoding adds
+  // other symbologies where available, without inventing a GS1/FNC1 flag.
+  if ("BarcodeDetector" in window) {
+    BarcodeDetector.getSupportedFormats().then((formats) => {
+      const supported = formats.filter((f) => ["data_matrix", "code_128", "ean_8", "ean_13", "upc_a", "upc_e"].includes(f));
+      if (supported.length) detector = new BarcodeDetector({ formats: supported });
+    }).catch(() => {});
+  }
+  const barcodeTimer = window.setInterval(async () => {
+    if (!detector || !cameraRunning || accepted || detecting || video.readyState < 2) return;
+    detecting = true;
+    try {
+      const results = await detector.detect(video);
+      if (results.length === 1 && cameraRunning && !accepted) {
+        acceptResult({ data: results[0].rawValue, symbology: results[0].format });
+      } else if (results.length > 1) {
+        status.textContent = "Multiple barcodes detected. Show one barcode at a time.";
+      }
+    } catch (_error) {
+      // QR acquisition and manual input remain available.
+    } finally {
+      detecting = false;
+    }
+  }, 400);
+
   const stop = () => {
+    cameraRunning = false;
     scanner.stop();
     startButton.hidden = false;
     startButton.disabled = false;
@@ -96,6 +133,7 @@ if (
     status.textContent = "Requesting camera access…";
     try {
       await scanner.start();
+      cameraRunning = true;
       startButton.hidden = true;
       startButton.disabled = false;
       stopButton.hidden = false;
@@ -110,7 +148,11 @@ if (
 
   startButton.addEventListener("click", start);
   stopButton.addEventListener("click", stop);
-  window.addEventListener("pagehide", () => scanner.destroy(), { once: true });
+  window.addEventListener("pagehide", () => {
+    cameraRunning = false;
+    window.clearInterval(barcodeTimer);
+    scanner.destroy();
+  }, { once: true });
   if (cameraAvailable) {
     void start();
   } else {

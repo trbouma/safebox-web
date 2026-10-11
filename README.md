@@ -767,7 +767,7 @@ Set it explicitly to `0` to omit NIP-40 expiration tags; values from `3600` to
 `2592000` select a retention period from one hour to 30 days. Relay expiry is
 advisory and does not guarantee physical erasure.
 
-### GS1 Digital Link scanning
+### GS1 barcode acquisition and anchor discovery
 
 The scanner (and its paste field) recognizes the bounded OpenQR/OpenETR product
 link format: `https://example.com/01/{GTIN}/10/{lot}/21/{serial}?d={digest}`.
@@ -780,7 +780,52 @@ rejected. This is not a general-purpose GS1 resolver.
 The optional `d` parameter (alias `digest`) is an application extension, not a
 GS1 AI. It accepts a canonical 43-character unpadded Base64URL SHA-256 digest or
 64 lowercase hexadecimal characters. Duplicated parameters, including `d` plus
-`digest`, are rejected. Without a digest, the page displays identifiers only.
+`digest`, are rejected. Digital Link expiry uses query attribute `17=YYMMDD`,
+not a path qualifier; duplicate expiry attributes are rejected.
+
+For ordinary GS1 labels, select **GS1 element string** and scan or paste, for
+example, `01000576060290961727013110693773`. The result is GTIN
+`00057606029096`, expiry `270131`, lot `693773`, with no serial or digest.
+Parenthesized manual notation `(01)00057606029096(17)270131(10)693773` is also
+accepted in that mode. The strict adapter supports AIs 01, 10, 17 and 21 in any
+element-string order; unsupported AIs are rejected. It is not a general GS1
+Syntax Engine. ASCII group separators are preserved, including SDK initial-FNC1
+representation in explicit GS1 mode. AIM identifiers `]d2`, `]C1` and `]Q3`
+explicitly identify supported GS1 acquisitions. The literal text `FNC1` is not
+a separator. A variable field consumes bytes through the next separator or end
+of input: the handler never reconstructs lost separators or guesses embedded
+AIs inside a lot/serial value.
+
+EAN/UPC decoder metadata is retained alongside the raw payload. Valid raw GTINs
+of 12–14 digits normalize to 14 digits; eight-digit manual input requires explicit
+GTIN mode to distinguish GTIN-8 from compressed UPC-E. Decoder-identified UPC-E
+is expanded to UPC-A before check-digit validation. Camera decoding for DataMatrix,
+Code 128, EAN and UPC uses native browser BarcodeDetector support where available;
+the existing QR decoder and paste field remain fallbacks. A decoder's DataMatrix
+format alone does not assert GS1/FNC1: select GS1 mode when that metadata is absent.
+
+Without a scanned digest, Safebox queries **every configured OpenETR relay**
+independently with kind 1415 and `#g=[GTIN]`. Each relay gets up to four overlapping,
+timestamp-paginated queries, each capped by `SAFEBOX_OPENETR_QUERY_LIMIT` and using
+`SAFEBOX_OPENETR_QUERY_TIMEOUT_SECONDS`. A per-relay deadline bounds the full search
+to four times that timeout plus one second. Failed queries, page caps and saturated
+timestamp buckets are reported. Even an exhausted stored response is not proof of
+complete relay retention or global completeness. Invalid signatures, IDs, kinds,
+digests and associations are rejected; valid copies are deduplicated by event ID.
+
+Lot, expiry, serial and any supplied digest are compared locally within each
+anchor, never merged across anchors. Exact matches, missing qualifiers, mismatches,
+general product records and more-specific candidates remain distinct. Multiple
+matches remain visible without ranking the newest or first publisher as trusted.
+No candidate artifact is downloaded until the user selects one; selection repeats
+discovery and revalidates the signed candidate before using its digest. The page
+states when a digest came from that anchor rather than the barcode.
+
+Expiry retains its exact six digits. No century or current-expiry policy is
+invented. Legacy day `00` stays distinct from an explicitly encoded month-end day
+and is labelled as noncompliant with the regulated-healthcare valid-day requirement
+effective in 2025. This reader does not publish product anchors or add an issuing
+workflow for expiry.
 
 Scanning redirects to an authenticated `/product` page. Safebox queries
 `SAFEBOX_OPENETR_RELAYS` by the normalized hex digest and retrieves the public
@@ -799,12 +844,16 @@ page's PDF viewer), and MP4 videos can be previewed. Types are identified from t
 verified bytes, not storage MIME headers. HTML, SVG, and other unsupported formats
 remain binary downloads; previews do not follow artifact-embedded resource URLs.
 Core Record Ruleset 1.0 validates anchor evidence and publisher notices;
-the page separately compares `gs1_gtin`, `gs1_lot`, and `gs1_serial` tags on each
+the page separately compares `g` (legacy alias `gs1_gtin`), `gs1_lot`,
+`gs1_expiry`, and `gs1_serial` tags on each
 qualifying anchor. Missing, conflicting, or duplicate tags do not establish a
 match. All qualifying anchors remain visible, including mismatches. A valid
 signature and digest do not prove manufacturer authority, truth of the artifact,
 GS1 allocation, or authenticity of a physical item. Lookups are bounded, and a
 missing result is not proof of global absence. No database migration is required.
+Legacy-only `gs1_gtin` anchors remain accepted during digest lookup but cannot be
+discovered by the indexed `#g` query. Conflicting or repeated aliases are rejected;
+historical events are never edited or re-signed.
 
 ### Starting the Compose services
 

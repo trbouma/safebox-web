@@ -23,6 +23,7 @@ class ProductLink:
     lot: str | None = None
     serial: str | None = None
     digest: str | None = None
+    expiry: str | None = None
 
 
 def parse_product_link(value: str) -> ProductLink | None:
@@ -67,10 +68,17 @@ def parse_product_link(value: str) -> ProductLink | None:
                 or field in {".", ".."}):
             raise ValueError("Lot and serial must contain 1–20 supported GS1 characters, without spaces or slashes.")
     digest = None
-    if params:
-        if len(params) != 1 or params[0][0] not in {"d", "digest"}:
-            raise ValueError("Use at most one d or digest parameter, with no other query parameters.")
-        reference = params[0][1]
+    expiry = None
+    if any(k not in {"d", "digest", "17"} for k, _ in params) or len([k for k, _ in params if k in {"d", "digest"}]) > 1 or len([k for k, _ in params if k == "17"]) > 1:
+        raise ValueError("Use at most one d or digest parameter and one expiry (17) attribute.")
+    for key, value in params:
+        if key == "17":
+            from app.gs1_discovery import validate_expiry
+            validate_expiry(value)
+            expiry = value
+    references = [v for k, v in params if k in {"d", "digest"}]
+    if references:
+        reference = references[0]
         if re.fullmatch(r"[0-9a-f]{64}", reference):
             digest = reference
         elif re.fullmatch(r"[A-Za-z0-9_-]{43}", reference):
@@ -80,7 +88,7 @@ def parse_product_link(value: str) -> ProductLink | None:
             digest = raw.hex()
         else:
             raise ValueError("The digest must be 64 lowercase hex or 43 unpadded Base64URL characters.")
-    return ProductLink(gtin, fields.get("10"), fields.get("21"), digest)
+    return ProductLink(gtin, fields.get("10"), fields.get("21"), digest, expiry)
 
 
 def product_associations(product: ProductLink, history: dict) -> list[dict]:
@@ -97,13 +105,22 @@ def product_associations(product: ProductLink, history: dict) -> list[dict]:
     results = []
     for graph in history["candidate_graphs"]:
         event = evidence[graph["anchor"]["id"]]
+        from app.gs1_discovery import association_fields, match_fields
+        try:
+            parsed_fields = association_fields(event.get("tags", []))
+            match_status, reasons = match_fields(product, parsed_fields, product.digest or "")
+        except ValueError as exc:
+            parsed_fields = {}
+            match_status, reasons = "Rejected association", [str(exc)]
         comparisons = []
-        for name, expected in (("gs1_gtin", product.gtin), ("gs1_lot", product.lot), ("gs1_serial", product.serial)):
+        for name, expected in (("gs1_gtin", product.gtin), ("gs1_lot", product.lot), ("gs1_serial", product.serial), ("gs1_expiry", product.expiry)):
             tags = [tag for tag in event.get("tags", []) if tag and tag[0] == name]
+            if name == "gs1_gtin" and parsed_fields.get("gtin"):
+                tags = [[name, parsed_fields["gtin"]]]
             values = [tag[1] for tag in tags if len(tag) >= 2]
             matches = (len(tags) == 1 and values == [expected]) if expected is not None else not tags
             comparisons.append({"name": name, "expected": expected, "values": values, "matches": matches})
-        results.append({"event_id": event["id"], "matches": all(c["matches"] for c in comparisons), "fields": comparisons})
+        results.append({"event_id": event["id"], "matches": match_status == "Exact field match", "status": match_status, "reasons": reasons, "fields": comparisons})
     return results
 
 
