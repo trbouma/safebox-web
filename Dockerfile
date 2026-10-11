@@ -32,7 +32,8 @@ WORKDIR /app
 # Docker's dependency cache until either dependency definition changes.
 COPY pyproject.toml poetry.lock ./
 RUN poetry config installer.parallel false \
-    && poetry install --only main --no-root --no-ansi -vvv
+    && poetry install --only main --no-root --no-ansi -vvv \
+    && poetry run python -c "from bitstring import ConstBitStream; import bolt11"
 
 
 FROM python:3.11-slim-bookworm AS runtime
