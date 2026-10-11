@@ -803,6 +803,13 @@ printed website. Invalid product links remain on the interpretation page with an
 error; they never fall back to opening that website. Ordinary HTTPS links show a
 warning and require confirmation before leaving Safebox.
 
+Valid raw GTIN-12, GTIN-13, and GTIN-14 values also open product verification
+automatically after check-digit validation, preserving leading zeros. Decoded
+EAN-8 and UPC-E are supported when the scanner supplies their format; eight
+digits without that metadata remain on the interpretation page because GTIN-8
+and compressed UPC-E must not be guessed. This applies to scanned and pasted
+values and uses the same independent configured-source lookup.
+
 For ordinary GS1 labels, scan or paste, then select **GS1 element string** on the
 interpretation page. For
 example, `01000576060290961727013110693773`. The result is GTIN

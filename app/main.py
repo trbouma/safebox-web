@@ -6354,17 +6354,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(400, "Invalid acquired payload encoding.")
         if not lightning_payment or len(lightning_payment.encode("utf-8")) > 65536:
             raise HTTPException(400, "The acquired code is empty or too large.")
-        # Classify URLs locally without contacting the printed destination or
+        # Classify product codes locally without contacting the printed destination or
         # loading the wallet. Product verification uses our configured sources.
         try:
             product = parse_product_link(lightning_payment)
+            if product is None and (
+                re.fullmatch(r"[0-9]{12,14}", lightning_payment.strip())
+                or symbology in {"ean_8", "ean_13", "upc_a", "upc_e"}
+            ):
+                product = acquire_product(lightning_payment.strip(), "auto", symbology)
         except ValueError as exc:
             return HTMLResponse(_scan_review_form(
                 protector.issue(), lightning_payment, symbology=symbology,
                 error=str(exc)), status_code=400)
         if product is not None:
             return RedirectResponse("/product?" + urlencode({
-                "link": lightning_payment.strip(), "mode": "auto",
+                "link": lightning_payment.strip(), "mode": "auto", "symbology": symbology,
             }), status_code=303)
         destination = _normalize_scanned_https_url(lightning_payment.strip())
         if destination is not None:

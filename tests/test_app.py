@@ -7633,6 +7633,44 @@ def test_scan_review_routes_urls_without_wallet_or_network(monkeypatch, encoded)
     discovery.assert_not_awaited()
 
 
+@pytest.mark.parametrize("raw,symbology,status", [
+    ("042100005264", "qr_code", 303),
+    ("0042100005264", "", 303),
+    ("00057606029096", "qr_code", 303),
+    (" 00057606029096 ", "", 303),
+    ("96385074", "ean_8", 303),
+    ("04252614", "upc_e", 303),
+    ("96385074", "qr_code", 200),
+    ("04252614", "", 200),
+    ("00057606029097", "qr_code", 400),
+    ("04252615", "upc_e", 400),
+    ("96385074", "ean_13", 400),
+])
+@pytest.mark.parametrize("encoded", [False, True])
+def test_scan_review_automatically_routes_valid_raw_gtins(raw, symbology, status, encoded, monkeypatch):
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
+    def no_wallet():
+        raise AssertionError("GTIN classification must not load a wallet")
+    app.dependency_overrides[get_payment_acorn] = no_wallet
+    discovery = AsyncMock(side_effect=AssertionError("Classification must not query relays"))
+    monkeypatch.setattr(main_module, "discover_product", discovery)
+    client = TestClient(app, base_url="https://safebox.example")
+    data = {"csrf_token": valid_csrf_token(), "lightning_payment": raw, "symbology": symbology}
+    if encoded:
+        data.update(lightning_payment="display", acquired_payload=base64.b64encode(raw.encode()).decode())
+    response = client.post("/scan/review", data=data, follow_redirects=False)
+    assert response.status_code == status
+    if status == 303:
+        assert response.headers["location"] == "/product?" + urlencode({
+            "link": raw.strip(), "mode": "auto", "symbology": symbology})
+    else:
+        assert "location" not in response.headers
+        assert "Interpret Scanned Code" in response.text
+    discovery.assert_not_awaited()
+
+
 def test_scan_review_auth_csrf_and_mode_retention():
     app = create_app(TEST_SETTINGS)
     client = TestClient(app, base_url="https://safebox.example")
