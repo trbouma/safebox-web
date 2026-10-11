@@ -7608,7 +7608,10 @@ def test_scan_review_routes_urls_without_wallet_or_network(monkeypatch, encoded)
     website = capture("https://example.org/info")
     assert website.status_code == 200 and "location" not in website.headers
     assert "Safebox has not verified this website" in website.text
-    assert 'action="/scan/open-url"' in website.text
+    assert 'href="https://example.org/info"' in website.text
+    assert 'action="/scan/open-url"' not in website.text
+    assert 'rel="noopener noreferrer" referrerpolicy="no-referrer"' in website.text
+    assert "form-action 'self'" in website.headers["content-security-policy"]
     assert "https://example.org/info" in website.text
     invalid = capture("https://printed.invalid/01/09520123456789")
     assert invalid.status_code == 400 and "location" not in invalid.headers
@@ -7810,7 +7813,7 @@ def test_scanned_https_url_requires_confirmation_before_redirect() -> None:
         bootstrap_relay="wss://relay.example.com",
     )
     client = TestClient(app, base_url="https://safebox.example")
-    destination = "https://example.com/help?topic=records"
+    destination = "https://example.com/help?topic=records&view=full"
 
     response = client.post(
         "/scan/lightning",
@@ -7824,7 +7827,10 @@ def test_scanned_https_url_requires_confirmation_before_redirect() -> None:
     assert "Open this website?" in response.text
     assert "example.com" in response.text
     assert destination.replace("&", "&amp;") in response.text
-    assert 'method="post" action="/scan/open-url"' in response.text
+    assert f'href="{destination.replace("&", "&amp;")}"' in response.text
+    assert 'action="/scan/open-url"' not in response.text
+    assert 'rel="noopener noreferrer" referrerpolicy="no-referrer"' in response.text
+    assert "form-action 'self'" in response.headers["content-security-policy"]
     assert acorn.payments == []
 
     confirmed = client.post(

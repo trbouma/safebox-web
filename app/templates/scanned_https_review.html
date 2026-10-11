@@ -11,11 +11,10 @@
     <div><dt>Website</dt><dd>{{ destination_host }}</dd></div>
     <div><dt>Address</dt><dd><code>{{ destination_url }}</code></dd></div>
   </dl>
-  <form method="post" action="/scan/open-url" data-progress-form>
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <input type="hidden" name="destination_url" value="{{ destination_url }}">
-    <button type="submit" data-progress-label="Opening website…">Open Website</button>
-  </form>
+  {# Use navigation, not a POST redirect: form-action 'self' can block the
+     external hop after submission. The destination is validated by the route. #}
+  <p><a class="nav-button" href="{{ destination_url }}"
+        rel="noopener noreferrer" referrerpolicy="no-referrer">Open Website</a></p>
   <p><a class="nav-button" href="/scan/lightning">Cancel</a></p>
 </section>
 {% endblock %}
