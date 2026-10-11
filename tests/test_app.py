@@ -7271,7 +7271,7 @@ def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None
     assert response.status_code == 200
     assert 'data-lightning-scanner' in response.text
     assert 'src="/static/lightning-scan.js"' in response.text
-    assert 'method="post" action="/scan/lightning"' in response.text
+    assert 'method="post" action="/scan/review"' in response.text
     assert "data-scanner-form" in response.text
     assert '<button type="button" data-scanner-start hidden>' in response.text
     assert "Requesting camera access…" in response.text
@@ -7287,7 +7287,7 @@ def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None
     assert "const start = async () =>" in script.text
     assert "void start();" in script.text
     assert "startButton.hidden = false;" in script.text
-    assert '/^(cashu:)?cashu[ab]/.test(lowerValue)' in script.text
+    assert 'Code acquired. Opening the interpretation page' in script.text
     assert "window.isSecureContext" in script.text
     assert "Camera scanning requires HTTPS" in script.text
 
@@ -7530,23 +7530,69 @@ def test_scanner_recognizes_record_transfer_descriptor() -> None:
     assert acorn.payments == []
 
 
-def test_scanner_browser_module_recognizes_presentation_before_transfer() -> None:
+def test_scanner_browser_module_only_acquires_codes() -> None:
     response = make_https_client().get("/static/lightning-scan.js")
 
     assert response.status_code == 200
-    presentation_check = response.text.index(
-        'lowerValue.startsWith("acorn:record-presentation:")'
-    )
-    transfer_check = response.text.index(
-        'lowerValue.startsWith("acorn:record-transfer:")'
-    )
-    assert presentation_check < transfer_check
-    assert "Record presentation acquired" in response.text
-    assert 'lowerValue.startsWith("creqa")' in response.text
-    assert "Clear payment request acquired" in response.text
-    assert 'lowerValue.startsWith("https://")' in response.text
-    assert "Website address acquired" in response.text
+    assert "Code acquired. Opening the interpretation page" in response.text
+    assert "lowerValue.startsWith" not in response.text
+    assert response.text.index("scanner.stop()") < response.text.index("scanForm.requestSubmit()")
+    assert "if (accepted || !cameraRunning) return;" in response.text
     assert "scanForm.requestSubmit()" in response.text
+
+
+def test_acquired_gs1_review_preserves_payload_and_never_starts_camera(monkeypatch):
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
+    def no_wallet():
+        raise AssertionError("Acquisition must not load the wallet")
+    app.dependency_overrides[get_payment_acorn] = no_wallet
+    discovery = AsyncMock(side_effect=AssertionError("Acquisition must not query relays"))
+    monkeypatch.setattr(main_module, "discover_product", discovery)
+    client = TestClient(app, base_url="https://safebox.example")
+    raw = "10693773\x1d172701310100057606029096"
+    page = client.post("/scan/review", data={"csrf_token": valid_csrf_token(),
+        "lightning_payment": raw, "symbology": "data_matrix"})
+    assert page.status_code == 200
+    assert "Interpret Scanned Code" in page.text and "data_matrix" in page.text
+    assert "\\u001d" in page.text
+    assert "<video" not in page.text and "/static/lightning-scan.js" not in page.text
+    encoded = re.search(r'name="acquired_payload" value="([^"]+)"', page.text).group(1)
+    assert base64.b64decode(encoded).decode() == raw
+    discovery.assert_not_awaited()
+    exact_raw = "private-code\r\n\x1dUnicode: é"
+    exact_encoded = base64.b64encode(exact_raw.encode()).decode()
+    preserved = client.post("/scan/review", data={"csrf_token": valid_csrf_token(),
+        "lightning_payment": "normalized display", "acquired_payload": exact_encoded,
+        "symbology": "qr_code"})
+    assert preserved.status_code == 200 and exact_encoded in preserved.text
+    assert "location" not in preserved.headers
+    app.dependency_overrides[get_payment_acorn] = lambda: FakeLoadedAcorn(balance=0)
+    error = client.post("/scan/lightning", data={"csrf_token": valid_csrf_token(),
+        "acquired_payload": encoded, "symbology": "data_matrix", "acquisition_mode": "auto"})
+    assert error.status_code == 400
+    assert "Select GS1 element-string mode" in error.text
+    assert "<video" not in error.text and "/static/lightning-scan.js" not in error.text
+    assert encoded in error.text
+    result = client.post("/scan/lightning", data={"csrf_token": valid_csrf_token(),
+        "acquired_payload": encoded, "symbology": "data_matrix", "acquisition_mode": "gs1"}, follow_redirects=False)
+    assert result.status_code == 303 and result.headers["location"].startswith("/product?")
+    assert "%1D" in result.headers["location"]
+
+
+def test_scan_review_auth_csrf_and_mode_retention():
+    app = create_app(TEST_SETTINGS)
+    client = TestClient(app, base_url="https://safebox.example")
+    assert client.post("/scan/review", data={"csrf_token": valid_csrf_token(), "lightning_payment": "test"}, follow_redirects=False).status_code in {303, 401, 403}
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
+    assert client.post("/scan/review", data={"csrf_token": "bad", "lightning_payment": "test"}).status_code == 403
+    app.dependency_overrides[get_payment_acorn] = lambda: FakeLoadedAcorn(balance=0)
+    payload = base64.b64encode(b"(01)invalid").decode()
+    error = client.post("/scan/lightning", data={"csrf_token": valid_csrf_token(), "acquired_payload": payload, "acquisition_mode": "gs1"})
+    assert error.status_code == 400
+    assert 'value="gs1" selected' in error.text
+    assert payload in error.text and "<video" not in error.text
 
 
 def test_scanned_gs1_redirects_to_internal_product_page(monkeypatch) -> None:

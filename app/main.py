@@ -509,6 +509,15 @@ def _lightning_scan_form(
     )
 
 
+def _scan_review_form(csrf_token: str, payload: str, *, symbology: str = "",
+                      mode: str = "auto", error: str | None = None) -> str:
+    return render_template(
+        "scan_review.html", title="Interpret Scanned Code", csrf_token=csrf_token,
+        payload=payload, acquired_payload=base64.b64encode(payload.encode("utf-8")).decode("ascii"),
+        symbology=symbology, acquisition_mode=mode, error=error,
+    )
+
+
 def _normalize_lightning_address(value: str) -> str | None:
     """Return a conservative Lightning address extracted from scanner input."""
 
@@ -6325,13 +6334,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CsrfProtector(request.app.state.settings).issue()
         )
 
+    @app.post("/scan/review", response_class=HTMLResponse)
+    async def review_acquired_code(
+        request: Request, credentials: CredentialsDependency,
+        csrf_token: str = Form(...), lightning_payment: str = Form(...),
+        symbology: str = Form(""),
+        acquired_payload: str = Form(""),
+    ) -> HTMLResponse:
+        del credentials
+        protector = CsrfProtector(request.app.state.settings)
+        if not protector.verify(csrf_token):
+            raise HTTPException(403, "The form token is invalid or expired. Scan again.")
+        if acquired_payload:
+            try:
+                if len(acquired_payload) > 90000:
+                    raise ValueError("Payload too large")
+                lightning_payment = base64.b64decode(acquired_payload, validate=True).decode("utf-8")
+            except (ValueError, UnicodeError):
+                raise HTTPException(400, "Invalid acquired payload encoding.")
+        if not lightning_payment or len(lightning_payment.encode("utf-8")) > 65536:
+            raise HTTPException(400, "The acquired code is empty or too large.")
+        # Acquisition is not interpretation: no wallet load, relay query or mint
+        # operation here. A POST keeps tokens and capabilities out of URL logs.
+        return HTMLResponse(_scan_review_form(protector.issue(), lightning_payment, symbology=symbology))
+
     @app.post("/scan/lightning", response_class=HTMLResponse)
     async def accept_scanned_lightning_payment(
         request: Request,
         acorn: PaymentAcornDependency,
         acorn_factory: PaymentAcornFactoryDependency,
         csrf_token: str = Form(...),
-        lightning_payment: str = Form(...),
+        lightning_payment: str = Form(""),
+        acquired_payload: str = Form(""),
         acquisition_mode: str = Form("auto"),
         symbology: str = Form(""),
     ) -> HTMLResponse:
@@ -6340,17 +6374,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         def scan_error(message: str, status_code: int = 400) -> HTMLResponse:
             return HTMLResponse(
-                _lightning_scan_form(
-                    form_token.issue(),
-                    error=message,
-                    lightning_address=str(lightning_payment),
-                ),
+                _scan_review_form(form_token.issue(), str(lightning_payment),
+                                  symbology=symbology, mode=acquisition_mode, error=message),
                 status_code=status_code,
             )
 
         if not form_token.verify(csrf_token):
             return scan_error("The form token is invalid or expired. Scan again.", 403)
 
+        if acquired_payload:
+            try:
+                if len(acquired_payload) > 90000:
+                    raise ValueError("Payload too large")
+                lightning_payment = base64.b64decode(acquired_payload, validate=True).decode("utf-8")
+                if len(lightning_payment.encode("utf-8")) > 65536:
+                    raise ValueError("Payload too large")
+            except (ValueError, UnicodeError):
+                return scan_error("The captured payload is invalid. Please acquire the code again.")
+        if not lightning_payment:
+            return scan_error("No captured text was supplied.")
         scanned_value = str(lightning_payment).strip()
         try:
             product = acquire_product(lightning_payment, acquisition_mode, symbology)

@@ -10,6 +10,7 @@ const stopButton = root?.querySelector("[data-scanner-stop]");
 const resultInput = document.querySelector("[data-scanner-result]");
 const scanForm = document.querySelector("[data-scanner-form]");
 const symbologyInput = document.querySelector("[data-scanner-symbology]");
+const payloadInput = document.querySelector("[data-scanner-payload]");
 
 if (
   root instanceof HTMLElement &&
@@ -40,21 +41,15 @@ if (
         return;
       }
       resultInput.value = scannedValue;
+      // Preserve the SDK string even if an HTML text input normalizes line breaks.
+      if (payloadInput) {
+        const bytes = new TextEncoder().encode(scannedValue);
+        let binary = "";
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        payloadInput.value = btoa(binary);
+      }
       if (symbologyInput) symbologyInput.value = result.symbology || "qr_code";
-      const lowerValue = scannedValue.toLowerCase();
-      status.textContent = lowerValue.startsWith("acorn:record-presentation:")
-        ? "Record presentation acquired. Opening the temporary view…"
-        : lowerValue.startsWith("acorn:record-transfer:")
-          ? "Record-sharing code acquired. Opening the transfer review…"
-          : (lowerValue.startsWith("creqa") || lowerValue.startsWith("creqb1") || (lowerValue.startsWith("bitcoin:") && /[?&]creq=/.test(lowerValue)))
-            ? "Clear payment request acquired. Opening the transfer review…"
-          : /^(cashu:)?cashu[ab]/.test(lowerValue)
-            ? "Clear token acquired. Securing it for acceptance…"
-          : /^https?:\/\/[^/]+\/01(?:\/|$)/.test(lowerValue)
-            ? "Product code acquired. Looking up product information…"
-          : lowerValue.startsWith("https://")
-            ? "Website address acquired. Opening the safety review…"
-          : "Payment code acquired. Opening the payment review…";
+      status.textContent = "Code acquired. Opening the interpretation page…";
       scanner.stop();
       cameraRunning = false;
       startButton.hidden = false;
@@ -72,11 +67,12 @@ if (
       maxScansPerSecond: 10,
       returnDetailedScanResult: true,
       onDecodeError: (error) => {
+        if (accepted || !cameraRunning) return;
         const message = String(error?.message || error || "");
         if (message && message !== QrScanner.NO_QR_CODE_FOUND) {
           console.warn("QR decoder error", error);
           status.textContent =
-            "The camera is active, but the QR decoder reported an error. Reload the page or enter the code manually.";
+            "No code acquired yet. Hold one supported barcode clearly in view, or paste its text below.";
         }
       },
     },
@@ -84,6 +80,7 @@ if (
 
   resultInput.addEventListener("input", () => {
     if (symbologyInput) symbologyInput.value = "";
+    if (payloadInput) payloadInput.value = "";
   });
   // QrScanner remains the cross-browser QR fallback. Native decoding adds
   // other symbologies where available, without inventing a GS1/FNC1 flag.
@@ -137,7 +134,7 @@ if (
       startButton.hidden = true;
       startButton.disabled = false;
       stopButton.hidden = false;
-      status.textContent = "Camera active. Hold the QR code inside the frame.";
+      status.textContent = "Camera active. Hold one supported barcode in view.";
     } catch (_error) {
       startButton.hidden = false;
       startButton.disabled = false;

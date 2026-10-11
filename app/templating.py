@@ -49,6 +49,7 @@ _PARENT_NAVIGATION = {
     "record_protection_warning.html": ("/wallet", "Back to Wallet"),
     "records.html": ("/wallet", "Back to Wallet"),
     "scan_lightning_address.html": ("/wallet", "Back to Wallet"),
+    "scan_review.html": ("/scan/lightning", "Back to Scanner"),
     "silent_payment_receipts.html": ("/wallet", "Back to Wallet"),
     "silent_payment_sweep_result.html": ("/wallet", "Back to Wallet"),
     "silent_payment_sweep_review.html": ("/wallet", "Back to Wallet"),

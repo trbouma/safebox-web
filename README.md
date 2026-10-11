@@ -769,6 +769,15 @@ advisory and does not guarantee physical erasure.
 
 ### GS1 barcode acquisition and anchor discovery
 
+Camera acquisition and interpretation are separate pages. Capturing or pasting
+text opens a camera-free interpretation form without loading wallet data or
+querying relays/mints. The original text (including ASCII GS separators) and
+decoder format are retained. Choose Automatic, GS1 element string, or GTIN/EAN
+there, then select **Interpret Code**. Parsing errors stay on that page with the
+payload and mode preserved; they never restart the camera. Payloads travel in
+POST bodies, not acquisition URLs, because some scanned codes are bearer tokens
+or private record capabilities.
+
 The scanner (and its paste field) recognizes the bounded OpenQR/OpenETR product
 link format: `https://example.com/01/{GTIN}/10/{lot}/21/{serial}?d={digest}`.
 GTIN must be 14 digits with a valid check digit. Lot and serial are optional,
@@ -783,7 +792,8 @@ GS1 AI. It accepts a canonical 43-character unpadded Base64URL SHA-256 digest or
 `digest`, are rejected. Digital Link expiry uses query attribute `17=YYMMDD`,
 not a path qualifier; duplicate expiry attributes are rejected.
 
-For ordinary GS1 labels, select **GS1 element string** and scan or paste, for
+For ordinary GS1 labels, scan or paste, then select **GS1 element string** on the
+interpretation page. For
 example, `01000576060290961727013110693773`. The result is GTIN
 `00057606029096`, expiry `270131`, lot `693773`, with no serial or digest.
 Parenthesized manual notation `(01)00057606029096(17)270131(10)693773` is also

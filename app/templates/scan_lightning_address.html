@@ -11,16 +11,11 @@
   <button type="button" data-scanner-stop hidden>Stop camera</button>
 </section>
 
-<form method="post" action="/scan/lightning" autocomplete="off"
+<form method="post" action="/scan/review" autocomplete="off"
       data-scanner-form>
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <input type="hidden" name="symbology" value="" data-scanner-symbology>
-  <label for="acquisition_mode">Code interpretation</label>
-  <select id="acquisition_mode" name="acquisition_mode" data-scanner-mode>
-    <option value="auto">Automatic / Digital Link / payment</option>
-    <option value="gs1">GS1 element string (AIs 01, 10, 17, 21)</option>
-    <option value="gtin">GTIN / EAN (not compressed UPC-E)</option>
-  </select>
+  <input type="hidden" name="acquired_payload" value="" data-scanner-payload>
   <label for="lightning_payment">Scan or paste a code or payment request</label>
   <input id="lightning_payment" name="lightning_payment" type="text"
          value="{{ lightning_address }}" placeholder="alice@example.com" required
@@ -38,7 +33,7 @@
     <p>The camera starts automatically. If access is unavailable, check the
     browser's camera permission or enter the code manually. Camera access from
     another device requires Safebox to be served over HTTPS.</p>
-    <p>EAN, UPC and DataMatrix camera decoding depends on browser support. For GS1 element strings without a GS1 symbology identifier, select GS1 mode explicitly. Preserve ASCII group separators; alternatively paste parenthesized notation such as (01)00057606029096(17)270131(10)693773. Never remove separators between variable-length fields.</p>
+    <p>Once text is acquired, the camera stops and a separate page lets you choose its interpretation. EAN, UPC and DataMatrix camera decoding depends on browser support. Preserve ASCII group separators when pasting GS1 element strings.</p>
     <noscript><p>Camera scanning requires JavaScript. You can still enter the
     code manually.</p></noscript>
   </div>
