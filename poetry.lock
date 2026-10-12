@@ -3223,7 +3223,7 @@ pyyaml = "^6.0.1"
 qrcode = "^7.4.2"
 requests = "^2.32.3"
 secp256k1 = ">=0.14.0"
-stroma-nostr = {git = "https://github.com/trbouma/stroma.git", rev = "a2898d82348b201cb5794f0f00d3d2aca08bf6c5"}
+stroma-nostr = {git = "https://github.com/trbouma/stroma.git", branch = "main"}
 wheel = "^0.43.0"
 
 [package.extras]
@@ -3234,7 +3234,7 @@ post-quantum = ["liboqs-python (>=0.14.1,<0.17.0)"]
 type = "git"
 url = "https://github.com/trbouma/safebox-acorn.git"
 reference = "main"
-resolved_reference = "614e450fac43b971cebce39ee3c48dd6e4273264"
+resolved_reference = "91196de09fb7bb086b10f0f8dd93e1c9d401d356"
 
 [[package]]
 name = "secp256k1"
@@ -3475,7 +3475,7 @@ yarl = ">=1.9,<2"
 [package.source]
 type = "git"
 url = "https://github.com/trbouma/stroma.git"
-reference = "a2898d82348b201cb5794f0f00d3d2aca08bf6c5"
+reference = "main"
 resolved_reference = "a2898d82348b201cb5794f0f00d3d2aca08bf6c5"
 
 [[package]]
