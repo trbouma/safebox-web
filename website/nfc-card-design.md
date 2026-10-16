@@ -4,6 +4,20 @@ Status: issuance, owner-authenticated metadata read-back and PIN-gated public
 login implemented, 2026-10-16. Physical-device validation remains separate from
 automated security and workflow tests.
 
+For the separate proposal in which merchant instances sign payment requests
+and the customer's issuer applies an open-by-default instance trust policy
+before obtaining customer authorization, see
+[NFC Payment Authorization Design](nfc-payment-authorization-design.md).
+The existing login flow does not authorize a merchant payment.
+For owner access to records and separately approved disclosure to another party,
+see [Card Record Retrieval Design](card-record-retrieval-design.md). Acorn resolves
+record and attachment-decryption information from relay-backed state; no separate
+blob keys or record catalog need to be written to the card.
+The payment design also discusses [NTAG215 selection, PIN hygiene and recovery
+responsibility](nfc-payment-authorization-design.md#choosing-ntag215-and-managing-its-risks),
+including the distinction between preventing duplicate submissions and resisting
+cloned static credentials.
+
 ## Using the NFC page
 
 Set `SAFEBOX_NFC_ALLOWED_HOSTS=crays.safebox.dev` (use your actual public hostname),

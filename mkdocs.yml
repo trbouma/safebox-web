@@ -47,6 +47,9 @@ nav:
       - Product Architecture: product-architecture.md
       - Trust Boundary: trust-boundary.md
       - NFC Card Issuance Design: nfc-card-design.md
+      - NFC Payment Authorization Design: nfc-payment-authorization-design.md
+      - Cash Payment Walkthroughs: cash-clear-payment-walkthroughs.md
+      - Card Record Retrieval Design: card-record-retrieval-design.md
   - Policy Briefs:
       - Overview: policy-briefs/index.md
       - High Assurance Identity and User-Controlled Continuity: policy-briefs/high-assurance-identity-and-user-controlled-continuity.md
