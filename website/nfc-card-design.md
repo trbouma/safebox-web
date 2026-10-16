@@ -1,4 +1,4 @@
-# NFC card issuance, read-back and login
+# NFC card and QR issuance, read-back and login
 
 Status: issuance, owner-authenticated metadata read-back and PIN-gated public
 login implemented, 2026-10-16. Physical-device validation remains separate from
@@ -52,10 +52,31 @@ It is not physical-card attestation: an authenticated client can submit copied b
 The version-1 codec derives a dedicated NFC AES-GCM key from `SAFEBOX_COOKIE_KEY`.
 Key ID is currently fixed at 1; changing that application secret makes existing
 cards unreadable. Historical decryption-key rotation remains future work.
-QR transport is still a proposal. Hardware tests must
+QR text transport uses the same encrypted envelope. Hardware tests must
 still be performed on real devices; automated tests do not establish compatibility.
 
-## Login with an issued card
+## Create a login QR from a card credential
+
+To copy an existing card, open **NFC Cards**, select **Read Card**, and then
+**Show Login QR**. This owner-authenticated, CSRF-protected POST validates the
+credential and displays a locally generated QR and its text representation.
+It does not generate a new PIN, re-encrypt the payload, change the generation,
+or reset the PIN-attempt counter. Expired, revoked and superseded credentials
+cannot be exported. A locked active credential can be exported, but remains locked.
+
+**Show Login QR** is also available immediately after **Prepare Card**. Save the
+generated PIN separately before leaving that page; the QR export page never
+displays it. Pending credentials must be explicitly activated before use. The
+same activation applies to both NFC and QR copies, and replacing or revoking
+the generation invalidates all of them. A QR-only credential can use the same
+activation flow without writing a physical card.
+
+The QR is sensitive even though its payload is encrypted. Keep screenshots or
+printed copies private; never capture/store the PIN alongside them. No remote
+QR generator is used, and credentials never appear in HTTP URLs or query strings.
+There is no public QR export endpoint and no plaintext PIN/private-key display.
+
+## Login with an issued card or QR
 
 Deploy a rebuilt application image. Startup migration `20261016_0015` adds the
 persistent attempt counter and challenge/rate tables without changing existing
@@ -63,8 +84,9 @@ active generations. Previously activated version-1 cards remain usable; no
 rewrite is required. All web workers must use the same database and application
 secret. Keep recovery material available when testing the first login.
 
-Select **Login with NFC** on the home/connect page (or open `/nfc/login`), press
-**Read Card for Login**, then enter the PIN in the server-rendered form. Only an
+Select **Login with NFC or QR** on the home/connect page (or open `/nfc/login`).
+Choose **Read Card for Login**, **Scan Login QR**, or paste the QR text and select
+**Continue with QR**. Then enter the PIN in the server-rendered form. Only an
 activated, unexpired credential issued for this exact origin is accepted. Legacy
 safebox-2 cards and public test markers do not authenticate here. Card reading
 does not create a session or contact a relay. Successful PIN validation issues
@@ -76,7 +98,12 @@ Each attempt has a five-minute, browser-bound challenge. The database stores onl
 its token/browser hashes, issuer, encrypted-payload digest and expiry. Reading
 binds one payload to that challenge; submitting the PIN consumes it once, even
 when the PIN is wrong. Cookies are Secure, HttpOnly and SameSite=Strict. The
-challenge is separate from the CSRF token; both are required. A new tab/login
+challenge is separate from the CSRF token; both are required. NFC and QR share
+the same challenge, rate-limit and authorization code paths. The camera scanner
+only acquires bounded credential text: it never follows a scanned URL or compares
+the PIN. Camera access requires a button press; cancellation, backgrounding and
+navigation stop scanning. Pasting works without camera access or JavaScript.
+A new tab/login
 start replaces the browser challenge cookie, so finish one attempt at a time.
 
 Five consecutive wrong or missing PIN submissions lock the active card generation.
@@ -172,8 +199,8 @@ an application convention, not a claim of MIME registration). Web NFC supports
 binary MIME records; pass bytes as the record's `data`, not a text encoding.
 See the [Web NFC specification](https://w3c.github.io/web-nfc/).
 
-QR/manual transport will use a separate text representation of the **same
-encrypted CBOR envelope**, provisionally
+QR/manual transport uses a separate text representation of the **same
+encrypted CBOR envelope**:
 `safebox-card:v1:` followed by unpadded Base64url. NFC stores neither that prefix
 nor Base64 characters. QR does not require decrypting or re-encrypting the
 credential, and its parser must enforce the same version, purpose, PIN and

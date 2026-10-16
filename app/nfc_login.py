@@ -1,5 +1,6 @@
-"""Public NFC login: bounded input, persistent limits and browser-bound attempts."""
+"""NFC/QR login: bounded input, persistent limits and browser-bound attempts."""
 import hashlib
+import base64
 import hmac
 import re
 import secrets
@@ -13,6 +14,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import Session
 
 from app.models import NfcCardPolicy, NfcLoginChallenge, NfcLoginRate
+from app import nfc_qr
 from app.nfc_cards import HEADERS, _decrypt_card, now, require_csrf, require_origin, unpack
 from app.security import CsrfProtector, set_session_cookie
 from app.templating import render_template
@@ -94,7 +96,7 @@ def challenge_filter(request, settings, token):
 
 
 def render(settings, **context):
-    return HTMLResponse(render_template("nfc_login.html", title="Login with NFC",
+    return HTMLResponse(render_template("nfc_login.html", title="Login with NFC or QR",
         csrf_token=CsrfProtector(settings).issue(), **context), headers=HEADERS)
 
 
@@ -122,7 +124,17 @@ async def read_for_login(request: Request):
         form = await read_form(request)
         require_csrf(request, form.get("csrf_token", ""))
         token, encoded = form.get("challenge", ""), form.get("card_payload", "")
-        payload = unpack(encoded)
+        qr_text = form.get("qr_payload", "")
+        if qr_text:
+            if encoded:
+                raise HTTPException(400, "Submit one login credential at a time", headers=HEADERS)
+            try:
+                payload = nfc_qr.decode(qr_text)
+            except ValueError:
+                raise HTTPException(400, "Not a supported login QR credential", headers=HEADERS) from None
+            encoded = base64.b64encode(payload).decode("ascii")
+        else:
+            payload = unpack(encoded)
         if not payload:
             raise HTTPException(400, "No NFC credential was read", headers=HEADERS)
         with Session(request.app.state.database_engine) as session:

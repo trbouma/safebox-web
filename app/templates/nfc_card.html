@@ -5,7 +5,7 @@
   <p>Write an application-encrypted wallet key, bootstrap relay, PIN and revocable card generation.
   Treat this card as a sensitive wallet backup. The application secret can decrypt it.</p>
   <p>After writing, read back and activate your card before using
-  <a href="/nfc/login">Login with NFC</a>. Login requires your separately entered PIN.</p>
+  <a href="/nfc/login">Login with NFC or QR</a>. Login requires your separately entered PIN.</p>
   {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
   {% if issuer %}
   <p>Issuer: {{ issuer }}. Use a writable NDEF card with at least 496 bytes of usable capacity.</p>
@@ -43,12 +43,31 @@
   <h3>Verified card contents</h3>
   <dl>{% for key, value in metadata.items() %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
   {% endif %}
+  {% if qr_svg %}
+  <h3>Login QR</h3>
+  <p>This is a copy of the encrypted card credential. Keep it private and store the
+  PIN separately. It shares activation, expiry, PIN lockout and revocation with the card.
+  If pending, activate below before logging in.</p>
+  <div class="invoice-qr">{{ qr_svg | safe }}</div>
+  <label for="login-qr-text">Login QR text (sensitive)</label>
+  <textarea id="login-qr-text" readonly spellcheck="false">{{ qr_text }}</textarea>
+  <p>Open Login with NFC or QR on this issuer, scan this QR or paste its text, then
+  enter the PIN. Do not send it to a third-party QR service.</p>
+  {% elif card_payload or qr_source_payload %}
+  <form method="post" action="/nfc/qr">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="card_payload" value="{{ card_payload or qr_source_payload }}">
+    <p>A login QR duplicates this credential and shares its PIN and revocation state.
+    The QR export page will not display the PIN; record it separately first.</p>
+    <button type="submit" name="qr_confirmed" value="yes">Show Login QR</button>
+  </form>
+  {% endif %}
   {% if activation_payload %}
   <form method="post" action="/nfc/activate">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="card_payload" value="{{ activation_payload }}">
     <input type="hidden" name="revision" value="{{ activation_revision }}">
-    <label><input type="checkbox" name="confirmed" value="yes" required> I read back the intended card. Activate it and invalidate my previous card.</label>
+    <label><input type="checkbox" name="confirmed" value="yes" required> I verified the intended card or QR credential. Activate it and invalidate my previous card and QR copies.</label>
     <button type="submit">Activate Card</button>
   </form>
   {% endif %}

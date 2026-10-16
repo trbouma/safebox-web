@@ -23,6 +23,7 @@ from stroma import Keys
 
 from app.dependencies import CredentialsDependency
 from app.models import NfcCardPolicy
+from app import nfc_qr
 from app.security import CsrfProtector, SessionCredentials, normalize_bootstrap_relay
 from app.templating import render_template
 
@@ -225,10 +226,15 @@ async def prepare(request: Request, credentials: CredentialsDependency,
 
 
 @router.post("/nfc/read", response_class=HTMLResponse)
+@router.post("/nfc/qr", response_class=HTMLResponse)
 async def read_card(request: Request, credentials: CredentialsDependency,
-                    csrf_token: str = Form(""), card_payload: str = Form("")):
+                    csrf_token: str = Form(""), card_payload: str = Form(""),
+                    qr_confirmed: str = Form("")):
     require_csrf(request, csrf_token)
     settings = require_origin(request)
+    exporting = request.url.path == "/nfc/qr"
+    if exporting and qr_confirmed != "yes":
+        raise HTTPException(400, "Confirm copying this credential to a login QR")
     payload = unpack(card_payload)
     try:
         metadata = decode_card(settings, payload, owner(credentials))
@@ -242,8 +248,14 @@ async def read_card(request: Request, credentials: CredentialsDependency,
     metadata["state"] = ("Expired" if metadata["expired"] else "Pending activation" if pending else
         "Locked — replace card" if policy and policy.active_generation == metadata["generation"] and policy.login_failures >= 5 else
         "Active" if policy and policy.active_generation == metadata["generation"] else "Inactive / revoked / superseded")
+    exportable = not metadata["expired"] and (pending or bool(policy and policy.active_generation == metadata["generation"]))
+    if exporting and not exportable:
+        raise HTTPException(409, "Only a current active or pending credential can be exported")
+    qr_text = nfc_qr.encode(payload) if exporting else None
     return page(request, credentials, metadata=metadata, activation_payload=card_payload if pending else None,
-                activation_revision=policy.revision if pending else None)
+                activation_revision=policy.revision if pending else None,
+                qr_source_payload=card_payload if exportable else None,
+                qr_text=qr_text, qr_svg=nfc_qr.svg(qr_text) if qr_text else None)
 
 
 @router.post("/nfc/activate")

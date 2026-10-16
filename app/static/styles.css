@@ -268,6 +268,7 @@ pre { background: var(--pre); overflow-x: auto; padding: 1rem; white-space: pre-
 .silent-payment-qr svg { width: min(100%, 20rem); height: auto; }
 .scanner { margin: 1.25rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
 .scanner-video { display: block; width: min(100%, 28rem); aspect-ratio: 1; margin: 0 auto 1rem; border-radius: .7rem; object-fit: cover; background: #000; }
+[data-login-qr-video][hidden] { display: none; }
 .scanner-status { color: var(--muted); }
 .invoice-review { display: grid; gap: .7rem; margin: 1.25rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--surface); }
 .invoice-review div { min-width: 0; }

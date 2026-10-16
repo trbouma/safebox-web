@@ -3965,7 +3965,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if request.url.path == "/record":
             content_security_policy += "; img-src 'self' data:"
-        if request.url.path == "/scan/lightning":
+        if request.url.path in {"/scan/lightning", "/nfc/login"}:
             # qr-scanner uses a same-origin module that creates its decoder
             # worker from a blob URL when the browser's native BarcodeDetector
             # is unavailable or unsuitable.
