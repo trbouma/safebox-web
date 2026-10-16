@@ -24,8 +24,11 @@ Resolved settings are request-local; the application configuration is not mutate
 Startup migrations create the `nfc_card_policy` table. Use a compatible Web NFC
 browser/device and a writable NDEF card with at least 496 usable bytes.
 
-1. Enter and repeat a 6–12 digit PIN; choose 30, 90 or 365 days of validity.
-2. Confirm preparation. The existing active card remains unchanged.
+1. Choose 30, 90 or 365 days of validity. The server generates a cryptographically
+   random four-digit PIN (0000–9999); the user cannot select it.
+2. Confirm preparation and safely record the displayed PIN separately from the
+   card. This no-store preparation page is the only place it is displayed;
+   read-back never reveals it. The existing active card remains unchanged.
 3. Explicitly confirm replacement and tap the intended card. Writing replaces all
    existing NDEF contents, including any prior login credential. Keep another way
    to access that wallet. A failed or interrupted write may still change the card.
@@ -39,6 +42,10 @@ One pending candidate per wallet expires after 30 minutes. Preparing another
 supersedes it. Policy updates use revision checks so stale activation cannot undo
 revocation. Only generation IDs, encrypted-payload digest, deadlines and policy
 revision are stored in this table—not wallet secrets, PINs or ciphertext.
+New cards use generated four-digit PINs; read-back remains compatible with older
+6–12 digit PIN cards. Four digits provide only 10,000 possibilities: persistent
+attempt limits and lockout are mandatory before enabling public card login.
+The PIN is not an independent encryption factor protecting against issuer-key compromise.
 Read-back is owner-authenticated and does not navigate to an issuer found on a card.
 It is not physical-card attestation: an authenticated client can submit copied bytes.
 

@@ -11,14 +11,16 @@
   <p>Issuer: {{ issuer }}. Use a writable NDEF card with at least 496 bytes of usable capacity.</p>
   <form method="post" action="/nfc/prepare">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>PIN (6–12 digits) <input type="password" name="pin" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" autocomplete="new-password" required></label>
-    <label>Repeat PIN <input type="password" name="pin_repeat" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" autocomplete="new-password" required></label>
+    <p>A random four-digit PIN will be generated when you prepare the card.</p>
     <label>Validity <select name="lifetime"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="365">365 days</option></select></label>
     <label><input type="checkbox" name="confirmed" value="yes" required> Prepare an encrypted wallet credential. Keep my existing card active until I activate its replacement.</label>
     <button type="submit">Prepare Card</button>
   </form>
   <section data-nfc-issuance>
     {% if card_payload %}
+    <p>Your generated PIN: <strong data-card-generated-pin>{{ generated_pin }}</strong>.
+    Keep it somewhere safe, separate from the card. It is shown on this preparation
+    page only, not during read-back. Do not share or screenshot this page.</p>
     <input type="hidden" data-card-write-payload value="{{ card_payload }}">
     <p>Encrypted payload: {{ byte_count }} bytes. Preparing another card supersedes this pending credential.</p>
     <p>Writing replaces all existing NDEF contents, including any safebox-2 login credential.

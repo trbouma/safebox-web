@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import hmac
+import secrets
 import os
 import re
 from dataclasses import replace
@@ -92,7 +92,7 @@ def decode_card(settings, payload, expected_npub):
                 or cbor2.dumps(data, canonical=True) != plaintext
                 or type(data[0]) is not bytes or len(data[0]) != 32
                 or type(data[1]) is not str or len(data[1].encode()) > 200
-                or type(data[2]) is not str or not re.fullmatch(r"[0-9]{6,12}", data[2])
+                or type(data[2]) is not str or not re.fullmatch(r"(?:[0-9]{4}|[0-9]{6,12})", data[2])
                 or type(data[3]) is not bytes or len(data[3]) != 16
                 or type(data[4]) is not int or type(data[5]) is not int
                 or data[4] > now() + 60 or not 0 < data[5] - data[4] <= MAX_LIFETIME
@@ -192,16 +192,15 @@ async def nfc_page(request: Request, credentials: CredentialsDependency):
 
 @router.post("/nfc/prepare", response_class=HTMLResponse)
 async def prepare(request: Request, credentials: CredentialsDependency,
-                  csrf_token: str = Form(""), pin: str = Form(""), pin_repeat: str = Form(""),
+                  csrf_token: str = Form(""),
                   lifetime: str = Form("90"), confirmed: str = Form("")):
     require_csrf(request, csrf_token)
     settings = require_origin(request)
-    if (confirmed != "yes" or not re.fullmatch(r"[0-9]{6,12}", pin)
-            or not re.fullmatch(r"[0-9]{6,12}", pin_repeat)
-            or not hmac.compare_digest(pin, pin_repeat)):
-        raise HTTPException(400, "Confirm issuance and enter matching PINs of 6–12 digits")
+    if confirmed != "yes":
+        raise HTTPException(400, "Confirm card issuance")
     if lifetime not in {"30", "90", "365"}:
         raise HTTPException(400, "Choose a supported card lifetime")
+    pin = f"{secrets.randbelow(10000):04d}"
     try:
         payload, generation, expires = encode_card(settings, credentials, pin, int(lifetime))
     except ValueError:
@@ -212,7 +211,7 @@ async def prepare(request: Request, credentials: CredentialsDependency,
     compare_update(engine, npub, current.revision, pending_generation=generation,
                    pending_digest=hashlib.sha256(payload).hexdigest(), pending_deadline=now() + PENDING_TTL)
     return page(request, credentials, card_payload=base64.b64encode(payload).decode(),
-                byte_count=len(payload), expires=expires,
+                byte_count=len(payload), expires=expires, generated_pin=pin,
                 notice="Credential prepared for 30 minutes. Existing active card remains valid until replacement activation.")
 
 

@@ -29,7 +29,7 @@ def post(setup, path, **data):
 
 
 def prepared(setup):
-    response = post(setup, 'prepare', pin='123456', pin_repeat='123456', confirmed='yes')
+    response = post(setup, 'prepare', confirmed='yes')
     assert response.status_code == 200, response.text
     assert TEST_NSEC not in response.text
     assert 'value="123456"' not in response.text
@@ -68,9 +68,27 @@ def test_pending_expiry(setup, monkeypatch):
     assert post(setup, 'activate', card_payload=payload, revision=revision, confirmed='yes').status_code == 409
 
 
-@pytest.mark.parametrize('pin,repeat', [('123', '123'), ('123456', '☃'), ('123456', '654321')])
-def test_invalid_pin(setup, pin, repeat):
-    assert post(setup, 'prepare', pin=pin, pin_repeat=repeat, confirmed='yes').status_code == 400
+@pytest.mark.parametrize('number,expected', [(0, '0000'), (7, '0007'), (9999, '9999')])
+def test_generated_pin_ignores_user_input_and_preserves_zeros(setup, monkeypatch, number, expected):
+    import cbor2
+    monkeypatch.setattr(cards.secrets, 'randbelow', lambda limit: number if limit == 10000 else pytest.fail('Wrong PIN range'))
+    response = post(setup, 'prepare', pin='user-selected', pin_repeat='user-selected', confirmed='yes')
+    assert response.status_code == 200
+    assert f'data-card-generated-pin>{expected}</strong>' in response.text
+    assert 'name="pin"' not in response.text
+    assert response.headers['cache-control'] == 'no-store'
+    payload = re.search(r'data-card-write-payload value="([^"]+)"', response.text)[1]
+    outer = cbor2.loads(base64.b64decode(payload))
+    private = cbor2.loads(cards.cipher(setup[1]).decrypt(outer[4], outer[5],
+        cards.DOMAIN + cbor2.dumps({k: outer[k] for k in range(4)}, canonical=True)))
+    assert private[2] == expected
+    read = post(setup, 'read', card_payload=payload)
+    assert read.status_code == 200
+    assert 'data-card-generated-pin' not in read.text
+
+
+def test_prepare_still_requires_confirmation(setup):
+    assert post(setup, 'prepare').status_code == 400
 
 
 def test_csrf_and_origin(setup):
