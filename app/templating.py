@@ -34,6 +34,7 @@ _PARENT_NAVIGATION = {
     "deferred_recovery.html": ("/recovery", "Back to Recovery"),
     "deferred_recovery_warning.html": ("/wallet", "Back to Wallet"),
     "handle.html": ("/wallet", "Back to Wallet"),
+    "nfc_card.html": ("/wallet", "Back to Wallet"),
     "onboard_invite.html": ("/wallet", "Back to Wallet"),
     "pay.html": ("/balances", "Back to Balances"),
     "pay_clear_request.html": ("/scan/lightning", "Back to Scanner"),

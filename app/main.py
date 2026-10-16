@@ -170,6 +170,7 @@ from app.clear_receive import (
     claim_clear_receive_job, get_clear_receive_job, run_clear_receive_job_in_thread,
 )
 from app.messages import router as messages_router
+from app.nfc_cards import router as nfc_cards_router
 from app.localization import (
     DEFAULT_LANGUAGE,
     SUPPORTED_LANGUAGES,
@@ -3733,6 +3734,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.clear_mint_metadata_cache = {}
     app.include_router(lnurl_pay_router)
     app.include_router(messages_router)
+    app.include_router(nfc_cards_router)
     app.mount(
         "/static",
         StaticFiles(directory=static_directory),

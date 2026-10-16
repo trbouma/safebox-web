@@ -143,6 +143,36 @@ def valid_csrf_token() -> str:
     return CsrfProtector(TEST_SETTINGS).issue()
 
 
+def test_nfc_page_requires_session():
+    response = make_https_client().get("/nfc", follow_redirects=False)
+    assert response.status_code == 401
+
+
+def test_nfc_page_exposes_only_public_test_record_without_wallet_load(tmp_path):
+    app = create_app(database_settings(tmp_path))
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://private-bootstrap.example",
+        deferred_acorn_mnemonic="private recovery sentinel",
+        record_protection_key="private record key sentinel")
+
+    def no_acorn():
+        raise AssertionError("NFC readiness must not load the wallet")
+
+    app.dependency_overrides[get_acorn] = no_acorn
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.get("/nfc")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert "SAFEBOX-WEB-NFC-TEST:v1" in response.text
+    assert "Card login is not enabled yet" in response.text
+    assert 'href="/wallet"' in response.text
+    assert 'src="/static/nfc-card.js"' in response.text
+    for secret in (TEST_NSEC, "private-bootstrap.example", "private recovery sentinel", "private record key sentinel"):
+        assert secret not in response.text
+    assert 'href="/nfc"' in Path("app/templates/wallet.html").read_text()
+
+
 def test_ecash_retention_duration_uses_readable_units() -> None:
     assert main_module._humanize_retention(3_600) == "1 hour"
     assert main_module._humanize_retention(7_200) == "2 hours"
@@ -4247,7 +4277,8 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "deposit_finalization_job",
         "web_worker_heartbeat",
     }.issubset(tables)
-    assert revision == ("20261004_0013",)
+    assert "nfc_card_policy" in tables
+    assert revision == ("20261016_0014",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",

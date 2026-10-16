@@ -329,6 +329,7 @@ class Settings:
     """Runtime settings that do not contain wallet state."""
 
     cookie_key: str
+    nfc_issuer_origin: str = ""
     allow_insecure_http: bool = False
     allow_insecure_mints: bool = False
     session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
@@ -402,6 +403,18 @@ class Settings:
         return fips_ipv6_address(self.service_npub) if self.service_npub else None
 
     def __post_init__(self) -> None:
+        if self.nfc_issuer_origin:
+            origin = urlsplit(self.nfc_issuer_origin)
+            try:
+                _ = origin.port
+            except ValueError as exc:
+                raise ValueError("Invalid SAFEBOX_NFC_ISSUER_ORIGIN") from exc
+            if (origin.scheme != "https" or not origin.hostname or origin.username
+                    or origin.password or origin.path or origin.query or origin.fragment
+                    or self.nfc_issuer_origin != f"https://{origin.netloc.lower()}"
+                    or any(c.isspace() for c in self.nfc_issuer_origin)
+                    or len(self.nfc_issuer_origin.encode()) > 128):
+                raise ValueError("SAFEBOX_NFC_ISSUER_ORIGIN must be a canonical HTTPS origin without a trailing slash")
         try:
             Fernet(self.cookie_key.encode("ascii"))
         except (TypeError, ValueError) as exc:
@@ -685,6 +698,7 @@ class Settings:
         ).strip()
         return cls(
             cookie_key=cookie_key,
+            nfc_issuer_origin=os.getenv("SAFEBOX_NFC_ISSUER_ORIGIN", "").strip(),
             allow_insecure_http=_env_bool("SAFEBOX_ALLOW_INSECURE_HTTP"),
             allow_insecure_mints=_env_bool("SAFEBOX_ALLOW_INSECURE_MINTS"),
             session_ttl_seconds=ttl,

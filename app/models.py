@@ -21,6 +21,19 @@ def _naive_datetime_field(**kwargs):
     return Field(sa_type=DateTime(timezone=False), **kwargs)
 
 
+class NfcCardPolicy(SQLModel, table=True):
+    """One active/pending generation per wallet; never credentials or PINs."""
+
+    __tablename__ = "nfc_card_policy"
+    npub: str = Field(primary_key=True)
+    revision: int = Field(default=0, nullable=False)
+    active_generation: Optional[str] = Field(default=None)
+    active_expires_at: Optional[int] = Field(default=None)
+    pending_generation: Optional[str] = Field(default=None)
+    pending_digest: Optional[str] = Field(default=None)
+    pending_deadline: Optional[int] = Field(default=None)
+
+
 class ClaimedHandle(SQLModel, table=True):
     """A public NIP-05 handle controlled by one Acorn component."""
 

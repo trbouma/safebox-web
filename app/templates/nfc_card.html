@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block content %}
+<section aria-labelledby="nfc-issuance-heading">
+  <h2 id="nfc-issuance-heading">Issue a Safebox NFC card</h2>
+  <p>Write an application-encrypted wallet key, bootstrap relay, PIN and revocable card generation.
+  Treat this card as a sensitive wallet backup. The application secret can decrypt it.</p>
+  <p>Card login is not enabled yet. Activation records which card is current for future login support;
+  this page supports issuance and owner-authenticated read-back only.</p>
+  {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
+  {% if issuer %}
+  <p>Issuer: {{ issuer }}. Use a blank NDEF card with at least 496 bytes of usable capacity.</p>
+  <form method="post" action="/nfc/prepare">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>PIN (6–12 digits) <input type="password" name="pin" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" autocomplete="new-password" required></label>
+    <label>Repeat PIN <input type="password" name="pin_repeat" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" autocomplete="new-password" required></label>
+    <label>Validity <select name="lifetime"><option value="30">30 days</option><option value="90" selected>90 days</option><option value="365">365 days</option></select></label>
+    <label><input type="checkbox" name="confirmed" value="yes" required> Prepare an encrypted wallet credential. Keep my existing card active until I activate its replacement.</label>
+    <button type="submit">Prepare Card</button>
+  </form>
+  <section data-nfc-issuance>
+    {% if card_payload %}
+    <input type="hidden" data-card-write-payload value="{{ card_payload }}">
+    <p>Encrypted payload: {{ byte_count }} bytes. Preparing another card supersedes this pending credential.</p>
+    <label><input type="checkbox" data-card-confirm> Write this credential to a blank card.</label>
+    <button type="button" data-card-write disabled>Write Card</button>
+    {% endif %}
+    <form method="post" action="/nfc/read" data-card-read-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="card_payload" data-card-read-payload>
+      <button type="button" data-card-read disabled>Read Card</button>
+    </form>
+    <button type="button" data-card-cancel hidden>Cancel NFC Operation</button>
+    <p data-card-status role="status" aria-live="polite">Checking browser NFC support…</p>
+    <p>After writing, remove the card, choose Read Card and tap it again. Read-back submits the encrypted
+    card to this issuer and displays verified metadata, never the private key or PIN.</p>
+  </section>
+  {% else %}<p>Set SAFEBOX_NFC_ISSUER_ORIGIN to this service's canonical HTTPS origin to enable issuance and read-back.</p>{% endif %}
+  {% if metadata %}
+  <h3>Verified card contents</h3>
+  <dl>{% for key, value in metadata.items() %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
+  {% endif %}
+  {% if activation_payload %}
+  <form method="post" action="/nfc/activate">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="card_payload" value="{{ activation_payload }}">
+    <input type="hidden" name="revision" value="{{ activation_revision }}">
+    <label><input type="checkbox" name="confirmed" value="yes" required> I read back the intended card. Activate it and invalidate my previous card.</label>
+    <button type="submit">Activate Card</button>
+  </form>
+  {% endif %}
+  {% if policy %}
+  <p>Current card generation: {{ policy.active_generation or 'None' }}. Expiry (Unix seconds): {{ policy.active_expires_at or '—' }}.</p>
+  <form method="post" action="/nfc/revoke">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="revision" value="{{ policy.revision }}">
+    <label><input type="checkbox" name="confirmed" value="yes" required> Invalidate my active and pending cards. Existing sessions are not ended.</label>
+    <button type="submit">Revoke Cards</button>
+  </form>
+  {% endif %}
+</section>
+<details><summary>Non-secret hardware test</summary>
+<p>Use a separate blank card: the test record must be erased externally before credential issuance.</p>
+<section data-nfc-test aria-labelledby="nfc-test-heading">
+  <h2 id="nfc-test-heading">Test a blank NFC card</h2>
+  <p>Use a blank, writable NDEF card and a compatible NFC-enabled device/browser
+  over HTTPS. Browser API availability alone does not confirm working hardware.</p>
+  <p>This writes exactly one public text record:</p>
+  <pre><code data-nfc-test-payload>SAFEBOX-WEB-NFC-TEST:v1</code></pre>
+  <p>Existing NDEF content will not be overwritten. This does not erase,
+  permanently lock, activate or revoke a card.</p>
+  <label><input type="checkbox" data-nfc-test-confirm>
+    I want to write this non-secret test record to a blank card.</label>
+  <p>
+    <button type="button" data-nfc-test-write disabled>Write Test Card</button>
+    <button type="button" data-nfc-test-read disabled>Read Back Test Card</button>
+    <button type="button" data-nfc-test-cancel hidden>Cancel</button>
+  </p>
+  <p data-nfc-test-status role="status" aria-live="polite">Checking browser NFC support…</p>
+  <p>Writing and reading are separate actions. After writing, remove the card,
+  choose Read Back Test Card, then tap it again. A match confirms only the test
+  record, not a card's unique identity or resistance to copying.</p>
+  <noscript><p>JavaScript is required for NFC hardware access. No card has been written.</p></noscript>
+</section>
+</details>
+<script type="module" src="/static/nfc-card.js"></script>
+<script type="module" src="/static/nfc-issuance.js"></script>
+{% endblock %}
