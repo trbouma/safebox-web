@@ -49,7 +49,7 @@ if (
         payloadInput.value = btoa(binary);
       }
       if (symbologyInput) symbologyInput.value = result.symbology || "qr_code";
-      status.textContent = "Code acquired. Opening the interpretation page…";
+      status.textContent = "Code acquired. Checking the next step…";
       scanner.stop();
       cameraRunning = false;
       startButton.hidden = false;

@@ -7288,7 +7288,7 @@ def test_lightning_address_scanner_is_authenticated_and_self_contained() -> None
     assert "const start = async () =>" in script.text
     assert "void start();" in script.text
     assert "startButton.hidden = false;" in script.text
-    assert 'Code acquired. Opening the interpretation page' in script.text
+    assert 'Code acquired. Checking the next step' in script.text
     assert "window.isSecureContext" in script.text
     assert "Camera scanning requires HTTPS" in script.text
 
@@ -7338,20 +7338,26 @@ def test_scanned_clear_token_starts_recoverable_acceptance(tmp_path, prefix) -> 
     assert acorn.staged_clear_tokens == [{"token": prefix.removeprefix("cashu:") + "scanned-clear-token"}]
 
 
-def test_scanned_lnurl_pay_qr_derives_lightning_address() -> None:
+@pytest.mark.parametrize("route", ["/scan/lightning", "/scan/review"])
+@pytest.mark.parametrize("prefix", ["", "LIGHTNING:"])
+@pytest.mark.parametrize("path", ["/.well-known/lnurlp/alice", "/lnurlp/alice"])
+def test_scanned_lnurl_pay_qr_derives_lightning_address(route, prefix, path) -> None:
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
     client = TestClient(app, base_url="https://safebox.example")
     lnurl = main_module.encode_lnurl(
-        "https://safebox.example/.well-known/lnurlp/alice"
+        "https://safebox.example" + path
     )
 
     response = client.post(
-        "/scan/lightning",
+        route,
         data={
             "csrf_token": valid_csrf_token(),
-            "lightning_payment": lnurl,
+            "lightning_payment": prefix + lnurl,
+            "acquired_payload": base64.b64encode((prefix + lnurl).encode()).decode() if route == "/scan/review" else "",
         },
     )
 
@@ -7359,6 +7365,47 @@ def test_scanned_lnurl_pay_qr_derives_lightning_address() -> None:
     assert "Transfer a Balance" in response.text
     assert 'value="alice@safebox.example"' in response.text
     assert lnurl not in response.text
+    assert "Interpret Scanned Code" not in response.text
+    assert acorn.payments == []
+
+
+@pytest.mark.parametrize("case", ["lower", "upper", "prefixed", "bad-checksum", "custom-endpoint", "invalid-handle", "port"])
+@pytest.mark.parametrize("encoded", [False, True])
+def test_scan_review_classifies_lnurl_locally_without_loading_wallet(case, encoded) -> None:
+    app = create_app(TEST_SETTINGS)
+    app.dependency_overrides[get_session_credentials] = lambda: SessionCredentials(
+        nsec=TEST_NSEC, bootstrap_relay="wss://relay.example.com")
+
+    def no_wallet():
+        raise AssertionError("LNURL classification must not load a wallet")
+
+    app.dependency_overrides[get_payment_acorn] = no_wallet
+    endpoint = {
+        "custom-endpoint": "https://example.com/custom/callback",
+        "invalid-handle": "https://example.com/.well-known/lnurlp/alice%2Fbob",
+        "port": "https://example.com:8443/.well-known/lnurlp/alice",
+    }.get(case, "https://example.com/.well-known/lnurlp/alice")
+    payload = main_module.encode_lnurl(endpoint)
+    if case == "upper":
+        payload = payload.upper()
+    elif case == "prefixed":
+        payload = "LIGHTNING:" + payload
+    elif case == "bad-checksum":
+        payload = payload[:-1] + ("q" if payload[-1] != "q" else "p")
+    data = {"csrf_token": valid_csrf_token(), "lightning_payment": payload}
+    if encoded:
+        data["lightning_payment"] = "display text"
+        data["acquired_payload"] = base64.b64encode(payload.encode()).decode()
+    client = TestClient(app, base_url="https://safebox.example")
+    response = client.post("/scan/review", data=data, follow_redirects=False)
+    if case in {"lower", "upper", "prefixed"}:
+        assert response.status_code == 307
+        assert response.headers["location"] == "/scan/lightning"
+        assert payload not in response.headers["location"]
+    else:
+        assert response.status_code == 200
+        assert "location" not in response.headers
+        assert "Interpret Scanned Code" in response.text
 
 
 def test_pasted_clear_request_from_transfer_page_opens_review_without_sending() -> None:
@@ -7545,7 +7592,7 @@ def test_scanner_browser_module_only_acquires_codes() -> None:
     response = make_https_client().get("/static/lightning-scan.js")
 
     assert response.status_code == 200
-    assert "Code acquired. Opening the interpretation page" in response.text
+    assert "Code acquired. Checking the next step" in response.text
     assert "lowerValue.startsWith" not in response.text
     assert response.text.index("scanner.stop()") < response.text.index("scanForm.requestSubmit()")
     assert "if (accepted || !cameraRunning) return;" in response.text

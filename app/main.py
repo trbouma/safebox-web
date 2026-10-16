@@ -549,6 +549,19 @@ def _normalize_lightning_address(value: str) -> str | None:
     return f"{local_part}@{domain.lower()}"
 
 
+def _scanned_lightning_recipient(value: str) -> str | None:
+    """Classify addresses and supported LNURL-pay endpoints without network I/O."""
+    payload = str(value or "").strip()
+    if payload[:10].lower() == "lightning:":
+        payload = payload[10:].strip()
+    if payload.lower().startswith("lnurl1"):
+        try:
+            payload = lightning_address_from_lnurl(payload)
+        except ValueError:
+            return None
+    return _normalize_lightning_address(payload)
+
+
 def _normalize_scanned_https_url(value: str) -> str | None:
     """Return a conservative absolute HTTPS URL for confirmed navigation."""
 
@@ -6384,7 +6397,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             or (scanned_value.lower().startswith("bitcoin:")
                 and "creq" in parse_qs(urlsplit(scanned_value).query, keep_blank_values=True))
         )
-        if _normalize_lightning_address(scanned_value) is not None or is_clear_request:
+        if _scanned_lightning_recipient(scanned_value) is not None or is_clear_request:
             # Preserve the POST body (including the original encoded capture)
             # and use the existing validation/review flow. This does not send
             # payment and never puts requests into browser URLs or access logs.
@@ -6653,16 +6666,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"Cache-Control": "no-store"},
             )
 
-        recipient_input = str(lightning_payment).strip()
-        lightning_payload = recipient_input
-        if lightning_payload[:10].lower() == "lightning:":
-            lightning_payload = lightning_payload[10:].strip()
-        if lightning_payload.lower().startswith("lnurl1"):
-            try:
-                recipient_input = lightning_address_from_lnurl(lightning_payload)
-            except ValueError:
-                recipient_input = ""
-        recipient = _normalize_lightning_address(recipient_input)
+        recipient = _scanned_lightning_recipient(lightning_payment)
         invoice = _decode_lightning_invoice(lightning_payment)
         if recipient is None and invoice is None:
             return scan_error(
