@@ -41,7 +41,7 @@ if (root) {
 
   function failure(operation, error) {
     const explanation = {
-      NotAllowedError: "NFC permission was denied. Check browser permission.",
+      NotAllowedError: "The browser or card refused the NFC operation. Check NFC permission and whether the card is writable.",
       NotSupportedError: "This device or card does not support this NFC operation.",
       NetworkError: "The card could not be accessed. Check NFC is enabled and hold the card steady.",
       NotReadableError: "The NFC card could not be read.",
@@ -56,11 +56,11 @@ if (root) {
   write.addEventListener("click", async () => {
     if (!supported || active || !confirm.checked) return;
     const operation = begin("write");
-    status.textContent = "Tap a blank NFC card to write the non-secret test record…";
+    status.textContent = "Tap the intended card. Its existing NDEF contents will be replaced by the non-secret test record…";
     try {
       const reader = new window.NDEFReader();
       await reader.write({ records: [{ recordType: "text", data: payload, lang: "en" }] },
-        { overwrite: false, signal: operation.controller.signal });
+        { overwrite: true, signal: operation.controller.signal });
       finish(operation, "Test record written; not yet read-back verified. Remove the card, then choose Read Any NFC Card. This is not a wallet card.");
     } catch (error) {
       failure(operation, error);

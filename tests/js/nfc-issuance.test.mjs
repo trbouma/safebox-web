@@ -21,14 +21,14 @@ function setup() {
     AbortController,Uint8Array,atob,btoa,setTimeout:()=>1,clearTimeout(){}});
   return {elements, readers, writes, submissions:()=>submissions, click:(n)=>elements[n].handlers.click()};
 }
-test('credential write is explicit, binary and non-overwriting', async () => {
+test('credential write requires replacement consent and writes binary with overwrite enabled', async () => {
   const ui=setup();
   assert.equal(ui.readers.length,0);
   await ui.click('write');
   assert.equal(ui.writes.length,0);
   ui.elements.confirm.checked=true;
   await ui.click('write');
-  assert.equal(ui.writes[0].options.overwrite,false);
+  assert.equal(ui.writes[0].options.overwrite,true);
   assert.deepEqual([...ui.writes[0].message.records[0].data],[1,2,3]);
   assert.equal(ui.submissions(),0);
 });

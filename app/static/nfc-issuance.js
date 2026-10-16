@@ -37,9 +37,9 @@ if (root) {
     try {
       const bytes = Uint8Array.from(atob(find('write-payload').value), (c) => c.charCodeAt(0));
       if (!bytes.length || bytes.length > 400) throw new Error();
-      status.textContent = 'Hold a blank card near your device. Existing content will not be overwritten.';
+      status.textContent = 'Hold the intended card near your device. Its existing NDEF contents will be replaced.';
       await new window.NDEFReader().write({records: [{recordType: 'mime', mediaType: mime, data: bytes}]},
-        {overwrite: false, signal: op.controller.signal});
+        {overwrite: true, signal: op.controller.signal});
       finish(op, 'Write completed. Remove the card, then choose Read Card to verify it before activation.');
     } catch {
       finish(op, 'Write was not confirmed. Check permissions and card capacity; read the card before retrying.');

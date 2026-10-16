@@ -22,11 +22,13 @@ access. NFC uses the ASGI scheme after trusted-proxy processing, never raw
 Use one stable hostname: a card issued on one origin cannot be read on another.
 Resolved settings are request-local; the application configuration is not mutated.
 Startup migrations create the `nfc_card_policy` table. Use a compatible Web NFC
-browser/device and a blank writable NDEF card with at least 496 usable bytes.
+browser/device and a writable NDEF card with at least 496 usable bytes.
 
 1. Enter and repeat a 6–12 digit PIN; choose 30, 90 or 365 days of validity.
 2. Confirm preparation. The existing active card remains unchanged.
-3. Confirm writing and tap a blank card. Existing NDEF content is never overwritten.
+3. Explicitly confirm replacement and tap the intended card. Writing replaces all
+   existing NDEF contents, including any prior login credential. Keep another way
+   to access that wallet. A failed or interrupted write may still change the card.
 4. Remove the card, select **Read Card**, and tap again. The issuer validates the
    encrypted credential and displays metadata only, never the private key or PIN.
 5. Explicitly **Activate Card** after reviewing read-back. This supersedes the old
@@ -406,7 +408,8 @@ SAFEBOX-WEB-NFC-TEST:v1
 ```
 
 The user must select a confirmation checkbox and press **Write Test Card**.
-Writing uses `overwrite: false`; existing NDEF messages are not replaced. No
+Writing uses `overwrite: true` only after explicit replacement consent; existing
+NDEF messages are replaced. This does not bypass write locks or browser permissions. No
 permanent read-only operation is offered. A separate **Read Any NFC Card**
 action accepts any NDEF card, including legacy safebox-2 cards, and displays
 record count, types and byte sizes (first 16 records only). Payloads, custom type
@@ -431,7 +434,7 @@ and abort signals; MDN documents `NDEFReader` and its limitations.
 ## Validation and next steps
 
 Automated checks should cover session enforcement, secret-free HTML, navigation,
-unsupported contexts, explicit confirmation, blank-card protection, permission
+unsupported contexts, explicit replacement confirmation, overwrite behavior, permission
 denial, cancellation, timeout, late completion, readback mismatch, malformed text,
 and non-disclosure of arbitrary card content. Hardware testing is separate:
 test a blank tag, non-empty tag, locked tag, insufficient-capacity tag, interrupted

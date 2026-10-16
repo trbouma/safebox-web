@@ -57,14 +57,14 @@ test("opening page never activates NFC; insecure/unsupported browsers stay disab
   }
 });
 
-test("write requires confirmation, protects existing data and waits for readback", async () => {
+test("write requires replacement consent, allows overwrite and waits for readback", async () => {
   const ui = setup();
   await ui.click("write");
   assert.equal(ui.writes.length, 0);
   ui.confirm();
   await ui.click("write");
   assert.equal(ui.writes[0].message.records[0].data, payload);
-  assert.equal(ui.writes[0].options.overwrite, false);
+  assert.equal(ui.writes[0].options.overwrite, true);
   assert.match(ui.elements.status.textContent, /not yet read-back verified/);
   await ui.click("read");
   ui.readers.at(-1).onreading({ message: { records: [{ recordType: "text", encoding: "utf-8", data: new TextEncoder().encode(payload) }] } });
@@ -111,7 +111,7 @@ test("permission/error text never exposes payloads or claims issuance", async ()
   const ui = setup({ writeError: { name: "NotAllowedError", message: "SECRET" } });
   ui.confirm();
   await ui.click("write");
-  assert.match(ui.elements.status.textContent, /permission was denied/);
+  assert.match(ui.elements.status.textContent, /browser or card refused/);
   assert.doesNotMatch(ui.elements.status.textContent, /SECRET/);
   assert.equal(ui.elements.write.disabled, false);
 });

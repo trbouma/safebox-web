@@ -8,7 +8,7 @@
   this page supports issuance and owner-authenticated read-back only.</p>
   {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
   {% if issuer %}
-  <p>Issuer: {{ issuer }}. Use a blank NDEF card with at least 496 bytes of usable capacity.</p>
+  <p>Issuer: {{ issuer }}. Use a writable NDEF card with at least 496 bytes of usable capacity.</p>
   <form method="post" action="/nfc/prepare">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>PIN (6–12 digits) <input type="password" name="pin" inputmode="numeric" pattern="[0-9]{6,12}" maxlength="12" autocomplete="new-password" required></label>
@@ -21,7 +21,9 @@
     {% if card_payload %}
     <input type="hidden" data-card-write-payload value="{{ card_payload }}">
     <p>Encrypted payload: {{ byte_count }} bytes. Preparing another card supersedes this pending credential.</p>
-    <label><input type="checkbox" data-card-confirm> Write this credential to a blank card.</label>
+    <p>Writing replaces all existing NDEF contents, including any safebox-2 login credential.
+    Keep another way to access that wallet before reusing its card. A failed or interrupted write may still change the card.</p>
+    <label><input type="checkbox" data-card-confirm> I authorize replacing this card's existing contents with the new wallet credential.</label>
     <button type="button" data-card-write disabled>Write Card</button>
     {% endif %}
     <form method="post" action="/nfc/read" data-card-read-form>
@@ -59,17 +61,18 @@
   {% endif %}
 </section>
 <details><summary>Non-secret hardware test</summary>
-<p>Use a separate blank card: the test record must be erased externally before credential issuance.</p>
+<p>Prefer a spare card. Writing the test record replaces existing contents, including any login credential.
+Reading alone does not change the card.</p>
 <section data-nfc-test aria-labelledby="nfc-test-heading">
-  <h2 id="nfc-test-heading">Test a blank NFC card</h2>
-  <p>Use a blank, writable NDEF card and a compatible NFC-enabled device/browser
+  <h2 id="nfc-test-heading">Test an NFC card</h2>
+  <p>Use a writable NDEF card and a compatible NFC-enabled device/browser
   over HTTPS. Browser API availability alone does not confirm working hardware.</p>
   <p>This writes exactly one public text record:</p>
   <pre><code data-nfc-test-payload>SAFEBOX-WEB-NFC-TEST:v1</code></pre>
-  <p>Existing NDEF content will not be overwritten. This does not erase,
-  permanently lock, activate or revoke a card.</p>
+  <p>Writing replaces existing NDEF content. This does not permanently lock the card
+  or change its server-side activation or revocation status. Locked cards cannot be overwritten.</p>
   <label><input type="checkbox" data-nfc-test-confirm>
-    I want to write this non-secret test record to a blank card.</label>
+    I authorize replacing this card's existing contents, including any login credential, with this non-secret test record.</label>
   <p>
     <button type="button" data-nfc-test-write disabled>Write Test Card</button>
     <button type="button" data-nfc-test-read disabled>Read Any NFC Card</button>
