@@ -72,13 +72,16 @@
     I want to write this non-secret test record to a blank card.</label>
   <p>
     <button type="button" data-nfc-test-write disabled>Write Test Card</button>
-    <button type="button" data-nfc-test-read disabled>Read Back Test Card</button>
+    <button type="button" data-nfc-test-read disabled>Read Any NFC Card</button>
     <button type="button" data-nfc-test-cancel hidden>Cancel</button>
   </p>
   <p data-nfc-test-status role="status" aria-live="polite">Checking browser NFC support…</p>
   <p>Writing and reading are separate actions. After writing, remove the card,
-  choose Read Back Test Card, then tap it again. A match confirms only the test
-  record, not a card's unique identity or resistance to copying.</p>
+  choose Read Any NFC Card, then tap it again. You can also read an existing
+  safebox-2 or other NDEF card without changing it. The reader shows record types
+  and byte counts, but hides potentially sensitive payloads and card identifiers.
+  It does not follow links, submit contents or log you in. Reading successfully
+  does not confirm write permission or a card's resistance to copying.</p>
   <noscript><p>JavaScript is required for NFC hardware access. No card has been written.</p></noscript>
 </section>
 </details>

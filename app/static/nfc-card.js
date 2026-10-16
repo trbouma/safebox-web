@@ -34,7 +34,7 @@ if (root) {
     operation.timer = window.setTimeout(() => finish(operation,
       kind === "write"
         ? "Write timed out. Card state is uncertain; read it back before trying again."
-        : "Read timed out. No test record was verified."), 30000);
+        : "Read timed out. No NDEF card was read."), 30000);
     controls();
     return operation;
   }
@@ -49,7 +49,7 @@ if (root) {
     }[error?.name] || "The NFC operation did not complete. The card may be non-empty, locked or too small.";
     finish(operation, explanation + (operation.kind === "write"
       ? " No wallet credential was issued. Read back before retrying."
-      : " No test record was verified."));
+      : " No NDEF card was read."));
   }
 
   confirm.addEventListener("change", controls);
@@ -61,7 +61,7 @@ if (root) {
       const reader = new window.NDEFReader();
       await reader.write({ records: [{ recordType: "text", data: payload, lang: "en" }] },
         { overwrite: false, signal: operation.controller.signal });
-      finish(operation, "Test record written; not yet read-back verified. Remove the card, then choose Read Back Test Card. This is not a wallet card.");
+      finish(operation, "Test record written; not yet read-back verified. Remove the card, then choose Read Any NFC Card. This is not a wallet card.");
     } catch (error) {
       failure(operation, error);
     }
@@ -70,25 +70,37 @@ if (root) {
   read.addEventListener("click", async () => {
     if (!supported || active) return;
     const operation = begin("read");
-    status.textContent = "Tap the test card to verify its public test record…";
+    status.textContent = "Tap any NDEF card, including a safebox-2 card. Reading will not change it…";
     try {
       const reader = new window.NDEFReader();
       reader.onreading = (event) => {
         if (active !== operation) return;
         try {
           const records = event.message.records;
+          if (!records || !Number.isSafeInteger(records.length) || records.length < 0) throw new Error();
           const record = records[0];
-          const matches = records.length === 1 && record.recordType === "text" &&
-            record.data.byteLength <= 256 &&
-            new TextDecoder(record.encoding || "utf-8", { fatal: true }).decode(record.data) === payload;
+          let matches = false;
+          if (records.length === 1 && record.recordType === "text" &&
+              record.data?.byteLength <= 256 &&
+              [undefined, "utf-8", "utf-16"].includes(record.encoding)) {
+            try {
+              matches = new TextDecoder(record.encoding || "utf-8", { fatal: true }).decode(record.data) === payload;
+            } catch { /* An undecodable payload still confirms hardware reading. */ }
+          }
+          const types = new Set(['empty', 'text', 'url', 'smart-poster', 'absolute-url', 'mime', 'unknown']);
+          const summary = Array.prototype.slice.call(records, 0, 16).map((item, index) => {
+            const type = types.has(item.recordType) ? item.recordType : 'custom';
+            const size = item.data?.byteLength;
+            return `Record ${index + 1}: ${type}, ${Number.isSafeInteger(size) && size >= 0 ? size + ' bytes' : 'size unavailable'}.`;
+          }).join(' ');
           finish(operation, matches
             ? "Test record verified. NFC write/read works for this test; no wallet card has been issued."
-            : "This card does not contain exactly the expected test record. Its contents were not displayed or changed.");
+            : `NFC card read successfully: ${records.length} NDEF record(s). ${summary} ${records.length > 16 ? 'Only the first 16 records are listed. ' : ''}Payloads and card identifiers are hidden. Nothing was changed, submitted or opened. This confirms reading, not login or write permission.`);
         } catch (_error) {
-          finish(operation, "The card could not be interpreted as the expected test record. Its contents were not displayed or changed.");
+          finish(operation, "An NFC reading event was received, but its record details could not be interpreted. Nothing was changed, submitted or opened.");
         }
       };
-      reader.onreadingerror = () => finish(operation, "The card could not be read. No test record was verified.");
+      reader.onreadingerror = () => finish(operation, "The card could not be read as NDEF. Nothing was changed.");
       await reader.scan({ signal: operation.controller.signal });
     } catch (error) {
       failure(operation, error);

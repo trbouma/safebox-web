@@ -407,9 +407,12 @@ SAFEBOX-WEB-NFC-TEST:v1
 
 The user must select a confirmation checkbox and press **Write Test Card**.
 Writing uses `overwrite: false`; existing NDEF messages are not replaced. No
-permanent read-only operation is offered. A separate **Read Back Test Card**
-action compares a single bounded text record with the expected value without
-displaying arbitrary card data or serial numbers. Both operations support
+permanent read-only operation is offered. A separate **Read Any NFC Card**
+action accepts any NDEF card, including legacy safebox-2 cards, and displays
+record count, types and byte sizes (first 16 records only). Payloads, custom type
+values and serial numbers remain hidden; nothing is submitted or opened.
+The known public test marker still gets a specific verification message.
+Successful reading does not establish write permission or login validity. Both operations support
 cancel, a 30-second deadline and cancellation on page hide/backgrounding. Late
 callbacks cannot change the completed/cancelled state. Cancellation may leave
 the write outcome uncertain; the page tells the user to read back before retrying.

@@ -73,7 +73,7 @@ test("write requires confirmation, protects existing data and waits for readback
   assert.equal(ui.timers.size, 0);
 });
 
-test("arbitrary/malformed/multiple records are not displayed or verified", async () => {
+test("any NDEF payload confirms reading without displaying secrets or claiming verification", async () => {
   for (const records of [[], [{ recordType: "text", data: new TextEncoder().encode("SECRET") }],
     [{ recordType: "url", data: new TextEncoder().encode(payload) }],
     [{ recordType: "text", data: new Uint8Array([255]) }],
@@ -83,8 +83,28 @@ test("arbitrary/malformed/multiple records are not displayed or verified", async
     await ui.click("read");
     ui.readers.at(-1).onreading({ message: { records } });
     assert.doesNotMatch(ui.elements.status.textContent, /Test record verified|SECRET/);
+    assert.match(ui.elements.status.textContent, /NFC card read successfully/);
     assert.equal(ui.timers.size, 0);
   }
+});
+
+test("legacy text, URLs and binary cards show bounded record metadata only", async () => {
+  const ui = setup();
+  await ui.click('read');
+  const records = [
+    {recordType:'text', data:new TextEncoder().encode('nembedSECRET')},
+    {recordType:'url', data:new TextEncoder().encode('https://example.com/SECRET')},
+    {recordType:'mime', mediaType:'SECRET', data:new DataView(new ArrayBuffer(400))},
+    ...Array.from({length:20}, () => ({recordType:'SECRET', data:new Uint8Array(1)})),
+  ];
+  ui.readers.at(-1).onreading({serialNumber:'SECRET', message:{records}});
+  const message = ui.elements.status.textContent;
+  assert.match(message, /23 NDEF record/);
+  assert.match(message, /Record 1: text, 12 bytes/);
+  assert.match(message, /Record 3: mime, 400 bytes/);
+  assert.match(message, /Only the first 16/);
+  assert.doesNotMatch(message, /SECRET|Record 17/);
+  assert.equal(ui.writes.length, 0);
 });
 
 test("permission/error text never exposes payloads or claims issuance", async () => {
