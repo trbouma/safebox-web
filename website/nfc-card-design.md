@@ -6,8 +6,21 @@ are design requirements, not claims about available functionality.
 
 ## Using the NFC page
 
-Set `SAFEBOX_NFC_ISSUER_ORIGIN` to the service's canonical HTTPS origin (no trailing
-slash), restart the application, and open **NFC Cards** from the wallet home page.
+Set `SAFEBOX_NFC_ALLOWED_HOSTS=crays.safebox.dev` (use your actual public hostname),
+restart the application, and open **NFC Cards** from the wallet home page.
+With `SAFEBOX_NFC_ISSUER_ORIGIN` blank, the issuer is the HTTPS request origin,
+but only if its host matches this allowlist. Entries are comma-separated exact
+DNS hosts, optionally with ports; wildcards are forbidden. An explicit
+`SAFEBOX_NFC_ISSUER_ORIGIN` overrides the fallback and must match the request origin.
+With neither setting, credential issuance and read-back remain disabled.
+
+The reverse proxy must preserve the public Host header, reject unexpected hosts,
+and overwrite client-supplied forwarded headers. Configure Uvicorn's
+`FORWARDED_ALLOW_IPS` for trusted proxy addresses and prevent untrusted backend
+access. NFC uses the ASGI scheme after trusted-proxy processing, never raw
+`X-Forwarded-Host`, `X-Forwarded-Proto` or `Forwarded` headers. HTTP is rejected.
+Use one stable hostname: a card issued on one origin cannot be read on another.
+Resolved settings are request-local; the application configuration is not mutated.
 Startup migrations create the `nfc_card_policy` table. Use a compatible Web NFC
 browser/device and a blank writable NDEF card with at least 496 usable bytes.
 

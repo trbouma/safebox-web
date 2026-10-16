@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import os
 import re
+from dataclasses import replace
 from time import time
 
 import cbor2
@@ -121,11 +122,24 @@ def unpack(value):
 
 def require_origin(request):
     settings = request.app.state.settings
-    if not settings.nfc_issuer_origin:
-        raise HTTPException(503, "NFC issuance requires SAFEBOX_NFC_ISSUER_ORIGIN")
-    if str(request.base_url).rstrip("/") != settings.nfc_issuer_origin:
+    # Scheme is resolved by the ASGI server's trusted-proxy handling. Never
+    # independently trust raw Forwarded or X-Forwarded-* headers here.
+    authority = request.url.netloc.lower()
+    origin = f"{request.url.scheme}://{authority}"
+    if request.url.scheme != "https":
+        raise HTTPException(403, "NFC requires HTTPS; check trusted proxy configuration")
+    if settings.nfc_issuer_origin:
+        if origin != settings.nfc_issuer_origin:
+            raise HTTPException(403, "Open this page on the configured NFC issuer HTTPS origin")
+        return settings
+    if not settings.nfc_allowed_hosts:
+        raise HTTPException(503, "Configure SAFEBOX_NFC_ALLOWED_HOSTS or SAFEBOX_NFC_ISSUER_ORIGIN")
+    if authority not in settings.nfc_allowed_hosts:
+        raise HTTPException(403, "Request host is not allowed for NFC issuance")
+    try:
+        return replace(settings, nfc_issuer_origin=origin)
+    except ValueError:
         raise HTTPException(403, "Open this page on the configured NFC issuer HTTPS origin")
-    return settings
 
 
 def require_csrf(request, token):
@@ -161,8 +175,12 @@ def compare_update(engine, npub, revision, **values):
 
 def page(request, credentials, **context):
     settings = request.app.state.settings
+    try:
+        issuer = require_origin(request).nfc_issuer_origin
+    except HTTPException:
+        issuer = ""
     return HTMLResponse(render_template("nfc_card.html", title="NFC Cards",
-        csrf_token=CsrfProtector(settings).issue(), issuer=settings.nfc_issuer_origin,
+        csrf_token=CsrfProtector(settings).issue(), issuer=issuer,
         policy=policy_for(request.app.state.database_engine, owner(credentials)),
         mime=MIME, **context), headers=HEADERS)
 

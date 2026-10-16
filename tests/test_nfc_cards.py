@@ -101,3 +101,68 @@ def test_stale_candidate_cannot_activate(setup):
     revision = str(policy(setup).revision)
     prepared(setup)
     assert post(setup, 'activate', card_payload=old, revision=revision, confirmed='yes').status_code == 409
+
+
+def test_allowlisted_origin_fallback_lifecycle(setup):
+    client, settings, credentials = setup
+    client.app.state.settings = replace(settings, nfc_issuer_origin='',
+                                       nfc_allowed_hosts=('safebox.example',))
+    assert 'action="/nfc/prepare"' in client.get('/nfc').text
+    payload = prepared(setup)
+    metadata = cards.decode_card(settings, base64.b64decode(payload), cards.owner(credentials))
+    assert metadata['issuer'] == 'https://safebox.example'
+    assert client.app.state.settings.nfc_issuer_origin == ''
+    assert post(setup, 'read', card_payload=payload).status_code == 200
+    assert post(setup, 'activate', card_payload=payload,
+                revision=str(policy(setup).revision), confirmed='yes').status_code == 303
+
+
+@pytest.mark.parametrize('url,headers', [
+    ('https://attacker.example/nfc/prepare', {'X-Forwarded-Host': 'safebox.example'}),
+    ('https://safebox.example.attacker.example/nfc/prepare', {}),
+    ('https://safebox.example:8443/nfc/prepare', {}),
+    ('http://safebox.example/nfc/prepare', {'X-Forwarded-Proto': 'https',
+      'Forwarded': 'proto=https;host=safebox.example'}),
+])
+def test_fallback_rejects_untrusted_origin(setup, url, headers):
+    client, settings, _ = setup
+    client.app.state.settings = replace(settings, nfc_issuer_origin='',
+                                       nfc_allowed_hosts=('safebox.example',))
+    response = client.post(url, headers=headers, data={
+        'csrf_token': CsrfProtector(settings).issue(), 'pin': '123456',
+        'pin_repeat': '123456', 'confirmed': 'yes'}, follow_redirects=False)
+    # The application-wide HTTPS guard rejects HTTP before the NFC route.
+    assert response.status_code == (400 if url.startswith('http:') else 403)
+    assert policy(setup) is None
+
+
+def test_empty_allowlist_disabled_and_override_precedence(setup):
+    client, settings, _ = setup
+    client.app.state.settings = replace(settings, nfc_issuer_origin='')
+    assert 'action="/nfc/prepare"' not in client.get('/nfc').text
+    assert post(setup, 'prepare').status_code == 503
+    client.app.state.settings = replace(settings, nfc_issuer_origin='https://canonical.example',
+                                       nfc_allowed_hosts=('safebox.example',))
+    assert post(setup, 'prepare').status_code == 403
+
+
+@pytest.mark.parametrize('host', ['*', '*.example', 'https://safebox.example',
+    'user@safebox.example', 'safebox.example/path', 'safebox.example:99999',
+    'safebox.example:', 'safebox.example\n', 'safebox.example,attacker.example'])
+def test_allowlist_validation(setup, host):
+    with pytest.raises(ValueError):
+        replace(setup[1], nfc_allowed_hosts=(host,))
+
+
+def test_proxy_scheme_is_used_only_from_trusted_proxy(setup):
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+    client, settings, _ = setup
+    client.app.state.settings = replace(settings, nfc_issuer_origin='',
+                                       nfc_allowed_hosts=('safebox.example',))
+    for trusted, expected in [('testclient', 200), ('192.0.2.1', 400)]:
+        proxy_client = TestClient(ProxyHeadersMiddleware(client.app, trusted_hosts=trusted),
+                                 base_url='http://safebox.example')
+        response = proxy_client.post('/nfc/prepare', headers={'X-Forwarded-Proto': 'https'}, data={
+            'csrf_token': CsrfProtector(settings).issue(), 'pin': '123456',
+            'pin_repeat': '123456', 'confirmed': 'yes'}, follow_redirects=False)
+        assert response.status_code == expected

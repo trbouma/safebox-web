@@ -34,7 +34,7 @@
     <p>After writing, remove the card, choose Read Card and tap it again. Read-back submits the encrypted
     card to this issuer and displays verified metadata, never the private key or PIN.</p>
   </section>
-  {% else %}<p>Set SAFEBOX_NFC_ISSUER_ORIGIN to this service's canonical HTTPS origin to enable issuance and read-back.</p>{% endif %}
+  {% else %}<p>NFC requires an allowed public HTTPS origin. Configure SAFEBOX_NFC_ALLOWED_HOSTS for proxy-derived origins, or set SAFEBOX_NFC_ISSUER_ORIGIN explicitly, and check trusted proxy configuration.</p>{% endif %}
   {% if metadata %}
   <h3>Verified card contents</h3>
   <dl>{% for key, value in metadata.items() %}<dt>{{ key }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>

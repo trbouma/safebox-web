@@ -330,6 +330,7 @@ class Settings:
 
     cookie_key: str
     nfc_issuer_origin: str = ""
+    nfc_allowed_hosts: tuple[str, ...] = ()
     allow_insecure_http: bool = False
     allow_insecure_mints: bool = False
     session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS
@@ -403,6 +404,25 @@ class Settings:
         return fips_ipv6_address(self.service_npub) if self.service_npub else None
 
     def __post_init__(self) -> None:
+        for host in self.nfc_allowed_hosts:
+            # Exact DNS host[:port] entries only; no wildcard or URL semantics.
+            parsed = urlsplit(f"https://{host}")
+            try:
+                port = parsed.port
+            except ValueError as exc:
+                raise ValueError("Invalid SAFEBOX_NFC_ALLOWED_HOSTS port") from exc
+            hostname = parsed.hostname or ""
+            labels = hostname.split(".")
+            if (not host or host != host.lower() or len(host) > 120
+                    or parsed.netloc != host or parsed.path or parsed.query or parsed.fragment
+                    or parsed.username or parsed.password or port == 0
+                    or any(not label or len(label) > 63
+                           or not label[0].isalnum() or not label[-1].isalnum()
+                           or any(c not in "abcdefghijklmnopqrstuvwxyz0123456789-" for c in label)
+                           for label in labels)
+                    or any(c.isspace() for c in host)
+                    or host.endswith(":")):
+                raise ValueError("SAFEBOX_NFC_ALLOWED_HOSTS requires exact lowercase DNS hosts, optionally with ports; no wildcards")
         if self.nfc_issuer_origin:
             origin = urlsplit(self.nfc_issuer_origin)
             try:
@@ -699,6 +719,8 @@ class Settings:
         return cls(
             cookie_key=cookie_key,
             nfc_issuer_origin=os.getenv("SAFEBOX_NFC_ISSUER_ORIGIN", "").strip(),
+            nfc_allowed_hosts=tuple(host.strip().lower() for host in
+                os.getenv("SAFEBOX_NFC_ALLOWED_HOSTS", "").split(",") if host.strip()),
             allow_insecure_http=_env_bool("SAFEBOX_ALLOW_INSECURE_HTTP"),
             allow_insecure_mints=_env_bool("SAFEBOX_ALLOW_INSECURE_MINTS"),
             session_ttl_seconds=ttl,
