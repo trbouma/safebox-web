@@ -171,6 +171,7 @@ from app.clear_receive import (
 )
 from app.messages import router as messages_router
 from app.nfc_cards import router as nfc_cards_router
+from app.nfc_login import router as nfc_login_router
 from app.localization import (
     DEFAULT_LANGUAGE,
     SUPPORTED_LANGUAGES,
@@ -3735,6 +3736,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(lnurl_pay_router)
     app.include_router(messages_router)
     app.include_router(nfc_cards_router)
+    app.include_router(nfc_login_router)
     app.mount(
         "/static",
         StaticFiles(directory=static_directory),

@@ -1,4 +1,4 @@
-"""Owner-only NFC issuance/readback. No public card-login or PIN oracle."""
+"""NFC credential issuance, owner read-back and PIN-gated login."""
 from __future__ import annotations
 
 import base64
@@ -23,7 +23,7 @@ from stroma import Keys
 
 from app.dependencies import CredentialsDependency
 from app.models import NfcCardPolicy
-from app.security import CsrfProtector, normalize_bootstrap_relay
+from app.security import CsrfProtector, SessionCredentials, normalize_bootstrap_relay
 from app.templating import render_template
 
 router = APIRouter()
@@ -68,8 +68,8 @@ def encode_card(settings, credentials, pin, lifetime_days):
     return payload, generation.hex(), private[5]
 
 
-def decode_card(settings, payload, expected_npub):
-    """Authenticate and validate without returning the private key or PIN."""
+def _decrypt_card(settings, payload):
+    """Internal boundary: callers must not render or log the returned secrets."""
     try:
         if not 1 <= len(payload) <= MAX_ENVELOPE:
             raise ValueError()
@@ -98,14 +98,23 @@ def decode_card(settings, payload, expected_npub):
                 or data[4] > now() + 60 or not 0 < data[5] - data[4] <= MAX_LIFETIME
                 or not 0 < int.from_bytes(data[0], "big") < 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141):
             raise ValueError()
-        if Keys(priv_k=data[0].hex()).public_key_bech32() != expected_npub:
-            raise ValueError()
+        keys = Keys(priv_k=data[0].hex())
         relay = normalize_bootstrap_relay(data[1], allowed_ws_relays=settings.allowed_ws_relays)
-        return {"generation": data[3].hex(), "issued_at": data[4], "expires_at": data[5],
-                "bootstrap_relay": relay, "issuer": outer[2], "npub": expected_npub,
+        metadata = {"generation": data[3].hex(), "issued_at": data[4], "expires_at": data[5],
+                "bootstrap_relay": relay, "issuer": outer[2], "npub": keys.public_key_bech32(),
                 "expired": data[5] <= now(), "bytes": len(payload)}
+        credentials = SessionCredentials(nsec=keys.private_key_bech32(), bootstrap_relay=relay)
+        return metadata, credentials, data[2]
     except (ValueError, TypeError, KeyError, OverflowError, RecursionError, InvalidTag, cbor2.CBORError):
         raise ValueError("Card could not be verified for this account and issuer") from None
+
+
+def decode_card(settings, payload, expected_npub):
+    """Owner read-back never returns the private key or PIN."""
+    metadata, _, _ = _decrypt_card(settings, payload)
+    if metadata["npub"] != expected_npub:
+        raise ValueError("Card could not be verified for this account and issuer")
+    return metadata
 
 
 def unpack(value):
@@ -231,6 +240,7 @@ async def read_card(request: Request, credentials: CredentialsDependency,
                    and policy.pending_digest == digest and (policy.pending_deadline or 0) > now()
                    and not metadata["expired"])
     metadata["state"] = ("Expired" if metadata["expired"] else "Pending activation" if pending else
+        "Locked — replace card" if policy and policy.active_generation == metadata["generation"] and policy.login_failures >= 5 else
         "Active" if policy and policy.active_generation == metadata["generation"] else "Inactive / revoked / superseded")
     return page(request, credentials, metadata=metadata, activation_payload=card_payload if pending else None,
                 activation_revision=policy.revision if pending else None)
@@ -257,7 +267,7 @@ async def activate(request: Request, credentials: CredentialsDependency,
         raise HTTPException(409, "Pending card expired or policy changed. Read the card and review again")
     compare_update(engine, npub, policy.revision, active_generation=metadata["generation"],
                    active_expires_at=metadata["expires_at"], pending_generation=None,
-                   pending_digest=None, pending_deadline=None)
+                   pending_digest=None, pending_deadline=None, login_failures=0)
     return RedirectResponse("/nfc", status_code=303, headers=HEADERS)
 
 

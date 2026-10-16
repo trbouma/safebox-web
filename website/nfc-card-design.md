@@ -1,8 +1,8 @@
-# NFC card issuance and read-back
+# NFC card issuance, read-back and login
 
-Status: issuance and owner-authenticated metadata read-back implemented, 2026-10-16.
-**Public card login is not implemented.** The remaining login requirements below
-are design requirements, not claims about available functionality.
+Status: issuance, owner-authenticated metadata read-back and PIN-gated public
+login implemented, 2026-10-16. Physical-device validation remains separate from
+automated security and workflow tests.
 
 ## Using the NFC page
 
@@ -12,7 +12,7 @@ With `SAFEBOX_NFC_ISSUER_ORIGIN` blank, the issuer is the HTTPS request origin,
 but only if its host matches this allowlist. Entries are comma-separated exact
 DNS hosts, optionally with ports; wildcards are forbidden. An explicit
 `SAFEBOX_NFC_ISSUER_ORIGIN` overrides the fallback and must match the request origin.
-With neither setting, credential issuance and read-back remain disabled.
+With neither setting, credential issuance, read-back and login remain disabled.
 
 The reverse proxy must preserve the public Host header, reject unexpected hosts,
 and overwrite client-supplied forwarded headers. Configure Uvicorn's
@@ -44,16 +44,60 @@ revocation. Only generation IDs, encrypted-payload digest, deadlines and policy
 revision are stored in this table—not wallet secrets, PINs or ciphertext.
 New cards use generated four-digit PINs; read-back remains compatible with older
 6–12 digit PIN cards. Four digits provide only 10,000 possibilities: persistent
-attempt limits and lockout are mandatory before enabling public card login.
+attempt limits and lockout are enforced by the login flow described below.
 The PIN is not an independent encryption factor protecting against issuer-key compromise.
 Read-back is owner-authenticated and does not navigate to an issuer found on a card.
 It is not physical-card attestation: an authenticated client can submit copied bytes.
 
 The version-1 codec derives a dedicated NFC AES-GCM key from `SAFEBOX_COOKIE_KEY`.
 Key ID is currently fixed at 1; changing that application secret makes existing
-cards unreadable. Historical decryption-key rotation and public login/PIN attempt
-limits remain future work. QR transport is still a proposal. Hardware tests must
+cards unreadable. Historical decryption-key rotation remains future work.
+QR transport is still a proposal. Hardware tests must
 still be performed on real devices; automated tests do not establish compatibility.
+
+## Login with an issued card
+
+Deploy a rebuilt application image. Startup migration `20261016_0015` adds the
+persistent attempt counter and challenge/rate tables without changing existing
+active generations. Previously activated version-1 cards remain usable; no
+rewrite is required. All web workers must use the same database and application
+secret. Keep recovery material available when testing the first login.
+
+Select **Login with NFC** on the home/connect page (or open `/nfc/login`), press
+**Read Card for Login**, then enter the PIN in the server-rendered form. Only an
+activated, unexpired credential issued for this exact origin is accepted. Legacy
+safebox-2 cards and public test markers do not authenticate here. Card reading
+does not create a session or contact a relay. Successful PIN validation issues
+the normal protected session cookie and redirects to `/wallet`; wallet loading
+then uses the normal application flow. Separately protected records still require
+their own unlock material. No private key or decrypted PIN is returned in HTML.
+
+Each attempt has a five-minute, browser-bound challenge. The database stores only
+its token/browser hashes, issuer, encrypted-payload digest and expiry. Reading
+binds one payload to that challenge; submitting the PIN consumes it once, even
+when the PIN is wrong. Cookies are Secure, HttpOnly and SameSite=Strict. The
+challenge is separate from the CSRF token; both are required. A new tab/login
+start replaces the browser challenge cookie, so finish one attempt at a time.
+
+Five consecutive wrong or missing PIN submissions lock the active card generation.
+The counter is persistent and updated conditionally with the active generation and
+policy revision, so concurrent requests cannot bypass revocation or the limit.
+A successful login resets a below-limit counter; it cannot unlock a locked card.
+Recovery requires connecting with recovery material (or an existing session),
+then preparing, writing, reading and activating a replacement card. Preparation
+alone does not unlock the old card. The owner NFC page reports a locked state.
+There is deliberately no timed reset of the four-digit guessing budget.
+
+Public NFC endpoints also share a persistent 30-request budget per source per
+five-minute fixed window, including malformed attempts and page loads. Source
+addresses are keyed-hashed with the application secret, not stored as plaintext.
+Trusted proxy settings determine the source address; shared proxies/NAT may share
+the budget. Expired challenge/rate rows are removed during subsequent requests.
+Forms are bounded to 4096 bytes, envelopes to 400 bytes. Database failures fail
+closed without issuing a session. Use edge request/body limits for broader denial-
+of-service protection. Generation authorization commits before session issuance;
+revocation after that point does not invalidate an already-authorized session.
+Card cloning remains possible: a clone plus the PIN works until revocation/expiry.
 
 ## What should be written to a card?
 
@@ -119,7 +163,7 @@ cannot directly inspect those fields. If the application secret is compromised,
 the PIN does not independently protect captured cards because it is encrypted
 under the same application authority as the `nsec`.
 
-## Credential envelope (version 1; login integration remains proposed)
+## Credential envelope (version 1)
 
 Encoding decision (2026-10-16): use **binary CBOR in one NDEF MIME record** for
 the wallet card. Abandon `nembed`, Bech32, JSON and gzip for this NFC format.
@@ -280,12 +324,12 @@ Tag serial numbers are not an authentication factor.
    authorization decision. Bootstrap relay validation still applies. Protected
    records retain their separate unlock requirement.
 
-Attempt counters and temporary lockouts must survive process restarts, concurrent
+Attempt counters and generation lockouts must survive process restarts, concurrent
 workers and browser changes. Key limits by the authenticated card generation ID, with
 additional request/source controls against bulk guessing; do not rely on an
 IP-only or browser-only counter. Malformed envelopes also require bounded work
-and request throttling. Define limits, cooldown and owner recovery/unblocking
-before activation is implemented. Fail closed if lifecycle/attempt state cannot
+and request throttling. The implemented limits and owner replacement procedure
+are described above. Fail closed if lifecycle/attempt state cannot
 be read or updated. User-facing errors should not expose secrets or unnecessary
 credential-validity distinctions.
 
@@ -448,9 +492,9 @@ test a blank tag, non-empty tag, locked tag, insufficient-capacity tag, interrup
 tap and browser backgrounding on real supported devices. No physical NFC result
 is implied by mocked API tests.
 
-The envelope/key schedule, issuance PIN validation, generation policy store and
-issuance/read-back/activation API are implemented. Remaining work includes public
-login/session integration and persistent PIN-attempt limits. Before enabling login,
-test wrong/missing PINs, correct PIN with revoked generation, concurrent attempts,
-restart persistence and unavailable policy storage. A hardware test pass does not
-mean PIN login validation or wallet-card login has been implemented.
+Automated login tests cover correct and incorrect PINs, leading zeros, revocation,
+expiry, replay, browser binding, persistent lockout, concurrent attempts, bounded
+forms, request limits and database failure. Hardware checks should exercise the
+complete issuance → activation → disconnect → read → PIN → wallet lifecycle,
+plus revoked and locked cards. Do not test loss of access without retaining
+independent recovery material.

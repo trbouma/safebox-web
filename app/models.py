@@ -32,6 +32,27 @@ class NfcCardPolicy(SQLModel, table=True):
     pending_generation: Optional[str] = Field(default=None)
     pending_digest: Optional[str] = Field(default=None)
     pending_deadline: Optional[int] = Field(default=None)
+    login_failures: int = Field(default=0, nullable=False)
+
+
+class NfcLoginChallenge(SQLModel, table=True):
+    """Short-lived hashes only; no card payloads, PINs or private keys."""
+
+    __tablename__ = "nfc_login_challenge"
+    token_hash: str = Field(primary_key=True)
+    browser_hash: str
+    issuer: str
+    expires_at: int = Field(index=True)
+    payload_digest: Optional[str] = None
+
+
+class NfcLoginRate(SQLModel, table=True):
+    """Keyed source/window digest, not a stored IP address."""
+
+    __tablename__ = "nfc_login_rate"
+    bucket: str = Field(primary_key=True)
+    requests: int = Field(default=0, nullable=False)
+    expires_at: int = Field(index=True)
 
 
 class ClaimedHandle(SQLModel, table=True):

@@ -4,8 +4,8 @@
   <h2 id="nfc-issuance-heading">Issue a Safebox NFC card</h2>
   <p>Write an application-encrypted wallet key, bootstrap relay, PIN and revocable card generation.
   Treat this card as a sensitive wallet backup. The application secret can decrypt it.</p>
-  <p>Card login is not enabled yet. Activation records which card is current for future login support;
-  this page supports issuance and owner-authenticated read-back only.</p>
+  <p>After writing, read back and activate your card before using
+  <a href="/nfc/login">Login with NFC</a>. Login requires your separately entered PIN.</p>
   {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
   {% if issuer %}
   <p>Issuer: {{ issuer }}. Use a writable NDEF card with at least 496 bytes of usable capacity.</p>
@@ -53,6 +53,8 @@
   </form>
   {% endif %}
   {% if policy %}
+  {% if policy.login_failures >= 5 %}<p class="error">Card login is locked after five failed PIN attempts.
+  Prepare, write and activate a replacement card to restore NFC login.</p>{% endif %}
   <p>Current card generation: {{ policy.active_generation or 'None' }}. Expiry (Unix seconds): {{ policy.active_expires_at or '—' }}.</p>
   <form method="post" action="/nfc/revoke">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

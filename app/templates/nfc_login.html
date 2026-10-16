@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<p>Use an activated card issued by this Safebox Web instance and enter its PIN
+separately. Reading alone does not log you in. Legacy safebox-2 cards and test
+records cannot be used for this login.</p>
+{% if error %}
+<p class="error" role="alert">{{ error }}</p>
+<p><a class="nav-button" href="/nfc/login">Start NFC Login Again</a></p>
+{% elif card_payload %}
+<p>Card read. Enter your PIN to verify the credential and connect to its wallet.</p>
+<form method="post" action="/nfc/login" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="challenge" value="{{ challenge }}">
+  <input type="hidden" name="card_payload" value="{{ card_payload }}">
+  <label for="nfc-pin">Card PIN</label>
+  <input id="nfc-pin" name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}|[0-9]{6,12}" maxlength="12" autocomplete="off" required autofocus>
+  <button type="submit">Login with NFC</button>
+</form>
+<p><a href="/nfc/login">Cancel and read another card</a></p>
+{% else %}
+<section data-nfc-issuance>
+  <form method="post" action="/nfc/login/read" data-card-read-form>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="challenge" value="{{ challenge }}">
+    <input type="hidden" name="card_payload" data-card-read-payload>
+    <button type="button" data-card-read disabled>Read Card for Login</button>
+  </form>
+  <button type="button" data-card-cancel hidden>Cancel NFC Read</button>
+  <p data-card-status role="status" aria-live="polite">Checking browser NFC support…</p>
+  <noscript>JavaScript is required to read the NFC card.</noscript>
+</section>
+<script type="module" src="/static/nfc-issuance.js"></script>
+{% endif %}
+<p>Five incorrect PIN attempts lock this card generation, including across browsers
+and restarts. Connect using your recovery material to replace a locked card.
+Protected records still require their separate recovery/unlock material.</p>
+<p><a href="/connect">Connect using recovery material</a></p>
+{% endblock %}

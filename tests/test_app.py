@@ -165,7 +165,7 @@ def test_nfc_page_exposes_only_public_test_record_without_wallet_load(tmp_path):
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert "SAFEBOX-WEB-NFC-TEST:v1" in response.text
-    assert "Card login is not enabled yet" in response.text
+    assert 'href="/nfc/login"' in response.text
     assert 'href="/wallet"' in response.text
     assert 'src="/static/nfc-card.js"' in response.text
     for secret in (TEST_NSEC, "private-bootstrap.example", "private recovery sentinel", "private record key sentinel"):
@@ -4278,7 +4278,8 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
         "web_worker_heartbeat",
     }.issubset(tables)
     assert "nfc_card_policy" in tables
-    assert revision == ("20261016_0014",)
+    assert {"nfc_login_challenge", "nfc_login_rate"}.issubset(tables)
+    assert revision == ("20261016_0015",)
     assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
     assert {
         "id",

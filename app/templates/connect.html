@@ -3,6 +3,7 @@
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 <p>Safebox does not retain wallet state on the server. Your secret is held in a
 protected, authenticated browser cookie for this Acorn session.</p>
+<p><a class="nav-button" href="/nfc/login">Login with NFC</a></p>
 <form method="post" action="/connect" autocomplete="off">
   <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
   <label for="secret_type">Recovery material</label>
