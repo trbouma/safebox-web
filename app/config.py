@@ -382,6 +382,7 @@ class Settings:
     clear_units: tuple[str, ...] = ()
     clear_request_relay_policy: str = "public"
     clear_request_internal_relay: str = ""
+    safebox_legacy_domains: tuple[str, ...] = ("safebox.dev",)
     nip05_external_relays: tuple[str, ...] = ()
     background_job_threads: int = 2
     service_nsec: str | None = None
@@ -826,6 +827,7 @@ class Settings:
             clear_units=_comma_list_from_env("SAFEBOX_CLEAR_UNITS"),
             clear_request_relay_policy=os.getenv("SAFEBOX_CLEAR_REQUEST_RELAY_POLICY", "public").strip(),
             clear_request_internal_relay=os.getenv("SAFEBOX_CLEAR_REQUEST_INTERNAL_RELAY", "").strip(),
+            safebox_legacy_domains=tuple(domain.strip().lower() for domain in os.getenv("SAFEBOX_LEGACY_DOMAINS", "safebox.dev").split(",") if domain.strip()),
             nip05_external_relays=_comma_list_from_env(
                 "SAFEBOX_NIP05_EXTERNAL_RELAYS"
             ),

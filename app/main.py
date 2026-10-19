@@ -70,6 +70,8 @@ from acorn.func_utils import (
 )
 
 from app.config import Settings
+from app.payment_discovery import resolve_payment_recipient
+from acorn.safebox_discovery import CASH, CLEAR, SafeboxDiscoveryError
 from app.operator_payments import ClosePaymentRequest, close_payment, inspect_payments
 from app.clear_request_monitor import (
     ClearRequestCipher, ClearRequestState, request_status as clear_request_status,
@@ -592,62 +594,10 @@ def _normalize_scanned_https_url(value: str) -> str | None:
     return destination
 
 
-async def _resolve_safebox_lightning_recipient(
-    lightning_address: str,
-    *,
-    timeout: float,
-) -> dict[str, object] | None:
-    """Resolve a Lightning address to a Safebox NIP-05 recipient if possible."""
-
-    try:
-        local_part, domain = lightning_address.split("@", 1)
-    except ValueError:
-        return None
-    if not local_part or not domain:
-        return None
-
-    try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout, connect=min(timeout, 5.0)),
-            follow_redirects=True,
-        ) as client:
-            response = await client.get(
-                f"https://{domain}/.well-known/nostr.json",
-                params={"name": local_part},
-            )
-            response.raise_for_status()
-            payload = response.json()
-    except Exception as exc:
-        logger.info(
-            "safebox recipient nip05 resolution skipped address=%s error_type=%s",
-            lightning_address,
-            type(exc).__name__,
-        )
-        return None
-
-    if not isinstance(payload, dict):
-        return None
-    names = payload.get("names")
-    if not isinstance(names, dict):
-        return None
-
-    pubkey_hex = names.get(local_part) or names.get(local_part.lower())
-    if not isinstance(pubkey_hex, str) or not re.fullmatch(
-        r"[0-9a-fA-F]{64}",
-        pubkey_hex,
-    ):
-        return None
-    relay_hints = _nip05_relay_hints(payload, pubkey_hex)
-
-    try:
-        recipient_npub = Keys.hex_to_bech32(pubkey_hex.lower(), prefix="npub")
-    except Exception:
-        return None
-    return {
-        "npub": recipient_npub,
-        "relay_hints": relay_hints,
-        "route_scope": "external",
-    }
+async def _resolve_safebox_lightning_recipient(lightning_address: str, *, timeout: float,
+                                                legacy_domains=()) -> dict[str, object] | None:
+    return await resolve_payment_recipient(lightning_address, timeout=timeout,
+                                           legacy_domains=legacy_domains)
 
 
 def _same_relay_endpoint(first: str, second: str) -> bool:
@@ -707,80 +657,10 @@ def _resolve_local_safebox_recipient(
         }
 
 
-async def _resolve_safebox_clear_recipient(
-    payment_address: str,
-    *,
-    unit: str,
-    timeout: float,
-) -> dict[str, object] | None:
-    """Resolve a NIP-05 address advertising compatible Clear receipt support."""
-
-    try:
-        local_part, domain = payment_address.split("@", 1)
-    except ValueError:
-        return None
-    if not local_part or not domain:
-        return None
-    try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(timeout, connect=min(timeout, 5.0)),
-            follow_redirects=True,
-        ) as client:
-            response = await client.get(
-                f"https://{domain}/.well-known/nostr.json",
-                params={"name": local_part},
-            )
-            response.raise_for_status()
-            payload = response.json()
-    except Exception as exc:
-        logger.info(
-            "Clear recipient NIP-05 resolution skipped address=%s error_type=%s",
-            payment_address,
-            type(exc).__name__,
-        )
-        return None
-    if not isinstance(payload, dict):
-        return None
-    names = payload.get("names")
-    clear = payload.get("clear")
-    if (
-        not isinstance(names, dict)
-        or not isinstance(clear, dict)
-    ):
-        return None
-    pubkey_hex = names.get(local_part) or names.get(local_part.lower())
-    descriptor = clear.get(local_part) or clear.get(local_part.lower())
-    if (
-        not isinstance(pubkey_hex, str)
-        or not re.fullmatch(r"[0-9a-fA-F]{64}", pubkey_hex)
-        or not isinstance(descriptor, dict)
-    ):
-        return None
-    if "clear-token-transfer" not in (descriptor.get("protocols") or []):
-        return None
-    if "nip59" not in (descriptor.get("transports") or []):
-        return None
-    try:
-        advertised_kinds = {int(kind) for kind in descriptor.get("kinds") or []}
-    except (TypeError, ValueError):
-        return None
-    if 7379 not in advertised_kinds:
-        return None
-    advertised_units = {
-        str(candidate).strip() for candidate in descriptor.get("units") or []
-    }
-    if advertised_units and str(unit).strip() not in advertised_units:
-        return None
-    relay_hints = _nip05_relay_hints(payload, pubkey_hex)
-    try:
-        recipient_npub = Keys.hex_to_bech32(pubkey_hex.lower(), prefix="npub")
-    except Exception:
-        return None
-    return {
-        "npub": recipient_npub,
-        "relay_hints": relay_hints,
-        "route_scope": "external",
-    }
+async def _resolve_safebox_clear_recipient(payment_address: str, *, unit: str,
+                                          timeout: float, legacy_domains=()) -> dict[str, object] | None:
+    return await resolve_payment_recipient(payment_address, capability=CLEAR, unit=unit,
+                                           timeout=timeout, legacy_domains=legacy_domains)
 
 
 def _decode_lightning_invoice(value: str) -> dict[str, object] | None:
@@ -7237,11 +7117,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "and cannot be sent outside it. No value was sent.",
                         422,
                     )
-                clear_recipient = await _resolve_safebox_clear_recipient(
-                    recipient,
-                    unit=str(selected_clear["unit"]),
-                    timeout=settings.payment_timeout_seconds,
-                )
+                try:
+                    clear_recipient = await _resolve_safebox_clear_recipient(
+                        recipient, unit=str(selected_clear["unit"]),
+                        timeout=settings.payment_timeout_seconds,
+                        legacy_domains=settings.safebox_legacy_domains,
+                    )
+                except SafeboxDiscoveryError:
+                    return payment_error("Wallet discovery is unavailable or invalid. No value was sent. Try again later.", 502)
             if clear_recipient is None:
                 return payment_error(
                     "That address does not advertise support for this Clear "
@@ -7295,10 +7178,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             recipient,
         )
         if direct_recipient is None:
-            direct_recipient = await _resolve_safebox_lightning_recipient(
-                recipient,
-                timeout=settings.payment_timeout_seconds,
-            )
+            try:
+                direct_recipient = await _resolve_safebox_lightning_recipient(
+                    recipient, timeout=settings.payment_timeout_seconds,
+                    legacy_domains=settings.safebox_legacy_domains,
+                )
+            except SafeboxDiscoveryError:
+                return payment_error("Wallet discovery is unavailable or invalid. No value was sent. Try again later.", 502)
         if payment_mode == "continuity" and direct_recipient is None:
             return payment_error(
                 "Continuity Transfers can only be sent to another Safebox address. "

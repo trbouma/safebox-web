@@ -7,11 +7,12 @@ The response contains no private keys, balances or recovery data. There is no
 recipient login requirement and no database migration.
 
 NIP-05 at `/.well-known/nostr.json` is unchanged, including its existing Clear
-extensions. Current payment readers, social lookups and messaging attribution
-also remain unchanged. Separate social keys are not enabled by this release.
+extensions. Cash and Clear payment readers now prefer `safebox.json`. Social
+lookups and messaging attribution remain unchanged. Separate social keys are
+not enabled by this release.
 
 Set `SAFEBOX_NIP05_EXTERNAL_RELAYS` to the publicly reachable wallet relays for
-this initial dual-publication phase. The new endpoint intentionally returns 404
+dual publication. The new endpoint intentionally returns 404
 when none are configured; it never substitutes the internal home relay. Clear
 advertising follows `SAFEBOX_CLEAR_RECEIVE_ENABLED` and `SAFEBOX_CLEAR_UNITS`.
 The directory introduces no mint allowlist. Wallet messaging is not advertised.
@@ -23,14 +24,33 @@ contain a stable code rather than private implementation details.
 
 First publish the Acorn commit containing `acorn.safebox_discovery`, then run
 `poetry update safebox-acorn`, review/commit the lockfile and test the installed
-revision before deploying. An older dependency leaves existing functionality
-running but the new endpoint reports 503 `discovery_dependency_unavailable`.
+revision before deploying. The payment reader requires this published Acorn API; deploy the committed
+lockfile rather than an older Acorn installation.
 Do not claim discovery readiness until a real handle resolves successfully.
 
-Verify both endpoint responses for the same handle before moving senders. Keep
-NIP-05 mapping to the existing Acorn key throughout this release. The next phase
-will move wallet payment and message readers to the new resolver, with explicit
-legacy-domain compatibility. A generic social NIP-05 key is not proof of wallet
-support. The older `safebox.json/<name>` transport is not reintroduced.
+Verify both endpoint responses for the same handle. Keep NIP-05 mapping to the
+existing Acorn key until legacy senders and messaging readers have migrated.
+The older `safebox.json/<name>` transport is not reintroduced.
+
+## Payment compatibility policy
+
+`SAFEBOX_LEGACY_DOMAINS=safebox.dev` is the default comma-separated list of exact,
+known older wallet domains. Set it empty to disable legacy lookup. Add another
+older instance only if its NIP-05 names still identify Acorn wallet keys. Remove
+a domain before its social and wallet keys diverge; wildcards are not supported.
+
+Only a 404 from `safebox.json` permits NIP-05 lookup on a listed domain. Cash
+requires a wallet key and public relay hints; Clear also requires its legacy
+capability descriptor and matching unit. An unlisted 404 or absent capability
+can use ordinary Lightning for cash. Clear and continuity transfers never do.
+Malformed directories, unknown versions, network failures, redirects and other
+HTTP errors stop preparation without a payment or fallback.
+
+Local recipients use the instance's wallet registration directly, preserving
+private relay support. Clear mint scope restrictions and Acorn's mint acceptance
+policy are unchanged. External discovery uses Acorn's bounded public HTTPS
+resolver. Legacy lookups also validate public DNS, pin the connection, reject
+redirects, and limit response size. No social-key lookup substitutes for a
+successful wallet-directory response.
 
 See the [family contract and migration plan](https://github.com/trbouma/oakgate/blob/main/docs/018-safebox-address-discovery.md).

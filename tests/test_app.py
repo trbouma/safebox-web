@@ -6954,43 +6954,10 @@ def test_clear_payment_sends_public_mint_unknown_to_compatible_receiver(
     recipient_hex = "11" * 32
     recipient_npub = main_module.Keys.hex_to_bech32(recipient_hex, prefix="npub")
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {
-                "names": {"alice": recipient_hex},
-                "relays": {recipient_hex: ["wss://recipient-relay.example"]},
-                "clear": {
-                    "alice": {
-                        "protocols": ["clear-token-transfer"],
-                        "transports": ["nip59"],
-                        "kinds": [7379],
-                        "units": ["cmu-one"],
-                    }
-                },
-            }
-
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            assert url == "https://example.com/.well-known/nostr.json"
-            assert params == {"name": "alice"}
-            return FakeResponse()
-
     async def cash_mint_must_not_be_checked(_acorn, _timeout):
         raise AssertionError("A Clear payment must not check the Cash balance")
 
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_clear_recipient", AsyncMock(return_value={'npub': main_module.Keys.hex_to_bech32(recipient_hex, prefix='npub'), 'relay_hints': ['wss://recipient-relay.example'], 'route_scope':'external', 'discovery_source':'safebox-v1'}))
     monkeypatch.setattr(
         main_module,
         "_read_proof_verification",
@@ -8730,7 +8697,8 @@ def test_invoice_monitor_window_is_two_minutes() -> None:
     assert main_module.DEPOSIT_MONITOR_SECONDS == MAX_MONITOR_SECONDS == 120
 
 
-def test_confirmed_lightning_payment_runs_as_background_job(tmp_path) -> None:
+def test_confirmed_lightning_payment_runs_as_background_job(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value=None))
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -8772,32 +8740,7 @@ def test_safebox_lightning_address_prefers_direct_ecash_transfer(
     recipient_hex = "11" * 32
     recipient_npub = main_module.Keys.hex_to_bech32(recipient_hex, prefix="npub")
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {
-                "names": {"alice": recipient_hex},
-                "relays": {recipient_hex: ["wss://RELAY.example.com/"]},
-            }
-
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            assert url == "https://example.com/.well-known/nostr.json"
-            assert params == {"name": "alice"}
-            return FakeResponse()
-
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value={'npub': main_module.Keys.hex_to_bech32(recipient_hex, prefix='npub'), 'relay_hints': ['wss://RELAY.example.com/'], 'route_scope':'external', 'discovery_source':'safebox-v1'}))
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -8884,30 +8827,7 @@ def test_safebox_recipient_on_different_relay_uses_direct_ecash(
     recipient_hex = "11" * 32
     recipient_npub = main_module.Keys.hex_to_bech32(recipient_hex, prefix="npub")
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {
-                "names": {"alice": recipient_hex},
-                "relays": {recipient_hex: ["wss://other-relay.example"]},
-            }
-
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            return FakeResponse()
-
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value={'npub': main_module.Keys.hex_to_bech32(recipient_hex, prefix='npub'), 'relay_hints': ['wss://other-relay.example'], 'route_scope':'external', 'discovery_source':'safebox-v1'}))
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -8941,30 +8861,7 @@ def test_external_safebox_with_internal_cash_mint_uses_lightning(
 ) -> None:
     recipient_hex = "11" * 32
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {
-                "names": {"alice": recipient_hex},
-                "relays": {recipient_hex: ["wss://other-relay.example"]},
-            }
-
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            return FakeResponse()
-
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value={'npub': main_module.Keys.hex_to_bech32(recipient_hex, prefix='npub'), 'relay_hints': ['wss://other-relay.example'], 'route_scope':'external', 'discovery_source':'safebox-v1'}))
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     acorn.home_mint = "http://mint:3338"
@@ -9001,35 +8898,12 @@ def test_safebox_direct_ecash_transfer_requires_confirmed_result(
 ) -> None:
     recipient_hex = "11" * 32
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {
-                "names": {"alice": recipient_hex},
-                "relays": {recipient_hex: ["wss://relay.example.com"]},
-            }
-
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            return FakeResponse()
-
     class UnconfirmedDirectAcorn(FakeLoadedAcorn):
         async def send_ecash_transfer(self, **kwargs):
             self.ecash_transfers.append(kwargs)
             return {"status": "ERROR", "error": "relay publish not verified"}
 
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value={'npub': main_module.Keys.hex_to_bech32(recipient_hex, prefix='npub'), 'relay_hints': ['wss://relay.example.com'], 'route_scope':'external', 'discovery_source':'safebox-v1'}))
     app = create_app(TEST_SETTINGS)
     acorn = UnconfirmedDirectAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -9057,35 +8931,12 @@ def test_safebox_direct_ecash_transfer_exception_shows_safe_reason(
 ) -> None:
     recipient_hex = "11" * 32
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {
-                "names": {"alice": recipient_hex},
-                "relays": {recipient_hex: ["wss://relay.example.com"]},
-            }
-
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            return FakeResponse()
-
     class FailingDirectAcorn(FakeLoadedAcorn):
         async def send_ecash_transfer(self, **kwargs):
             self.ecash_transfers.append(kwargs)
             raise RuntimeError("Mint swap unavailable <retry later>")
 
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value={'npub': main_module.Keys.hex_to_bech32(recipient_hex, prefix='npub'), 'relay_hints': ['wss://relay.example.com'], 'route_scope':'external', 'discovery_source':'safebox-v1'}))
     app = create_app(TEST_SETTINGS)
     acorn = FailingDirectAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -9158,20 +9009,7 @@ def test_safebox_direct_ecash_reports_unavailable_recipient_relay(
 def test_lightning_payment_falls_back_to_background_job(
     monkeypatch, tmp_path,
 ) -> None:
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            raise main_module.httpx.HTTPError("not found")
-
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value=None))
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -9203,19 +9041,6 @@ def test_lightning_payment_falls_back_to_background_job(
 
 
 def test_lightning_payment_failure_is_recorded_for_review(monkeypatch, tmp_path) -> None:
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            raise main_module.httpx.HTTPError("not found")
-
     class FailingLightningAcorn(FakeLoadedAcorn):
         async def pay_multi(self, amount: int, lnaddress: str, comment: str):
             self.payments.append(
@@ -9231,7 +9056,7 @@ def test_lightning_payment_failure_is_recorded_for_review(monkeypatch, tmp_path)
             )
             raise error
 
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value=None))
     app = create_app(database_settings(tmp_path))
     acorn = FailingLightningAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -9272,19 +9097,6 @@ def test_lightning_payment_failure_is_recorded_for_review(monkeypatch, tmp_path)
 
 
 def test_invalid_lightning_address_hides_component_exception(monkeypatch, tmp_path) -> None:
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            raise main_module.httpx.HTTPError("not found")
-
     class InvalidAddressAcorn(FakeLoadedAcorn):
         async def pay_multi(self, amount: int, lnaddress: str, comment: str):
             raise RuntimeError(
@@ -9292,7 +9104,7 @@ def test_invalid_lightning_address_hides_component_exception(monkeypatch, tmp_pa
                 "not enough values to unpack (expected 3, got 2)"
             )
 
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value=None))
     app = create_app(database_settings(tmp_path))
     acorn = InvalidAddressAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -9349,19 +9161,6 @@ def test_invalid_lightning_address_hides_component_exception(monkeypatch, tmp_pa
 
 
 def test_lightning_payment_stale_proofs_stops_for_review(monkeypatch, tmp_path) -> None:
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            raise main_module.httpx.HTTPError("not found")
-
     class StaleProofAcorn(FakeLoadedAcorn):
         async def pay_multi(self, amount: int, lnaddress: str, comment: str):
             self.payments.append(
@@ -9371,7 +9170,7 @@ def test_lightning_payment_stale_proofs_stops_for_review(monkeypatch, tmp_path) 
                 "Payment could not proceed because the wallet contains stale proofs."
             )
 
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value=None))
     app = create_app(database_settings(tmp_path))
     acorn = StaleProofAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -9488,35 +9287,12 @@ def test_continuity_payment_sends_only_to_safebox_without_mint_check(
     async def mint_must_not_be_called(_acorn, _timeout):
         raise AssertionError("Continuity mode must not contact the mint")
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {
-                "names": {"alice": recipient_hex},
-                "relays": {recipient_hex: ["ws://spurline.local:8080"]},
-            }
-
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            return FakeResponse()
-
     monkeypatch.setattr(
         main_module,
         "_read_proof_verification",
         mint_must_not_be_called,
     )
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value={'npub': main_module.Keys.hex_to_bech32(recipient_hex, prefix='npub'), 'relay_hints': ['ws://spurline.local:8080'], 'route_scope':'external', 'discovery_source':'safebox-v1'}))
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -9555,25 +9331,12 @@ def test_continuity_payment_rejects_external_lightning_address(
     async def mint_must_not_be_called(_acorn, _timeout):
         raise AssertionError("Continuity mode must not contact the mint")
 
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            self.kwargs = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            raise main_module.httpx.HTTPError("not a Safebox address")
-
     monkeypatch.setattr(
         main_module,
         "_read_proof_verification",
         mint_must_not_be_called,
     )
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value=None))
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -9607,32 +9370,12 @@ def test_continuity_payment_rejects_safebox_without_external_relay_hint(
     async def mint_must_not_be_called(_acorn, _timeout):
         raise AssertionError("Continuity mode must not contact the mint")
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
-
-        def json(self) -> dict:
-            return {"names": {"alice": recipient_hex}}
-
-    class FakeClient:
-        def __init__(self, **kwargs) -> None:
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:
-            return None
-
-        async def get(self, url, params):
-            return FakeResponse()
-
     monkeypatch.setattr(
         main_module,
         "_read_proof_verification",
         mint_must_not_be_called,
     )
-    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value={'npub': main_module.Keys.hex_to_bech32(recipient_hex, prefix='npub'), 'relay_hints': [], 'route_scope':'external', 'discovery_source':'safebox-v1'}))
     app = create_app(TEST_SETTINGS)
     acorn = FakeLoadedAcorn(balance=500)
     app.dependency_overrides[get_payment_acorn] = lambda: acorn
@@ -11884,3 +11627,33 @@ def test_unlisted_ws_relay_is_rejected() -> None:
 
     assert response.status_code == 400
     assert "SAFEBOX_ALLOWED_WS_RELAYS" in response.text
+
+
+@pytest.mark.parametrize("clear", [False, True])
+def test_payment_discovery_failure_never_sends(monkeypatch, tmp_path, clear):
+    from acorn.safebox_discovery import SafeboxDiscoveryError
+    import app.payment_discovery as discovery
+    monkeypatch.setattr(discovery, "resolve_safebox_address", AsyncMock(side_effect=SafeboxDiscoveryError("invalid directory")))
+    legacy = AsyncMock()
+    monkeypatch.setattr(discovery, "legacy_json", legacy)
+    app = create_app(database_settings(tmp_path))
+    acorn = FakeLoadedAcorn(balance=500)
+    acorn.clear_balances = [{"mint":"https://clear.one", "unit":"cmu-one", "amount":25, "proof_count":3}]
+    app.dependency_overrides[get_payment_acorn] = lambda: acorn
+    app.dependency_overrides[get_acorn] = lambda: acorn
+    data = {"csrf_token":valid_csrf_token(), "lightning_address":"alice@example.com", "amount":"5", "confirmed":"yes"}
+    if clear:
+        data["payment_asset"] = main_module._encode_clear_payment_asset("https://clear.one", "cmu-one")
+    with TestClient(app, base_url="https://safebox.example") as client:
+        response = client.post("/pay", data=data)
+    assert response.status_code == 502
+    assert "No value was sent" in response.text
+    assert acorn.payments == acorn.ecash_transfers == acorn.clear_transfers == []
+    legacy.assert_not_awaited()
+
+
+def test_legacy_wallet_domain_config_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("SAFEBOX_LEGACY_DOMAINS", " Older.Example, safebox.dev ")
+    assert Settings.from_env().safebox_legacy_domains == ("older.example", "safebox.dev")
+    monkeypatch.setenv("SAFEBOX_LEGACY_DOMAINS", "")
+    assert Settings.from_env().safebox_legacy_domains == ()
