@@ -5651,7 +5651,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/.well-known/safebox.json", response_class=JSONResponse)
     async def resolve_safebox_directory(request: Request, session: DatabaseSessionDependency):
-        # This is additive: do not change the NIP-05 key, social APIs or senders.
+        # Wallet capabilities are separate from the unchanged public NIP-05 mapping.
         headers = {"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store",
                    "X-Content-Type-Options": "nosniff"}
         def failure(code, status):
@@ -5679,6 +5679,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 f"{name}@{request.url.hostname}", npub_to_hex(registration.npub),
                 settings.nip05_external_relays, cash=True,
                 clear=settings.clear_receive_enabled, clear_units=settings.clear_units)
+            # Capability construction is public application metadata; Acorn
+            # still owns all NIP-17 encryption, signing and relay delivery.
+            from acorn.safebox_discovery import WALLET_MESSAGE, parse_safebox_document
+            payload['capabilities'][WALLET_MESSAGE] = {'transports': ['nip17'], 'kinds': [14]}
+            payload = parse_safebox_document(payload, payload['address']).to_dict()
             return JSONResponse(payload, headers=headers)
         except Exception:
             return failure("unavailable", 503)

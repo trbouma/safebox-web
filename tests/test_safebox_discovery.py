@@ -35,7 +35,7 @@ def test_public_directory_keeps_nip05_and_hides_private_routes(tmp_path):
         result = parse_safebox_document(response.json(), 'alice@safebox.example')
         assert result.pubkey == pubkey and result.supports(CASH, 'sat')
         assert result.supports(CLEAR, 'CAD') and not result.supports(CLEAR, 'USD')
-        assert not result.supports('safebox-wallet-message')
+        assert result.supports('safebox-wallet-message')
         assert 'private-grove' not in response.text and 'mints' not in response.text
         assert client.get('/.well-known/nostr.json?name=alice').json() == before
         assert response.headers['access-control-allow-origin'] == '*'

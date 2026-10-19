@@ -7,7 +7,7 @@ import socket
 import httpx
 from stroma import Keys
 from acorn.safebox_discovery import (
-    CASH, CLEAR, SafeboxDiscoveryError, SafeboxNotFound,
+    CASH, CLEAR, WALLET_MESSAGE, SafeboxDiscoveryError, SafeboxNotFound,
     normalize_safebox_address, parse_safebox_document, resolve_safebox_address,
 )
 
@@ -79,6 +79,8 @@ def legacy_destination(payload, address, capability, unit=None):
         # Older instances use [] to mean unrestricted units.
         if descriptor.get('units') == []:
             descriptor.pop('units')
+    elif capability == WALLET_MESSAGE:
+        descriptor = {'transports':['nip17'], 'kinds':[14]}
     else:
         descriptor = {'transports':['nip59'], 'kinds':[7378], 'units':['sat']}
     destination = parse_safebox_document({'version':1,'address':address,'pubkey':pubkey.lower(),
@@ -99,6 +101,12 @@ async def resolve_payment_recipient(address, *, capability=CASH, unit='sat', tim
         source = 'legacy-nip05'
     if destination is None or not destination.supports(capability, unit):
         return None
-    return {'npub':Keys.hex_to_bech32(destination.pubkey, prefix='npub'),
+    return {'pubkey':destination.pubkey, 'npub':Keys.hex_to_bech32(destination.pubkey, prefix='npub'),
             'relay_hints':list(destination.relays), 'route_scope':'external',
             'discovery_source':source}
+
+
+async def resolve_wallet_message_recipient(address, *, timeout=5, legacy_domains=()):
+    """Resolve only wallet messaging; an absent capability never becomes social DM."""
+    return await resolve_payment_recipient(address, capability=WALLET_MESSAGE, unit=None,
+                                           timeout=timeout, legacy_domains=legacy_domains)

@@ -7,15 +7,15 @@ The response contains no private keys, balances or recovery data. There is no
 recipient login requirement and no database migration.
 
 NIP-05 at `/.well-known/nostr.json` is unchanged, including its existing Clear
-extensions. Cash and Clear payment readers now prefer `safebox.json`. Social
-lookups and messaging attribution remain unchanged. Separate social keys are
+extensions. Cash and Clear payment readers now prefer `safebox.json`. Wallet messaging and sender attribution also use this directory. Social
+NIP-05 lookups remain unchanged. Separate social keys are
 not enabled by this release.
 
 Set `SAFEBOX_NIP05_EXTERNAL_RELAYS` to the publicly reachable wallet relays for
 dual publication. The new endpoint intentionally returns 404
 when none are configured; it never substitutes the internal home relay. Clear
 advertising follows `SAFEBOX_CLEAR_RECEIVE_ENABLED` and `SAFEBOX_CLEAR_UNITS`.
-The directory introduces no mint allowlist. Wallet messaging is not advertised.
+The directory introduces no mint allowlist. Wallet messaging advertises `safebox-wallet-message` (`nip17`, kind 14).
 
 Responses use public CORS, no-store and nosniff headers. Missing, duplicate or
 invalid name parameters return 400; absent/unadvertised handles return 404;
@@ -29,7 +29,7 @@ lockfile rather than an older Acorn installation.
 Do not claim discovery readiness until a real handle resolves successfully.
 
 Verify both endpoint responses for the same handle. Keep NIP-05 mapping to the
-existing Acorn key until legacy senders and messaging readers have migrated.
+existing Acorn key until all supported legacy clients have migrated.
 The older `safebox.json/<name>` transport is not reintroduced.
 
 ## Payment compatibility policy
@@ -54,3 +54,15 @@ redirects, and limit response size. No social-key lookup substitutes for a
 successful wallet-directory response.
 
 See the [family contract and migration plan](https://github.com/trbouma/oakgate/blob/main/docs/018-safebox-address-discovery.md).
+
+## Wallet messages
+
+Wallet-address delivery and claimed-sender verification use the messaging
+capability, independently of social NIP-05. The same configured legacy-domain
+policy applies only after 404. Missing capability, malformed discovery or network
+failure never becomes a social DM. Explicit npub/public-key destinations retain
+their meaning. Local messages use the registered wallet and home relay.
+
+See [private messaging](https://github.com/trbouma/safebox-web/blob/main/docs/PRIVATE-MESSAGING.md)
+for verification limits, compatibility and deployment details. OakGate does not
+yet have a messaging interface and continues to omit this capability.

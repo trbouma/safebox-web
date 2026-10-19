@@ -470,7 +470,7 @@ Anyone who obtains that key and a session cookie can decrypt the contained
 
 The additive version-1 `/.well-known/safebox.json?name=handle` directory separates
 wallet delivery metadata from social identity. Existing NIP-05 responses remain
-unchanged. Payment senders now prefer this directory, with explicit legacy-domain
+unchanged. Payment and wallet-message senders now prefer this directory, with explicit legacy-domain
 fallback after a 404. See [deployment and migration](website/safebox-discovery.md).
 
 ## NIP-05 handle directory

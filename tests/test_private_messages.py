@@ -21,8 +21,8 @@ def test_nut18_is_not_chat_even_if_malformed(unit):
 
 
 def test_verification_matches_authenticated_author_and_preserves_text(monkeypatch):
-    lookup = AsyncMock(side_effect=["a" * 64, "b" * 64, None])
-    monkeypatch.setattr(dm, "_fetch_identity", lookup)
+    lookup = AsyncMock(side_effect=[{"pubkey":"a" * 64,"discovery_source":"safebox-v1"}, {"pubkey":"b" * 64,"discovery_source":"legacy-nip05"}, None] * 2)
+    monkeypatch.setattr(dm, "resolve_wallet_message_recipient", lookup)
     dm._cache.clear()
     messages = [{"sender": "a" * 64, "content": dm.encode_message("<hello>", address)}
                 for address in ["alice@example.com", "bob@example.com", "offline@example.com"]]
@@ -30,13 +30,13 @@ def test_verification_matches_authenticated_author_and_preserves_text(monkeypatc
     assert [m["verification"] for m in result] == ["verified", "mismatch", "unverified"]
     assert all(m["content"] == "<hello>" and m["sender"] == "a" * 64 for m in result)
     asyncio.run(dm.present_messages(messages))
-    assert lookup.await_count == 3
+    assert lookup.await_count == 6  # Wallet associations are not cached as social identities.
     dm._cache.clear()
 
 
 def test_lookup_failure_does_not_hide_message(monkeypatch):
     dm._cache.clear()
-    monkeypatch.setattr(dm, "_fetch_identity", AsyncMock(side_effect=TimeoutError()))
+    monkeypatch.setattr(dm, "resolve_wallet_message_recipient", AsyncMock(side_effect=TimeoutError()))
     result = asyncio.run(dm.present_messages([{"sender": "a" * 64,
         "content": dm.encode_message("hello", "fail@example.com")}]))
     assert result[0]["verification"] == "unverified"

@@ -1,4 +1,4 @@
-"""Versioned DM presentation and bounded, public-only NIP-05 verification."""
+"""Wallet-message presentation, with separate wallet and social identity lookups."""
 import asyncio
 from collections import OrderedDict
 from ipaddress import ip_address
@@ -9,6 +9,8 @@ from time import monotonic
 from urllib.parse import urlencode
 
 import httpx
+
+from app.payment_discovery import resolve_wallet_message_recipient
 
 _cache = OrderedDict()
 
@@ -96,7 +98,21 @@ async def resolve_identity(address: str) -> str | None:
     return pubkey
 
 
-async def present_messages(messages: list[dict]) -> list[dict]:
+async def resolve_wallet_identity(address, *, legacy_domains=(), local_resolver=None):
+    # Deliberately separate from the social NIP-05 cache. A policy/key change
+    # must not reuse a cached social association as wallet authentication.
+    try:
+        if local_resolver is not None:
+            is_local, destination = local_resolver(address)
+            if is_local:
+                return destination
+        return await asyncio.wait_for(resolve_wallet_message_recipient(
+            address, timeout=2, legacy_domains=legacy_domains), timeout=5)
+    except Exception:
+        return None
+
+
+async def present_messages(messages: list[dict], *, legacy_domains=(), local_resolver=None) -> list[dict]:
     presented = []
     for message in messages:
         parsed = parse_message(message["content"])
@@ -104,10 +120,13 @@ async def present_messages(messages: list[dict]) -> list[dict]:
             presented.append({**message, **parsed})
     # At most ten distinct external lookups per page; others remain unverified.
     claims = list(dict.fromkeys(m["claimed_sender"] for m in presented if m["claimed_sender"]))[:10]
-    keys = await asyncio.gather(*(resolve_identity(claim) for claim in claims))
+    keys = await asyncio.gather(*(resolve_wallet_identity(
+        claim, legacy_domains=legacy_domains, local_resolver=local_resolver) for claim in claims))
     resolved = dict(zip(claims, keys))
     for message in presented:
-        pubkey = resolved.get(message["claimed_sender"])
+        destination = resolved.get(message["claimed_sender"])
+        pubkey = destination.get("pubkey") if destination else None
         if pubkey:
+            message["verification_source"] = destination["discovery_source"]
             message["verification"] = "verified" if pubkey == message["sender"].lower() else "mismatch"
     return presented

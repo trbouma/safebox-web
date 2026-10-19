@@ -8,7 +8,7 @@
   <h2>New message</h2>
   <form method="post" action="/messages">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label for="recipient">Recipient (NIP-05 address, npub, or public key)</label>
+    <label for="recipient">Recipient (Safebox wallet address, npub, or public key)</label>
     <input id="recipient" name="recipient" required maxlength="320" value="{{ recipient or '' }}" autocomplete="off">
     <label for="message">Message</label>
     <textarea id="message" name="message" required maxlength="4000" rows="5" autocomplete="off">{{ draft or '' }}</textarea>
@@ -22,9 +22,9 @@
   <article>
     {% if message.claimed_sender %}
     <p class="breakable">Claimed address: {{ message.claimed_sender }} —
-      {% if message.verification == 'verified' %}Verified NIP-05 (current lookup)
+      {% if message.verification == 'verified' %}Verified wallet address (current lookup{% if message.verification_source == 'legacy-nip05' %}; legacy directory{% endif %})
       {% elif message.verification == 'mismatch' %}<strong>Mismatch: this address belongs to a different public key.</strong>
-      {% else %}Unverified NIP-05{% endif %}
+      {% else %}Unverified wallet address{% endif %}
     </p>
     {% endif %}
     <p class="breakable">From <code>{{ message.sender }}</code></p>
