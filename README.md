@@ -334,7 +334,22 @@ independent review.
 
 ## Stateless session boundary
 
-After connection, the browser cookie contains only:
+**Public information may be stored server-side; user Acorn private keys may not.**
+Safebox Web persists public handles, Acorn npubs, optional social npubs and relay
+addresses, plus operational job state. These records do not give it continuing
+custody of the user's Acorn. Social NIP-05 settings never replace the Acorn key
+used for payments and wallet messages.
+
+The user's key is supplied by an authenticated browser-held session and used
+transiently by Acorn in the trusted server process. It must not be persisted in
+server databases, files, Redis, durable queues, logs or backups, even encrypted.
+Session-authorized background jobs may retain it in memory until their work
+finishes; logout is not a promise of immediate erasure or job cancellation.
+Operator service keys are separate and may be persistent. See the
+[trust and storage boundary](website/trust-boundary.md) for the complete distinction,
+deployment obligations and comparison with OakGate.
+
+After connection, the browser cookie's core bootstrap fields are:
 
 ```text
 nsec
@@ -342,7 +357,9 @@ bootstrap_relay
 session_format_version
 ```
 
-The complete payload is encrypted and authenticated using AES-256-GCM. A
+The session also carries validated display settings and, where applicable,
+optional onboarding/recovery fields described below. The complete payload is
+encrypted and authenticated using AES-256-GCM. A
 purpose-specific 256-bit session key is derived from the server-held
 `SAFEBOX_COOKIE_KEY` with HKDF-SHA256, and every cookie receives a fresh random
 96-bit nonce. The authenticated payload includes its issuance time and format

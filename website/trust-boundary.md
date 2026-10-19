@@ -6,30 +6,75 @@ description: What Safebox Web does and does not hold.
 # Trust Boundary
 
 Safebox Web is intentionally a wallet app, not a server-side wallet database
-or identity provider. It has to handle sensitive material while serving an
+or identity provider. It has to handle sensitive material while serving a
 connected session, but it should not become the permanent authority for the
 user's funds, records, or recovery path.
 
-## What the web app holds
+## Public state is allowed; user-key custody is not
 
-After connection, Safebox Web keeps a small encrypted browser session containing the
-connected Acorn secret and bootstrap relay. The server decrypts that session
-only when handling a request that needs an Acorn instance.
+Safebox Web may persist public information without taking custody of a user's
+Acorn. “Stateless” describes the user-secret boundary, not an absence of a database.
 
-The application database is for operational application state, such as handle
-directory entries and provider jobs. It is not the user's wallet.
+| Information | Storage and purpose |
+| --- | --- |
+| Public handle and Acorn npub | Server-side directory registration and wallet routing |
+| Optional social npub | Server-side NIP-05 association; separate from the Acorn key |
+| Public relay addresses | Server-side routing hints |
+| Job status, leases and operational metadata | Server-side coordination; not a durable user signing credential |
+| User Acorn nsec and session-held recovery material | Authenticated, encrypted browser session; transient server memory during authorized use |
+| Currency and language preferences | Browser-held encrypted session |
 
-Incoming-funds finalization makes this distinction concrete. The database can
-store a public-key-scoped job lease, phase, counts, amounts, timestamps, and a
-bounded error. It does not store the recipient nsec, recovery words, Cashu
-proofs, incoming bearer token, or private records.
+The public social npub does not establish wallet ownership. Changing it affects
+NIP-05, while `safebox.json`, payments and wallet messages keep the Acorn binding.
+Public preferences can remain available while the user is signed out. They do not
+let the server reconstruct the private key or act as the user's Acorn.
 
-The recipient key is nevertheless present in clear form inside the trusted web
-process while Acorn performs a session-authorized operation. Stateless does
-not mean the execution environment never handles secrets; it means those
-secrets do not become durable application state. Whoever controls the running
-code and its immediate proxy boundary must therefore still be trusted during
-the session.
+## Private-key use is session-authorized, not persistent
+
+The browser holds the encrypted session containing the user's Acorn secret and
+bootstrap information. The server authenticates and decrypts that session to
+construct an Acorn for an authorized operation. User private keys, recovery words
+and copies of secret-bearing session cookies must never be persisted server-side:
+not in the application database, files, Redis, durable queues, logs, analytics,
+traces or backups. Encrypting a server-side copy would still cross this boundary.
+
+Session-authorized background work may retain credentials in process memory
+until that bounded operation finishes. Ending a request, closing the browser or
+signing out is not a guarantee of immediate memory erasure or cancellation of an
+already-started job. Durable job records must not contain credentials that let a
+new process reconstruct the user's Acorn without a new authorized session.
+Creation and connection likewise handle key material transiently to establish the
+session; they do not create a persistent server-side recovery copy.
+
+For example, incoming-funds finalization stores a public-key-scoped job lease,
+phase, counts, amounts, timestamps and a bounded error. It does not store the
+recipient nsec, recovery words, Cashu proofs, incoming bearer token or private
+records. Other provider jobs have their own documented settlement state; this is
+not a claim that all application data is public or non-sensitive.
+
+## The running server is still trusted
+
+Safebox Web is non-custodial in this storage model, but it is not a browser-only
+signer. The user's key is available in plaintext to the trusted web process while
+Acorn performs authorized work. The operator's cookie-encryption key plus a
+captured session cookie can also expose the user's key. Users therefore trust
+the running application, host and immediate proxy boundary during use.
+
+The no-persistence rule is an application and deployment requirement, not proof
+that a malicious operator cannot capture secrets. Proxy logging, request-body
+capture, crash dumps and host diagnostics must not turn transient credentials
+into retained data. Keep secret-bearing requests and cookies out of those systems.
+
+Operator-owned service keys are a separate category. The application service
+identity, cookie-encryption key and provider service Acorn may require persistent
+operator storage. They must never be substituted for or confused with a user's
+Acorn private key. Public directory backups preserve address associations, not a
+user's private-key recovery path.
+
+OakGate deliberately uses a different model: it stores encrypted user recovery
+material and can operate the user's Acorn while the user is offline. Safebox Web
+must not acquire that capability by persisting user credentials. Both use the
+same underlying Acorn architecture.
 
 ## Web-enabled, local-first
 

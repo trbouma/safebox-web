@@ -4279,8 +4279,8 @@ def test_startup_migrates_a_new_sqlite_database(tmp_path) -> None:
     }.issubset(tables)
     assert "nfc_card_policy" in tables
     assert {"nfc_login_challenge", "nfc_login_rate"}.issubset(tables)
-    assert revision == ("20261016_0015",)
-    assert handle_columns == {"id", "claimed_handle", "npub", "home_relay"}
+    assert revision == ("20261019_0016",)
+    assert handle_columns == {"id", "claimed_handle", "npub", "home_relay", "social_npub"}
     assert {
         "id",
         "payment_id",

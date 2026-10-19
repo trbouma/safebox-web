@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<p>Choose how Safebox presents informational balance estimates. These
+<p>Choose how Safebox presents informational balance estimates. Currency and language
 preferences are stored only inside this browser's encrypted Acorn session.</p>
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 <form method="post" action="/preferences" data-progress-form>
@@ -17,6 +17,13 @@ preferences are stored only inside this browser's encrypted Acorn session.</p>
     <option value="{{ option.tag }}"{% if option.tag == language %} selected{% endif %}>{{ option.label }}</option>
     {% endfor %}
   </select>
+  {% if registration %}
+  <label for="social-npub">Social npub (optional)</label>
+  <input id="social-npub" name="social_npub" value="{{ social_npub }}" maxlength="63" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="social-help">
+  <p id="social-help">Use your public Nostr npub for this handle’s NIP-05 identity. Never enter a private key. Leave blank to use your Acorn public key.</p>
+  <p>This public preference is saved with your handle on this server and works across browsers. Set the same address in your signed Nostr profile so clients can verify the association. Safebox does not require proof of control.</p>
+  <p>Payments and wallet messages still use your Acorn key through safebox.json. Older wallets that use NIP-05 for payments may no longer work with this address when the keys differ.</p>
+  {% else %}<p><a href="/handle">Claim a handle</a> to set a social npub for your NIP-05 address.</p>{% endif %}
   <button type="submit" data-progress-label="Saving preferences…">Save Preferences</button>
   <p class="progress" data-progress-message hidden>Updating the encrypted session. Please wait…</p>
 </form>

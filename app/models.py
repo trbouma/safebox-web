@@ -68,6 +68,7 @@ class ClaimedHandle(SQLModel, table=True):
     claimed_handle: str = Field(nullable=False)
     npub: str = Field(nullable=False)
     home_relay: str = Field(nullable=False)
+    social_npub: Optional[str] = Field(default=None, nullable=True)
 
 
 class ProviderPayment(SQLModel, table=True):

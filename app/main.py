@@ -69,6 +69,7 @@ from acorn.func_utils import (
     seed_phrase_and_nsec_from_entropy,
 )
 
+from app.social_identity import validate_social_npub
 from app.config import Settings
 from app.payment_discovery import resolve_payment_recipient
 from acorn.safebox_discovery import CASH, CLEAR, SafeboxDiscoveryError
@@ -4086,10 +4087,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def preferences_form(
         request: Request,
         credentials: CredentialsDependency,
+        acorn: AcornDependency,
         session: DatabaseSessionDependency,
     ) -> HTMLResponse:
-        """Present browser-held display preferences without loading the Acorn."""
+        """Present browser display settings and the public social association."""
 
+        registration = session.exec(select(ClaimedHandle).where(ClaimedHandle.npub == acorn.pubkey_bech32)).first()
         settings = request.app.state.settings
         currency, language = _session_display_preferences(credentials, settings)
         rate_rows = session.exec(
@@ -4104,6 +4107,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             render_template(
                 "preferences.html",
                 title="Display Preferences",
+                registration=registration,
+                social_npub=(registration.social_npub or "") if registration else "",
                 currency=currency,
                 language=language,
                 currency_options=[
@@ -4124,12 +4129,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def update_preferences(
         request: Request,
         credentials: CredentialsDependency,
+        acorn: AcornDependency,
+        session: DatabaseSessionDependency,
+        social_npub: str = Form(""),
         csrf_token: str = Form(...),
         currency: str = Form(...),
         language: str = Form("en"),
     ):
-        """Replace the encrypted session with validated display preferences."""
+        """Save public social identity separately from browser-held display settings."""
 
+        registration = session.exec(select(ClaimedHandle).where(ClaimedHandle.npub == acorn.pubkey_bech32)).first()
         settings = request.app.state.settings
         normalized_currency = str(currency or "").strip().upper()
         try:
@@ -4151,11 +4160,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             error = "Select a currency supported by this Safebox service."
         elif normalized_language not in SUPPORTED_SESSION_LANGUAGES:
             error = "Select a language supported by this Safebox service."
+        change_social = 'social_npub' in await request.form()
+        normalized_social = None
+        if error is None and change_social:
+            try:
+                normalized_social = validate_social_npub(social_npub) if social_npub.strip() else None
+                if normalized_social and registration is None:
+                    error = "Claim a handle before setting a social npub."
+            except ValueError as exc:
+                error = str(exc)
         if error is not None:
             return HTMLResponse(
                 render_template(
                     "preferences.html",
                     title="Display Preferences",
+                    registration=registration,
+                    social_npub=(registration.social_npub or "") if registration else "",
                     currency=(
                         normalized_currency
                         if normalized_currency in settings.currency_rate_currencies
@@ -4191,6 +4211,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 language=normalized_language,
             ),
         )
+        if change_social and registration is not None:
+            registration.social_npub = normalized_social
+            session.add(registration)
+            session.commit()
         return response
 
     @app.get("/", response_class=HTMLResponse)
@@ -5708,11 +5732,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(
                 status_code=404,
                 content={"detail": f"{normalized_name} not found"},
-                headers={"Access-Control-Allow-Origin": "*"},
+                headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"},
             )
 
         try:
-            pubkey_hex = npub_to_hex(registration.npub)
+            pubkey_hex = npub_to_hex(validate_social_npub(registration.social_npub) if registration.social_npub else registration.npub)
         except ValueError:
             logger.error(
                 "invalid npub in claimed handle directory handle=%s",
@@ -5721,16 +5745,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse(
                 status_code=500,
                 content={"detail": "Stored handle public key is invalid"},
-                headers={"Access-Control-Allow-Origin": "*"},
+                headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"},
             )
 
         settings = request.app.state.settings
         content = {"names": {normalized_name: pubkey_hex}}
-        if settings.nip05_external_relays:
+        if settings.nip05_external_relays and not registration.social_npub:
             content["relays"] = {
                 pubkey_hex: list(settings.nip05_external_relays),
             }
-        if settings.clear_receive_enabled:
+        if settings.clear_receive_enabled and not registration.social_npub:
             clear_descriptor = {
                 "protocols": ["clear-token-transfer"],
                 "transports": ["nip59"],
@@ -5746,7 +5770,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         return JSONResponse(
             content=content,
-            headers={"Access-Control-Allow-Origin": "*"},
+            headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"},
         )
 
     @app.get("/receive-funds", response_class=HTMLResponse)

@@ -10,6 +10,13 @@ This is a public naming service, not a Safebox account system. The application
 does not store the Acorn private key, wallet proofs, records, configuration, or
 server-side session state in the directory.
 
+The storage boundary permits persistent public information, including the social
+npub preference. It forbids persistent server-side copies of the user's private
+key or secret-bearing session. Public directory data is not a recovery vault and
+does not authorize offline operation as the user. See the
+[trust boundary](../website/trust-boundary.md) for transient session-authorized
+key use, background work and operator-key distinctions.
+
 ## Data model
 
 The `claimed_handle` table contains only:
@@ -19,6 +26,7 @@ The `claimed_handle` table contains only:
 | `claimed_handle` | Normalized, public NIP-05 local name |
 | `npub` | Bech32 public key of the controlling Acorn component |
 | `home_relay` | Context-local relay used by that component |
+| `social_npub` | Optional public social key for NIP-05 only; nullable |
 
 The numeric `id` is an internal database primary key. Database constraints
 make both `claimed_handle` and `npub` unique. This provides one component per
@@ -88,9 +96,9 @@ Resolution uses:
 GET /.well-known/nostr.json?name=alice
 ```
 
-For a registered name, Safebox always returns the stable public-key mapping.
-Relay hints are included only when the operator configures externally reachable
-relays:
+For a registered name, Safebox returns the chosen social key, or the Acorn key
+when no social preference is set. Without a social override, relay hints are
+included when the operator configures externally reachable relays:
 
 ```env
 SAFEBOX_NIP05_EXTERNAL_RELAYS=wss://federation.example,wss://backup.example
@@ -265,3 +273,33 @@ from the volume. A database restore must preserve all three mapping fields and
 the `alembic_version` table. The directory contains public mappings rather than
 wallet secrets, but unauthorized modification could redirect discovery to an
 attacker-controlled key or relay and is therefore security-sensitive.
+
+## Optional social identity
+
+Preferences accepts a public social npub for a claimed handle. The authenticated
+Acorn remains its owner; `claimed_handle.npub` is never overwritten. Stroma
+validates the supplied npub. No proof-of-control signing step or social private
+key is requested. Set the matching `handle@domain` in the signed kind-0 profile;
+Nostr clients check that profile against the NIP-05 mapping.
+
+The public social preference is stored on the server, so it works while signed
+out and across browsers. Language and currency remain in the encrypted session.
+No additional secret or custodial wallet state is stored. A rename retains the
+preference; removing the handle deletes it along with the registration. Clearing
+the field restores the Acorn-key NIP-05 mapping. An older form omitting the field
+does not clear it. Multiple Acorns may intentionally name the same social key;
+handle ownership and uniqueness remain tied to the Acorn key.
+
+With a social override, `nostr.json` publishes only that key, without wallet relay
+hints or Clear capability extensions. `safebox.json`, LNURL delivery, local
+payments, wallet messages and sender attribution remain bound to the Acorn.
+Before splitting keys, remove the domain from legacy wallet fallback lists and
+upgrade clients. Unmodified NIP-05-based wallets cannot safely interpret a split
+address; leave the preference blank if their compatibility is required.
+
+Migration `20261019_0016` adds a nullable column; existing registrations retain
+their behaviour. Normal startup runs migrations. Back up the public directory
+before deployment, including this column thereafter. Downgrade refuses while
+any social preference is set, rather than silently reverting chosen identities.
+Rolling back application code without the migration is also unsafe for split
+identities. Verify both directory responses after deployment or restoration.

@@ -98,3 +98,11 @@ Keep public NIP-05 mappings compatible until uncontrolled legacy clients migrate
 
 Tests run against the installed locked dependency and fake wallets. Real delivery
 between controlled instances remains an operator check; tests do not send DMs.
+
+## Relationship to records and payments
+
+Wallet messages addressed by name resolve the Acorn through `safebox.json`;
+social NIP-05 is a different association. Record sharing/presentation currently
+uses Acorn transfer descriptors and QR codes, with no recipient-address lookup.
+See the [resolution table](../website/safebox-discovery.md#which-lookup-serves-which-purpose)
+for cash capabilities, Lightning fallback, Clear and future address-based records.
