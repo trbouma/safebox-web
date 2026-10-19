@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.engine import Engine
 from sqlmodel import Session
 
+from app.lightning_invoice import resolve_lightning_invoice
 from app.models import OutgoingPaymentJob, WebWorkerHeartbeat, utc_now
 from app.worker_liveness import WORKER_STALE_SECONDS, worker_is_live
 
@@ -341,27 +342,13 @@ async def run_outgoing_payment_job(
                 message=message,
             )
             return
-        if payment_kind == "invoice":
-            message, fees, *_details = await acorn.pay_multi_invoice(
-                lninvoice=recipient,
-                comment=comment,
-                **_tender_kwargs(
-                    acorn.pay_multi_invoice,
-                    tendered_amount,
-                    tendered_currency,
-                ),
-            )
-        else:
-            message, fees = await acorn.pay_multi(
-                amount=int(amount),
-                lnaddress=recipient,
-                comment=comment,
-                **_tender_kwargs(
-                    acorn.pay_multi,
-                    tendered_amount,
-                    tendered_currency,
-                ),
-            )
+        invoice = recipient if payment_kind == "invoice" else await resolve_lightning_invoice(
+            recipient, int(amount), comment)
+        message, fees, *_details = await acorn.pay_multi_invoice(
+            lninvoice=invoice,
+            comment=comment,
+            **_tender_kwargs(acorn.pay_multi_invoice, tendered_amount, tendered_currency),
+        )
         update_outgoing_payment_job(
             engine,
             npub,

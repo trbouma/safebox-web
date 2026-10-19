@@ -34,13 +34,10 @@ Verification describes only the current address association, not historical
 ownership at send time. NIP-05 remains a separate social-identity lookup, with a
 separate cache that is never used to authenticate wallet-message claims.
 
-Compatibility uses `SAFEBOX_LEGACY_DOMAINS` (default `safebox.dev`). Only a v1
-HTTP 404 permits NIP-05 lookup on one of those exact, configured domains. These
-must be known older wallet instances whose NIP-05 keys still identify Acorns;
-legacy messaging also requires public relay hints. Set the list empty to disable
-fallback. Remove domains before social and wallet keys split. A successful v1
-response without messaging capability means unsupported; it does not fall back.
-Unknown versions, invalid data, timeouts and non-404 HTTP errors stop sending.
+Wallet messaging never falls back to NIP-05, even after a v1 HTTP 404.
+`SAFEBOX_LEGACY_DOMAINS` is ignored. Older receivers must publish v1 messaging
+capability before address-based delivery is supported. Unknown versions, missing
+capabilities, invalid data and network errors stop sending.
 Discovery failure says no message was sent; failure after publication starts
 retains the uncertain-delivery warning and never automatically retries.
 
@@ -91,7 +88,7 @@ Use the committed Poetry lockfile, which includes Acorn's published directory
 parser/resolver, `get_private_messages`, and discovery-aware `secure_dm`. This
 migration needs no new Acorn API or user-key operation in Web. Configure
 `SAFEBOX_NIP05_EXTERNAL_RELAYS` with the public wallet inbox routes, verify the
-public v1 entry, then deploy senders with the appropriate legacy-domain list.
+public v1 entry, then deploy the updated senders.
 An older v1 publisher without the message capability must upgrade before these
 senders can address it as a wallet; no inference from its cash capability is made.
 Keep public NIP-05 mappings compatible until uncontrolled legacy clients migrate.

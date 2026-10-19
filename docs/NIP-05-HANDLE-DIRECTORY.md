@@ -293,8 +293,8 @@ handle ownership and uniqueness remain tied to the Acorn key.
 With a social override, `nostr.json` publishes only that key, without wallet relay
 hints or Clear capability extensions. `safebox.json`, LNURL delivery, local
 payments, wallet messages and sender attribution remain bound to the Acorn.
-Before splitting keys, remove the domain from legacy wallet fallback lists and
-upgrade clients. Unmodified NIP-05-based wallets cannot safely interpret a split
+Current readers ignore legacy fallback settings and never use NIP-05 for wallets.
+Before splitting keys, upgrade older clients that still perform NIP-05 wallet lookup. Unmodified NIP-05-based wallets cannot safely interpret a split
 address; leave the preference blank if their compatibility is required.
 
 Migration `20261019_0016` adds a nullable column; existing registrations retain

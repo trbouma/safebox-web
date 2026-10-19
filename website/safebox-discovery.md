@@ -45,9 +45,9 @@ ordinary external Lightning address does not need Safebox or NIP-05 support.
 Clear payments, continuity-only transfers and wallet messages do not fall back
 to Lightning.
 
-A 404 permits legacy NIP-05 wallet lookup only for explicitly configured older
-wallet domains. A successful response lacking the requested capability never
-triggers a social-key lookup. Malformed data, unsupported versions, timeouts and
+A 404 or missing cash capability may permit ordinary Lightning for cash.
+NIP-05 is never a wallet fallback, including for previously configured legacy
+domains. Clear and wallet messages require their advertised wallet capability. Malformed data, unsupported versions, timeouts and
 non-404 HTTP errors stop preparation rather than silently switching to Lightning
 or a social key. Once a send has begun, an uncertain outcome never triggers an
 automatic second payment by another route.
@@ -90,32 +90,30 @@ The older `safebox.json/<name>` transport is not reintroduced.
 
 ## Payment compatibility policy
 
-`SAFEBOX_LEGACY_DOMAINS=safebox.dev` is the default comma-separated list of exact,
-known older wallet domains. Set it empty to disable legacy lookup. Add another
-older instance only if its NIP-05 names still identify Acorn wallet keys. Remove
-a domain before its social and wallet keys diverge; wildcards are not supported.
+Legacy NIP-05 wallet fallback has been retired. `SAFEBOX_LEGACY_DOMAINS` is
+ignored, including values left in existing deployments. A 404 or absent cash
+capability can use ordinary Lightning for cash; Clear, continuity transfers and
+wallet messages require wallet discovery. Malformed directories, unknown versions,
+network failures, redirects and other HTTP errors stop preparation.
 
-Only a 404 from `safebox.json` permits NIP-05 lookup on a listed domain. Cash
-requires a wallet key and public relay hints; Clear also requires its legacy
-capability descriptor and matching unit. An unlisted 404 or absent capability
-can use ordinary Lightning for cash. Clear and continuity transfers never do.
-Malformed directories, unknown versions, network failures, redirects and other
-HTTP errors stop preparation without a payment or fallback.
+Lightning fallback obtains and validates an LNURL invoice and calls Acorn's
+`pay_multi_invoice` only. It does not call `pay_multi`, follow `safebox=true`, or
+enter the older `safebox.json/<name>` transport. Invoice requests omit unsupported
+comments and the legacy `safebox` query parameter. Public HTTPS requests validate
+DNS, pin the connection, reject redirects and bound response size; the invoice
+must match the requested amount, Bitcoin network and expiry requirements.
 
 Local recipients use the instance's wallet registration directly, preserving
-private relay support. Clear mint scope restrictions and Acorn's mint acceptance
-policy are unchanged. External discovery uses Acorn's bounded public HTTPS
-resolver. Legacy lookups also validate public DNS, pin the connection, reject
-redirects, and limit response size. No social-key lookup substitutes for a
-successful wallet-directory response.
+private relay support. Clear scope restrictions and Acorn's mint acceptance
+policy are unchanged. External wallet discovery uses Acorn's bounded resolver.
 
 See the [family contract and migration plan](https://github.com/trbouma/oakgate/blob/main/docs/018-safebox-address-discovery.md).
 
 ## Wallet messages
 
 Wallet-address delivery and claimed-sender verification use the messaging
-capability, independently of social NIP-05. The same configured legacy-domain
-policy applies only after 404. Missing capability, malformed discovery or network
+capability, independently of social NIP-05, with no legacy fallback.
+Missing capability, a 404, malformed discovery or network
 failure never becomes a social DM. Explicit npub/public-key destinations retain
 their meaning. Local messages use the registered wallet and home relay.
 

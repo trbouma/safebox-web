@@ -26,7 +26,7 @@ def wallet_entry(messaging=True):
 def test_wallet_and_social_keys_remain_independent(monkeypatch):
     monkeypatch.setattr(directory, 'resolve_safebox_address', AsyncMock(return_value=wallet_entry()))
     legacy = AsyncMock(side_effect=AssertionError('Do not consult social NIP-05'))
-    monkeypatch.setattr(directory, 'legacy_json', legacy)
+    monkeypatch.setattr(directory, 'legacy_json', legacy, raising=False)
     monkeypatch.setattr(dm, '_fetch_identity', AsyncMock(return_value=SOCIAL_KEY))
     dm._cache.clear()
     async def run():
@@ -46,7 +46,7 @@ def test_wallet_and_social_keys_remain_independent(monkeypatch):
 def test_missing_message_capability_never_falls_back(monkeypatch):
     monkeypatch.setattr(directory, 'resolve_safebox_address', AsyncMock(return_value=wallet_entry(False)))
     legacy = AsyncMock()
-    monkeypatch.setattr(directory, 'legacy_json', legacy)
+    monkeypatch.setattr(directory, 'legacy_json', legacy, raising=False)
     assert asyncio.run(directory.resolve_wallet_message_recipient(ADDRESS, legacy_domains=('example.com',))) is None
     legacy.assert_not_awaited()
 
@@ -55,13 +55,10 @@ def test_missing_message_capability_never_falls_back(monkeypatch):
 def test_404_compatibility_requires_explicit_domain(monkeypatch, allowed):
     monkeypatch.setattr(directory, 'resolve_safebox_address', AsyncMock(side_effect=SafeboxNotFound('404')))
     legacy = AsyncMock(return_value={'names':{'alice':KEY},'relays':{KEY:[RELAY]}})
-    monkeypatch.setattr(directory, 'legacy_json', legacy)
+    monkeypatch.setattr(directory, 'legacy_json', legacy, raising=False)
     result = asyncio.run(directory.resolve_wallet_message_recipient(ADDRESS, legacy_domains=('example.com',) if allowed else ()))
-    assert legacy.await_count == int(allowed)
-    if allowed:
-        assert result['pubkey'] == KEY and result['discovery_source'] == 'legacy-nip05'
-    else:
-        assert result is None
+    assert result is None
+    legacy.assert_not_awaited()
 
 
 @pytest.mark.parametrize('error', [SafeboxHTTPError(410), SafeboxHTTPError(429), SafeboxHTTPError(503),
@@ -69,7 +66,7 @@ def test_404_compatibility_requires_explicit_domain(monkeypatch, allowed):
 def test_discovery_error_never_uses_legacy_key(monkeypatch, error):
     monkeypatch.setattr(directory, 'resolve_safebox_address', AsyncMock(side_effect=error))
     legacy = AsyncMock()
-    monkeypatch.setattr(directory, 'legacy_json', legacy)
+    monkeypatch.setattr(directory, 'legacy_json', legacy, raising=False)
     with pytest.raises(SafeboxDiscoveryError):
         asyncio.run(directory.resolve_wallet_message_recipient(ADDRESS, legacy_domains=('example.com',)))
     message = asyncio.run(dm.present_messages([{'sender':KEY,'content':dm.encode_message('still readable',ADDRESS)}], legacy_domains=('example.com',)))[0]

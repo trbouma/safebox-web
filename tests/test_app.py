@@ -8698,6 +8698,7 @@ def test_invoice_monitor_window_is_two_minutes() -> None:
 
 
 def test_confirmed_lightning_payment_runs_as_background_job(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr('app.outgoing_payment.resolve_lightning_invoice', AsyncMock(return_value='lnbc-test-invoice'))
     monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value=None))
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
@@ -8725,10 +8726,9 @@ def test_confirmed_lightning_payment_runs_as_background_job(tmp_path, monkeypatc
     assert response.status_code == 200
     assert "Transfer" in response.text
     assert job is not None and job["status"] == "COMPLETE"
-    assert acorn.payments == [
+    assert acorn.invoice_payments == [
         {
-            "amount": 21,
-            "lnaddress": "alice@example.com",
+            "invoice": "lnbc-test-invoice",
             "comment": "pytest web payment",
         }
     ]
@@ -8859,6 +8859,7 @@ def test_safebox_recipient_on_different_relay_uses_direct_ecash(
 def test_external_safebox_with_internal_cash_mint_uses_lightning(
     monkeypatch, tmp_path,
 ) -> None:
+    monkeypatch.setattr('app.outgoing_payment.resolve_lightning_invoice', AsyncMock(return_value='lnbc-test-invoice'))
     recipient_hex = "11" * 32
 
     monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value={'npub': main_module.Keys.hex_to_bech32(recipient_hex, prefix='npub'), 'relay_hints': ['wss://other-relay.example'], 'route_scope':'external', 'discovery_source':'safebox-v1'}))
@@ -8879,15 +8880,14 @@ def test_external_safebox_with_internal_cash_mint_uses_lightning(
             },
         )
         deadline = time.monotonic() + 2
-        while time.monotonic() < deadline and not acorn.payments:
+        while time.monotonic() < deadline and not acorn.invoice_payments:
             time.sleep(0.01)
 
     assert response.status_code == 200
     assert acorn.ecash_transfers == []
-    assert acorn.payments == [
+    assert acorn.invoice_payments == [
         {
-            "amount": 21,
-            "lnaddress": "alice@example.com",
+            "invoice": "lnbc-test-invoice",
             "comment": "lightning fallback",
         }
     ]
@@ -9009,6 +9009,7 @@ def test_safebox_direct_ecash_reports_unavailable_recipient_relay(
 def test_lightning_payment_falls_back_to_background_job(
     monkeypatch, tmp_path,
 ) -> None:
+    monkeypatch.setattr('app.outgoing_payment.resolve_lightning_invoice', AsyncMock(return_value='lnbc-test-invoice'))
     monkeypatch.setattr(main_module, "_resolve_safebox_lightning_recipient", AsyncMock(return_value=None))
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
@@ -9026,26 +9027,24 @@ def test_lightning_payment_falls_back_to_background_job(
             },
         )
         deadline = time.monotonic() + 2
-        while time.monotonic() < deadline and not acorn.payments:
+        while time.monotonic() < deadline and not acorn.invoice_payments:
             time.sleep(0.01)
 
     assert response.status_code == 200
     assert acorn.ecash_transfers == []
-    assert acorn.payments == [
+    assert acorn.invoice_payments == [
         {
-            "amount": 21,
-            "lnaddress": "alice@example.com",
+            "invoice": "lnbc-test-invoice",
             "comment": "lightning please",
         }
     ]
 
 
 def test_lightning_payment_failure_is_recorded_for_review(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr('app.outgoing_payment.resolve_lightning_invoice', AsyncMock(return_value='lnbc-test-invoice'))
     class FailingLightningAcorn(FakeLoadedAcorn):
-        async def pay_multi(self, amount: int, lnaddress: str, comment: str):
-            self.payments.append(
-                {"amount": amount, "lnaddress": lnaddress, "comment": comment}
-            )
+        async def pay_multi_invoice(self, lninvoice: str, comment: str):
+            self.invoice_payments.append({"invoice":lninvoice, "comment":comment})
             error = RuntimeError("Melt quote failed <inspect>")
             error.fees = FakePaymentFees(
                 2,
@@ -9089,7 +9088,7 @@ def test_lightning_payment_failure_is_recorded_for_review(monkeypatch, tmp_path)
     assert job["mint_fees"] == 2
     assert "Known Fees Consumed" in response.text
     assert acorn.ecash_transfers == []
-    assert len(acorn.payments) == 1
+    assert len(acorn.invoice_payments) == 1
     assert acorn.history_entries[-1]["tx_type"] == "X"
     assert acorn.history_entries[-1]["fees"] == 2
     assert acorn.history_entries[-1]["comment"] == "lightning please"
@@ -9097,8 +9096,9 @@ def test_lightning_payment_failure_is_recorded_for_review(monkeypatch, tmp_path)
 
 
 def test_invalid_lightning_address_hides_component_exception(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr('app.outgoing_payment.resolve_lightning_invoice', AsyncMock(return_value='lnbc-test-invoice'))
     class InvalidAddressAcorn(FakeLoadedAcorn):
-        async def pay_multi(self, amount: int, lnaddress: str, comment: str):
+        async def pay_multi_invoice(self, lninvoice: str, comment: str):
             raise RuntimeError(
                 "Payment was not submitted to the mint: "
                 "not enough values to unpack (expected 3, got 2)"
@@ -9161,11 +9161,10 @@ def test_invalid_lightning_address_hides_component_exception(monkeypatch, tmp_pa
 
 
 def test_lightning_payment_stale_proofs_stops_for_review(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr('app.outgoing_payment.resolve_lightning_invoice', AsyncMock(return_value='lnbc-test-invoice'))
     class StaleProofAcorn(FakeLoadedAcorn):
-        async def pay_multi(self, amount: int, lnaddress: str, comment: str):
-            self.payments.append(
-                {"amount": amount, "lnaddress": lnaddress, "comment": comment}
-            )
+        async def pay_multi_invoice(self, lninvoice: str, comment: str):
+            self.invoice_payments.append({"invoice":lninvoice, "comment":comment})
             raise RuntimeError(
                 "Payment could not proceed because the wallet contains stale proofs."
             )
@@ -9196,7 +9195,7 @@ def test_lightning_payment_stale_proofs_stops_for_review(monkeypatch, tmp_path) 
 
     assert response.status_code == 200
     assert acorn.repair_calls == 0
-    assert len(acorn.payments) == 1
+    assert len(acorn.invoice_payments) == 1
     assert job is not None and job["phase"] == "REVIEW"
     assert "wallet contains stale proofs" in str(job["error"])
 
@@ -11635,7 +11634,7 @@ def test_payment_discovery_failure_never_sends(monkeypatch, tmp_path, clear):
     import app.payment_discovery as discovery
     monkeypatch.setattr(discovery, "resolve_safebox_address", AsyncMock(side_effect=SafeboxDiscoveryError("invalid directory")))
     legacy = AsyncMock()
-    monkeypatch.setattr(discovery, "legacy_json", legacy)
+    monkeypatch.setattr(discovery, "legacy_json", legacy, raising=False)
     app = create_app(database_settings(tmp_path))
     acorn = FakeLoadedAcorn(balance=500)
     acorn.clear_balances = [{"mint":"https://clear.one", "unit":"cmu-one", "amount":25, "proof_count":3}]
@@ -11654,6 +11653,6 @@ def test_payment_discovery_failure_never_sends(monkeypatch, tmp_path, clear):
 
 def test_legacy_wallet_domain_config_can_be_disabled(monkeypatch):
     monkeypatch.setenv("SAFEBOX_LEGACY_DOMAINS", " Older.Example, safebox.dev ")
-    assert Settings.from_env().safebox_legacy_domains == ("older.example", "safebox.dev")
+    assert Settings.from_env().safebox_legacy_domains == ()
     monkeypatch.setenv("SAFEBOX_LEGACY_DOMAINS", "")
     assert Settings.from_env().safebox_legacy_domains == ()
