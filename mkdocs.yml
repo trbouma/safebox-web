@@ -58,6 +58,7 @@ nav:
       - Getting Started: getting-started.md
       - Verifiable Records: records-and-wallet-passes.md
       - Receiving Funds: receiving-funds.md
+      - Safebox Wallet Discovery: safebox-discovery.md
       - Local-First Stack: local-first-stack.md
   - Project Status: project-status.md
 

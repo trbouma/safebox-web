@@ -466,6 +466,12 @@ the need to trust the running web code or protect the cookie-encryption key.
 Anyone who obtains that key and a session cookie can decrypt the contained
 `nsec`.
 
+## Safebox wallet discovery
+
+The additive version-1 `/.well-known/safebox.json?name=handle` directory separates
+wallet delivery metadata from social identity. Existing NIP-05 responses and
+senders remain unchanged during this first rollout. See [deployment and migration](website/safebox-discovery.md).
+
 ## NIP-05 handle directory
 
 After connecting an Acorn, select **Claim a Custom Address** on the

@@ -5769,6 +5769,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session.commit()
         return RedirectResponse("/handle", status_code=303)
 
+    @app.get("/.well-known/safebox.json", response_class=JSONResponse)
+    async def resolve_safebox_directory(request: Request, session: DatabaseSessionDependency):
+        # This is additive: do not change the NIP-05 key, social APIs or senders.
+        headers = {"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store",
+                   "X-Content-Type-Options": "nosniff"}
+        def failure(code, status):
+            return JSONResponse({"error": code}, status_code=status, headers=headers)
+        names = request.query_params.getlist("name")
+        if len(names) != 1:
+            return failure("invalid_name", 400)
+        try:
+            from acorn.safebox_discovery import build_safebox_document, normalize_safebox_name
+        except ImportError:
+            return failure("discovery_dependency_unavailable", 503)
+        try:
+            name = normalize_safebox_name(names[0])
+        except ValueError:
+            return failure("invalid_name", 400)
+        try:
+            registration = session.exec(select(ClaimedHandle).where(
+                ClaimedHandle.claimed_handle == name)).first()
+            settings = request.app.state.settings
+            # Only explicitly configured public inbox routes are advertised.
+            # Never leak an internal home relay or substitute an unrelated relay.
+            if registration is None or not settings.nip05_external_relays:
+                return failure("not_found", 404)
+            payload = build_safebox_document(
+                f"{name}@{request.url.hostname}", npub_to_hex(registration.npub),
+                settings.nip05_external_relays, cash=True,
+                clear=settings.clear_receive_enabled, clear_units=settings.clear_units)
+            return JSONResponse(payload, headers=headers)
+        except Exception:
+            return failure("unavailable", 503)
+
     @app.get("/.well-known/nostr.json", response_class=JSONResponse)
     async def resolve_nip05(
         request: Request,
