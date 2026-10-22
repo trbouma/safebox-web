@@ -91,7 +91,9 @@ services:
     healthcheck:
       test: ["CMD", "python", "-m", "app.service_acorn_worker", "health"]
       interval: 15s
-      timeout: 5s
+      # Allow Python/Acorn imports and process shutdown on the deployment host.
+      # The health command still independently checks heartbeat freshness.
+      timeout: 15s
       retries: 4
       start_period: 45s
     environment:
