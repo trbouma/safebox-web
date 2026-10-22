@@ -1163,3 +1163,20 @@ underneath the mount point. This applies to Docker restarts at boot too.
 Run `docker compose config --quiet` before deployment and inspect the actual
 container mounts afterward. Keep storage selection in `.env` rather than local
 Compose edits, so refreshes do not require stashing deployment configuration.
+
+### Refresh readiness contract
+
+Use `./refresh-containers.sh --timeout 300` to pull fast-forward updates and
+recreate the full deployment with a bounded readiness wait. The timeout is in
+seconds (1–3600); it applies to startup readiness, not image build time. All
+required services must pass Docker readiness before success is reported.
+Docker Compose with `--wait` and `--wait-timeout` support is required. Failures
+report service state, recent health-check output and logs; they do not delete
+volumes, reset payment records or attempt an automatic data rollback.
+Review diagnostic output for secrets before sharing it.
+
+Standalone refresh defaults to 120 seconds; Mainstay and OakGate full-stack
+startup default to 300 seconds. OakGate's `./refresh-app.sh --timeout 120`
+remains app-only and leaves Keycloak and Redis running. Application checks
+(login, public HTTPS, record retrieval and a small payment) remain separate
+from container readiness. Never run two refresh operations concurrently.
