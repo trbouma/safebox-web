@@ -71,7 +71,11 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
     volumes:
-      - safebox-web-data:/app/data
+      - type: bind
+        source: "${SAFEBOX_DATA_DIR:?Set SAFEBOX_DATA_DIR in .env to the existing data directory}"
+        target: /app/data
+        bind:
+          create_host_path: false
     security_opt:
       - no-new-privileges:true
     stop_grace_period: 120s
@@ -116,10 +120,11 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
     volumes:
-      - safebox-web-data:/app/data
+      - type: bind
+        source: "${SAFEBOX_DATA_DIR:?Set SAFEBOX_DATA_DIR in .env to the existing data directory}"
+        target: /app/data
+        bind:
+          create_host_path: false
     security_opt:
       - no-new-privileges:true
     stop_grace_period: 30s
-
-volumes:
-  safebox-web-data:

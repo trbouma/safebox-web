@@ -1135,3 +1135,31 @@ They do not contact a relay or mint.
   for concurrent provider jobs.
 - The current shared SQLite volume is process separation, not strict filesystem
   isolation: both containers can technically read provider recovery material.
+
+## Explicit Docker storage paths
+
+Storage settings in `.env` are required. Both an absent/empty setting and a
+missing host directory fail instead of selecting a fallback or creating a new
+empty directory. Set the path to the CURRENT data, not an older backup:
+
+```dotenv
+SAFEBOX_DATA_DIR=/mnt/lexar/safebox-web
+```
+
+These settings are Docker host paths; internal container paths stay unchanged.
+Keep `.env` ignored by Git and backed up with the matching instance secrets.
+This configuration does not copy or migrate data. Before converting a deployment
+from a named volume, stop all services sharing its database, take a consistent
+backup and explicitly migrate the current directory with ownership preserved.
+Keep the old copy until the new mounts, identities and application data are
+verified. For a fresh installation only, pre-create a directory writable by the
+container's configured user. Never create an empty replacement for an existing
+instance.
+
+Verify the external drive is mounted before startup (for Beelink, `mountpoint /mnt/lexar`). `create_host_path: false` checks directory existence, not drive
+identity; it cannot detect an unmounted drive if a directory already exists
+underneath the mount point. This applies to Docker restarts at boot too.
+
+Run `docker compose config --quiet` before deployment and inspect the actual
+container mounts afterward. Keep storage selection in `.env` rather than local
+Compose edits, so refreshes do not require stashing deployment configuration.
